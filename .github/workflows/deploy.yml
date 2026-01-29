@@ -14,19 +14,16 @@ jobs:
 
       - name: Deploying updates to the server
         shell: powershell
-        run: |
-          # Navigate to the inner folder where manage.py and venv live
+        run: # 1. Copy fresh files from Runner's directory to Project directory
+          # English comment: Syncing files from runner workspace to project folder
+          xcopy /E /Y /I "$GITHUB_WORKSPACE\*" "C:\Users\Gleb\SBProduction\SBProduction\"
+
+          # 2. Now enter the project folder to run migrations
           cd "C:\Users\Gleb\SBProduction\SBProduction"
           
-          # Pull latest changes (optional if runner does it, but good for safety)
-          # git pull origin main
-          
-          # Install dependencies from requirements.txt
+          # 3. Update environment and DB
           & ".\venv\Scripts\python.exe" -m pip install -r requirements.txt
-          
-          # Run database migrations
           & ".\venv\Scripts\python.exe" manage.py migrate --noinput
           
-          # Restart the Windows Service to apply new code
-          # The -Force flag ensures it restarts even if it was "Paused"
+          # 4. Restart service
           Restart-Service -Name "DjangoAPI" -Force
