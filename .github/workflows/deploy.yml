@@ -31,7 +31,7 @@ jobs:
 
           & ".\venv\Scripts\python.exe" -m pip install -r requirements.txt
           & ".\venv\Scripts\python.exe" manage.py collectstatic --noinput
-          & ".\venv\Scripts\python.exe" manage.py migrate --noinput
+          & ".\venv\Scripts\python.exe" manage.py migrate --fake-initial --noinput
           
           # Restart-Service will start it back up
           Restart-Service -Name "DjangoAPI" -Force
