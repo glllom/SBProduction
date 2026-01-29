@@ -15,8 +15,8 @@ jobs:
         run: |
           # We use ErrorAction SilentlyContinue so it doesn't fail if service is already stopped
           Stop-Service -Name "DjangoAPI" -Force -ErrorAction SilentlyContinue
-          # Give Windows 2 seconds to release the files
-          Start-Sleep -s 2
+          # Give Windows 3 seconds to release the files
+          Start-Sleep -s 3
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
         run: |
           # Now we are in C:\actions-runner\_work\SBProduction\SBProduction
           
-          # English: ensure venv exists (if you deleted it manually)
+          # ensure venv exists (if you deleted it manually)
           if (!(Test-Path "venv")) { python -m venv venv }
 
           & ".\venv\Scripts\python.exe" -m pip install -r requirements.txt
