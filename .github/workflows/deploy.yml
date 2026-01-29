@@ -2,7 +2,7 @@ name: Django Auto-Deploy
 
 on:
   push:
-    branches: [ main ] # This triggers the script on every push to main branch
+    branches: [ master ] # This triggers the script on every push to main branch
 
 jobs:
   deploy:
