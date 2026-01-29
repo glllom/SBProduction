@@ -9,24 +9,29 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      # English: Stop the service first to unlock files in the venv
+      - name: Stop Service
+        shell: powershell
+        run: |
+          # We use ErrorAction SilentlyContinue so it doesn't fail if service is already stopped
+          Stop-Service -Name "DjangoAPI" -Force -ErrorAction SilentlyContinue
+          # Give Windows 2 seconds to release the files
+          Start-Sleep -s 2
+
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          # English comment: Deploy directly to the root of the workspace
-          path: .
 
       - name: Production Update
         shell: powershell
         run: |
-          # Now manage.py is right here in C:\actions-runner\_work\SBProduction
+          # Now we are in C:\actions-runner\_work\SBProduction\SBProduction
           
-          # 1. Setup environment (English: creating venv if it doesn't exist)
+          # English: ensure venv exists (if you deleted it manually)
           if (!(Test-Path "venv")) { python -m venv venv }
 
-          # 2. Update and migrate
           & ".\venv\Scripts\python.exe" -m pip install -r requirements.txt
           & ".\venv\Scripts\python.exe" manage.py collectstatic --noinput
           & ".\venv\Scripts\python.exe" manage.py migrate --noinput
           
-          # 3. Restart service
+          # Restart-Service will start it back up
           Restart-Service -Name "DjangoAPI" -Force
