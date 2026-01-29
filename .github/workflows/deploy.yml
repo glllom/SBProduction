@@ -1,0 +1,32 @@
+name: Django Auto-Deploy
+
+on:
+  push:
+    branches: [ main ] # This triggers the script on every push to main branch
+
+jobs:
+  deploy:
+    runs-on: self-hosted # This tells GitHub to use your Win 11 server
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploying updates to the server
+        shell: powershell
+        run: |
+          # Navigate to the inner folder where manage.py and venv live
+          cd "C:\Users\Gleb\SBProduction\SBProduction"
+          
+          # Pull latest changes (optional if runner does it, but good for safety)
+          # git pull origin main
+          
+          # Install dependencies from requirements.txt
+          & ".\venv\Scripts\python.exe" -m pip install -r requirements.txt
+          
+          # Run database migrations
+          & ".\venv\Scripts\python.exe" manage.py migrate --noinput
+          
+          # Restart the Windows Service to apply new code
+          # The -Force flag ensures it restarts even if it was "Paused"
+          Restart-Service -Name "DjangoAPI" -Force
