@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>Customizers for Item #{{ item.number }} ({{ item.product_model.sku }})</h2>
+<p>Order: {{ item.order.order_number }}</p>
+
+<form method="post">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Customizer</th>
+                <th>Delete?</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for form in formset %}
+            <tr>
+                <td>
+                    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+                    {{ form.customizer }}
+                    {% if form.customizer.errors %}
+                        <div class="text-danger">{{ form.customizer.errors }}</div>
+                    {% endif %}
+                </td>
+                <td>{{ form.DELETE }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button type="submit" class="btn btn-success">Save Customizers</button>
+    <a href="{% url 'order-edit' item.order.pk %}" class="btn btn-secondary">Back to Order</a>
+</form>
+{% endblock %}

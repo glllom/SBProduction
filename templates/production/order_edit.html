@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <h1>{{ title }}</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <table id="table-responsive" class="table">
+            <thead>
+            <tr>
+                <th scope="col">Number</th>
+                <th scope="col">Comment</th>
+                <th scope="col">Name</th>
+                <th scope="col">Width</th>
+                <th scope="col">Height</th>
+                <th scope="col">Undercut</th>
+                <th scope="col">Wall</th>
+                <th scope="col">Direction</th>
+                <th scope="col">Opening</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for item_form in formset %}
+                <tr>
+                    <td class="m-0 p-0 rounded-0" style="width: 4%">{{ item_form.number }}</td>
+                    <td class="m-0 p-0 rounded-0" style="width: 10%">{{ item_form.comment }}</td>
+                    <td class="m-0 p-0 rounded-0" style="width: 25%">{{ item_form.product_model }}</td>
+                    <td class="m-0 p-0 rounded-0" style="width: 5%">{{ item_form.width }}</td>
+                    <td class="m-0 p-0 rounded-0" style="width: 5%">{{ item_form.height }}</td>
+                    <td class="m-0 p-0 rounded-0" style="width: 5%">{{ item_form.undercut }}</td>
+                    <td class="m-0 p-0 rounded-0" style="width: 5%">{{ item_form.wall }}</td>
+                    <td class="m-0 p-0 rounded-0" style="width: 5%">{{ item_form.direction }}</td>
+                    <td class="m-0 p-0 rounded-0" style="width: 5%">{{ item_form.opening }}</td>
+                </tr>
+
+                    {% for customizer in item_form.customizer_list %}
+                        <tr>
+                        <td class="m-0 p-0 rounded-0" colspan="2">{{ customizer.customizer }}</td>
+                    </tr>
+                    {% endfor %}
+
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <button type="submit" class="btn btn-success">Save Order</button>
+        <a href="{% url 'order-list' %}" class="btn btn-secondary">Back to List</a>
+    </form>
+{% endblock %}
