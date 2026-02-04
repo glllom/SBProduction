@@ -98,7 +98,7 @@ class DBProductModel(models.Model):
     # panel_reduction_height = models.FloatField()
     # double_door_gap = models.FloatField()
     description = models.CharField(max_length=256)
-    bom = models.ManyToManyField(DBComponent, through='production.DBBomComponents', related_name='bom')
+    bom = models.ManyToManyField(DBComponent, through='production.DBBomComponent', related_name='bom')
     sku = models.CharField(max_length=20, unique=True)
     global_type = models.CharField(max_length=1)
     product_type = models.ForeignKey(DBProductType, on_delete=models.CASCADE)
@@ -112,7 +112,7 @@ class DBProductModel(models.Model):
         return f"<ProductModel: {self.sku}>"
 
 
-class DBBomComponents(models.Model):
+class DBBomComponent(models.Model):
     product_model = models.ForeignKey(DBProductModel, on_delete=models.CASCADE, related_name='bom_details')
     DBComponent = models.ForeignKey(DBComponent, on_delete=models.CASCADE, related_name='used_in_boms')
     tag = models.ForeignKey(DBBomTag, on_delete=models.CASCADE)

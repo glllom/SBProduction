@@ -2,13 +2,13 @@ from django.contrib import admin
 from .models import (
     DBProductType, DBProductFamily, DBSeries, DBProductModel,
     DBBomTag, DBCustomizerTag, DBComponent,
-    DBBomComponents, DBCustomizer, DBProductStages, DBFront,
+    DBBomComponent, DBCustomizer, DBProductStages, DBFront,
     DBComponentChanger, DBComponentChangerItem,
     DBOrder, DBOrderItem, DBOrderItemCustomizer
 )
 
 class BomComponentsInline(admin.TabularInline):
-    model = DBBomComponents
+    model = DBBomComponent
     fk_name = 'product_model'
     extra = 1
 
@@ -83,7 +83,7 @@ class ComponentAdmin(admin.ModelAdmin):
     list_display = ('name', 'sku')
 
 
-@admin.register(DBBomComponents)
+@admin.register(DBBomComponent)
 class BomComponentsAdmin(admin.ModelAdmin):
     list_display = ('product_model', 'DBComponent', 'tag', 'qty')
 
