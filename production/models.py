@@ -94,9 +94,9 @@ class DBComponent(models.Model):
 class DBProductModel(models.Model):
     product_family = models.ForeignKey(DBProductFamily, on_delete=models.CASCADE)
     # series = models.ForeignKey(DBSeries, on_delete=models.CASCADE)
-    # panel_reduction_width = models.FloatField()
-    # panel_reduction_height = models.FloatField()
-    # double_door_gap = models.FloatField()
+    panel_reduction_width = models.FloatField(default=0)
+    panel_reduction_height = models.FloatField(default=0)
+    double_door_gap = models.FloatField(default=0)
     description = models.CharField(max_length=256)
     bom = models.ManyToManyField(DBComponent, through='production.DBBomComponent', related_name='bom')
     sku = models.CharField(max_length=20, unique=True)
@@ -176,6 +176,7 @@ class DBComponentChangerItem(models.Model):
 
 class DBOrder(models.Model):
     order_number = models.CharField(max_length=20)
+    customer = models.CharField(max_length=100, default="Unknown")
 
     def __str__(self):
         return self.order_number
