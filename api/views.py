@@ -6,8 +6,8 @@ from services.order_service import process_order_calculation
 @api_view(['GET'])
 def run_order(request, order_num):
     """
-    Эндпоинт для запуска расчета заказа.
-    Использует слой сервисов для изоляции бизнес-логики.
+    Endpoint for initiating the order calculation.
+    Uses a service layer to isolate business logic.
     """
     result = process_order_calculation(order_num)
     

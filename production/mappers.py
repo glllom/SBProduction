@@ -1,5 +1,5 @@
-from core.models import Order, ItemInOrder, Product, Component
-from .models import DBOrder, DBOrderItem, DBProductModel, DBComponent
+from core.models import Order, ItemInOrder, Product, Component, Customizer
+from .models import DBOrder, DBOrderItem, DBProductModel, DBComponent, DBCustomizer
 
 
 def map_db_component_to_domain(db_component: DBComponent) -> Component:
@@ -14,7 +14,13 @@ def map_db_component_to_domain(db_component: DBComponent) -> Component:
 
 
 def map_db_product_to_domain(db_product: DBProductModel) -> Product:
-    bom = [map_db_component_to_domain(component) for component in db_product.bom.all()]
+    bom = []
+    for bom_item in db_product.bom_details.all():
+        bom.append({
+            'component': map_db_component_to_domain(bom_item.DBComponent),
+            'tag': bom_item.tag.tag,
+            'qty': bom_item.qty
+        })
     return Product(
         sku=db_product.sku,
         description=db_product.description,
@@ -22,6 +28,12 @@ def map_db_product_to_domain(db_product: DBProductModel) -> Product:
         panel_reduction_height=db_product.panel_reduction_height,
         double_door_gap=db_product.double_door_gap,
         bom=bom)
+
+
+def map_db_customizer_to_domain(db_customizer: DBCustomizer) -> Customizer:
+    return Customizer(name=db_customizer.name, sku=db_customizer.sku, tag=db_customizer.tag,
+                      par1=db_customizer.par1, par1_description=db_customizer.par1_description, par2=db_customizer.par2,
+                      par3=db_customizer.par3)
 
 
 def map_db_order_to_domain(db_order: DBOrder) -> Order:
@@ -37,8 +49,7 @@ def map_db_order_to_domain(db_order: DBOrder) -> Order:
 
     # Добавляем позиции заказа
     for db_item in db_order.items.all():
-        domain_item = map_db_item_to_domain(db_item)
-        domain_order.items.append(domain_item)
+        domain_order.items.append(map_db_item_to_domain(db_item))
 
     return domain_order
 
@@ -57,8 +68,7 @@ def map_db_item_to_domain(db_item: DBOrderItem) -> ItemInOrder:
         opening=db_item.opening,
     )
 
-    # Можно также смапить кастомайзеры, если они нужны в расчетах
-    # for customizer in db_item.customizers.all():
-    #     domain_item.customizers[customizer.customizer.name] = customizer.value
+    for customizer in db_item.customizers.all():
+        domain_item.customizers.append(map_db_customizer_to_domain(customizer.customizer))
 
     return domain_item

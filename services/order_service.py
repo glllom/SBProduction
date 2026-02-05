@@ -1,5 +1,5 @@
-from production.models import DBOrder
-from production.mappers import map_db_order_to_domain
+from production.models import DBOrder, DBComponent
+from production.mappers import map_db_order_to_domain, map_db_component_to_domain
 from core.calculator import calculate
 
 def process_order_calculation(order_number):
@@ -17,21 +17,27 @@ def process_order_calculation(order_number):
         return {"error": f"Order {order_number} not found"}
 
     # 2. Маппим в домен (Clean Architecture)
+
     domain_order = map_db_order_to_domain(db_order)
-    for item in domain_order.items:
-        print(item.width, item.height, item.wall_thickness, item.direction, item.opening)
+    components = [map_db_component_to_domain(component) for component in DBComponent.objects.all()]
 
     # 3. Выполняем расчеты для каждой позиции
     results = []
     for item in domain_order.items:
-        calculate(item)
-        # Здесь можно собирать результаты, например BOM
-        results.append({
-            "product": str(item.product),
-            "bom": item.bom,
-            "dimensions": f"{item.width}x{item.height} {item.wall_thickness}{item.direction} ({item.opening})"
-        })
+        calculate(item, components)
 
+        bom_summary = {}
+        for entry in item.bom:
+            sku = entry['component'].sku
+            qty = entry['qty'] if entry['qty'] is not None else 0
+            bom_summary[sku] = bom_summary.get(sku, 0) + qty
+
+        results.append({
+            "product": str(item.product.sku),
+            "dimensions": f"{item.width}x{item.height} {item.wall_thickness}{item.direction} ({item.opening})",
+            "panel/s": [item.panel_dimensions, item.second_panel_dimensions if item.second_panel_dimensions else None],
+            "bom": bom_summary,
+        })
     return {
         "order_number": order_number,
         "customer": domain_order.customer,
