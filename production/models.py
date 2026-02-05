@@ -68,7 +68,7 @@ class DBCustomizerTag(models.Model):
         return self.tag
 
     def __repr__(self):
-        return f"<BomTag: {self.tag}>"
+        return f"<CustomizerTag: {self.tag}>"
 
 """Material"""
 
@@ -133,16 +133,27 @@ class DBCustomizer(models.Model):
     name = models.CharField(max_length=20)
     sku = models.CharField(max_length=20, unique=True)
     tag = models.ForeignKey(DBCustomizerTag, on_delete=models.CASCADE)
-    par1 = models.FloatField()
-    par2 = models.FloatField()
-    par3 = models.FloatField()
-    par1_description = models.CharField(max_length=200)
+    par1 = models.FloatField(blank=True)
+    par2 = models.FloatField(blank=True)
+    par3 = models.FloatField(blank=True)
+    par1_description = models.CharField(max_length=200, blank=True)
+    components_to_remove = models.ManyToManyField(DBComponent, related_name='removed_by_customizers', blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
 
     def __repr__(self):
         return f"<Customizer: {self.sku}>"
+
+
+class DBCustomizerComponentAdd(models.Model):
+    customizer = models.ForeignKey(DBCustomizer, on_delete=models.CASCADE, related_name='added_components')
+    component = models.ForeignKey(DBComponent, on_delete=models.CASCADE)
+    tag = models.ForeignKey(DBBomTag, on_delete=models.CASCADE)
+    qty = models.FloatField()
+
+    def __str__(self):
+        return f"{self.component.sku} ({self.tag.tag}) x {self.qty}"
 
 
 class DBProductStages(models.Model):
@@ -155,24 +166,6 @@ class DBProductStages(models.Model):
         return f"<ProductStage: {self.stage}>"
 
 
-class DBComponentChanger(models.Model):
-    name = models.CharField(max_length=100)
-    sku = models.CharField(max_length=20, unique=True)
-    customizer = models.ForeignKey(DBCustomizer, on_delete=models.CASCADE, null=True, blank=True)
-    product_models = models.ManyToManyField(DBProductModel, related_name='component_changers')
-    components_to_remove = models.ManyToManyField(DBComponent, related_name='removed_by_changers', blank=True)
-
-    def __str__(self):
-        return self.name
-
-class DBComponentChangerItem(models.Model):
-    changer = models.ForeignKey(DBComponentChanger, on_delete=models.CASCADE, related_name='components_to_add')
-    DBComponent = models.ForeignKey(DBComponent, on_delete=models.CASCADE)
-    tag = models.CharField(max_length=50)
-    qty = models.FloatField()
-
-    def __str__(self):
-        return f"{self.DBComponent.name} ({self.tag}) x {self.qty}"
 
 class DBOrder(models.Model):
     order_number = models.CharField(max_length=20)

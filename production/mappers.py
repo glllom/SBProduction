@@ -31,9 +31,27 @@ def map_db_product_to_domain(db_product: DBProductModel) -> Product:
 
 
 def map_db_customizer_to_domain(db_customizer: DBCustomizer) -> Customizer:
-    return Customizer(name=db_customizer.name, sku=db_customizer.sku, tag=db_customizer.tag,
-                      par1=db_customizer.par1, par1_description=db_customizer.par1_description, par2=db_customizer.par2,
-                      par3=db_customizer.par3)
+    domain_customizer = Customizer(
+        name=db_customizer.name,
+        sku=db_customizer.sku,
+        tag=db_customizer.tag,
+        par1=db_customizer.par1,
+        par1_description=db_customizer.par1_description,
+        par2=db_customizer.par2,
+        par3=db_customizer.par3
+    )
+
+    for comp in db_customizer.components_to_remove.all():
+        domain_customizer.components_to_remove.append(map_db_component_to_domain(comp))
+
+    for item in db_customizer.added_components.all():
+        domain_customizer.components_to_add.append({
+            'component': map_db_component_to_domain(item.component),
+            'tag': item.tag.tag,
+            'qty': item.qty
+        })
+
+    return domain_customizer
 
 
 def map_db_order_to_domain(db_order: DBOrder) -> Order:

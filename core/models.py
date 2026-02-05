@@ -77,3 +77,5 @@ class Customizer:
         self.par1_description = par1_description
         self.par2 = par2
         self.par3 = par3
+        self.components_to_remove = [] # List of Component objects
+        self.components_to_add = []    # List of dicts: {'component': Component, 'tag': str, 'qty': float}

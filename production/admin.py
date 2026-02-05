@@ -3,7 +3,7 @@ from .models import (
     DBProductType, DBProductFamily, DBSeries, DBProductModel,
     DBBomTag, DBCustomizerTag, DBComponent,
     DBBomComponent, DBCustomizer, DBProductStages, DBFront,
-    DBComponentChanger, DBComponentChangerItem,
+    DBCustomizerComponentAdd,
     DBOrder, DBOrderItem, DBOrderItemCustomizer
 )
 
@@ -35,19 +35,9 @@ class OrderItemAdmin(admin.ModelAdmin):
 class OrderItemCustomizerAdmin(admin.ModelAdmin):
     list_display = ('order_item', 'customizer')
 
-class ComponentChangerItemInline(admin.TabularInline):
-    model = DBComponentChangerItem
+class CustomizerComponentAddInline(admin.TabularInline):
+    model = DBCustomizerComponentAdd
     extra = 1
-
-@admin.register(DBComponentChanger)
-class ComponentChangerAdmin(admin.ModelAdmin):
-    list_display = ('name', 'sku', 'customizer')
-    filter_horizontal = ('product_models', 'components_to_remove')
-    inlines = [ComponentChangerItemInline]
-
-@admin.register(DBComponentChangerItem)
-class ComponentChangerItemAdmin(admin.ModelAdmin):
-    list_display = ('changer', 'DBComponent', 'tag', 'qty')
 
 @admin.register(DBProductType)
 class ProductTypeAdmin(admin.ModelAdmin):
@@ -90,6 +80,8 @@ class BomComponentsAdmin(admin.ModelAdmin):
 @admin.register(DBCustomizer)
 class CustomizerAdmin(admin.ModelAdmin):
     list_display = ('name', 'sku', 'tag')
+    filter_horizontal = ('components_to_remove',)
+    inlines = [CustomizerComponentAddInline]
 
 @admin.register(DBProductStages)
 class ProductStagesAdmin(admin.ModelAdmin):
