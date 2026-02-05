@@ -1,12 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.urls import reverse
 
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from production.models import DBOrder, DBOrderItem, DBOrderItemCustomizer, DBProductModel, DBCustomizer
-from calculator import calculate
-from .forms import OrderForm, OrderItemForm, OrderItemFormSet, OrderItemCustomizerFormSet
+from production.models import DBOrder, DBOrderItem
+from .forms import OrderForm, OrderItemFormSet, OrderItemCustomizerFormSet
 
 def order_list(request):
     orders = DBOrder.objects.all()
@@ -69,23 +64,3 @@ def order_item_customizers(request, item_id):
         'formset': formset,
         'item': item
     })
-
-@api_view(['GET'])
-def run_order_mock(request, order_num):
-    """
-    Mock endpoint for running an order.
-    Returns a simple JSON response for testing.
-    """
-    order = DBOrder.objects.get(order_number=order_num)
-
-    for item in order.items.all():
-        calculate(item)
-        pass
-
-    data = {
-        "status": "success",
-        "order_number": order_num,
-        "message": f"Order {order_num} has been received by the mock system",
-        "stage": "development_mock"
-    }
-    return Response(data, status=status.HTTP_200_OK)
