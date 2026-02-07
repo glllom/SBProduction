@@ -33,6 +33,7 @@ def process_order_calculation(order_number):
             bom_summary[sku] = bom_summary.get(sku, 0) + qty
 
         results.append({
+            "door number": item.num_in_order,
             "product": str(item.product.sku),
             "dimensions": f"{item.width}x{item.height} {item.wall_thickness}{item.direction} ({item.opening})",
             "panel/s": [item.panel_dimensions, item.second_panel_dimensions if item.second_panel_dimensions else None],

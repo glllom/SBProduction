@@ -30,7 +30,7 @@ def map_db_product_to_domain(db_product: DBProductModel) -> Product:
         bom=bom)
 
 
-def map_db_customizer_to_domain(db_customizer: DBCustomizer) -> Customizer:
+def map_db_customizer_to_domain(db_customizer: DBCustomizer, db_product_model: DBProductModel = None) -> Customizer:
     domain_customizer = Customizer(
         name=db_customizer.name,
         sku=db_customizer.sku,
@@ -41,10 +41,21 @@ def map_db_customizer_to_domain(db_customizer: DBCustomizer) -> Customizer:
         par3=db_customizer.par3
     )
 
-    for comp in db_customizer.components_to_remove.all():
-        domain_customizer.components_to_remove.append(map_db_component_to_domain(comp))
+    # Обработка удаляемых компонентов
+    removed = db_customizer.removed_components.filter(product_model=db_product_model)
+    if not removed.exists() and db_product_model is not None:
+        removed = db_customizer.removed_components.filter(product_model=None)
 
-    for item in db_customizer.added_components.all():
+    if removed.exists():
+        for item in removed:
+            domain_customizer.components_to_remove.append(map_db_component_to_domain(item.component))
+
+    # Обработка добавляемых компонентов
+    added = db_customizer.added_components.filter(product_model=db_product_model)
+    if not added.exists() and db_product_model is not None:
+        added = db_customizer.added_components.filter(product_model=None)
+
+    for item in added:
         domain_customizer.components_to_add.append({
             'component': map_db_component_to_domain(item.component),
             'tag': item.tag.tag,
@@ -77,6 +88,7 @@ def map_db_item_to_domain(db_item: DBOrderItem) -> ItemInOrder:
     Преобразует модель БД DBOrderItem в доменный объект ItemInOrder.
     """
     domain_item = ItemInOrder(
+        num_in_order=db_item.number,
         product=map_db_product_to_domain(db_item.product_model),
         width=db_item.width,
         height=db_item.height,
@@ -87,6 +99,6 @@ def map_db_item_to_domain(db_item: DBOrderItem) -> ItemInOrder:
     )
 
     for customizer in db_item.customizers.all():
-        domain_item.customizers.append(map_db_customizer_to_domain(customizer.customizer))
+        domain_item.customizers.append(map_db_customizer_to_domain(customizer.customizer, db_item.product_model))
 
     return domain_item

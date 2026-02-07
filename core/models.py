@@ -8,7 +8,8 @@ class Order:
         self.items = []
 
 class ItemInOrder:
-    def __init__(self, product, width, height, direction, undercut, wall_thickness, opening):
+    def __init__(self, num_in_order, product, width, height, direction, undercut, wall_thickness, opening):
+        self.num_in_order = num_in_order
         self.product = product
         self.panel = False
         self.frame = False

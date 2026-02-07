@@ -137,7 +137,6 @@ class DBCustomizer(models.Model):
     par2 = models.FloatField(blank=True)
     par3 = models.FloatField(blank=True)
     par1_description = models.CharField(max_length=200, blank=True)
-    components_to_remove = models.ManyToManyField(DBComponent, related_name='removed_by_customizers', blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
@@ -148,12 +147,24 @@ class DBCustomizer(models.Model):
 
 class DBCustomizerComponentAdd(models.Model):
     customizer = models.ForeignKey(DBCustomizer, on_delete=models.CASCADE, related_name='added_components')
+    product_model = models.ForeignKey('production.DBProductModel', on_delete=models.CASCADE, null=True, blank=True)
     component = models.ForeignKey(DBComponent, on_delete=models.CASCADE)
     tag = models.ForeignKey(DBBomTag, on_delete=models.CASCADE)
     qty = models.FloatField()
 
     def __str__(self):
-        return f"{self.component.sku} ({self.tag.tag}) x {self.qty}"
+        prod = self.product_model.sku if self.product_model else "All Products"
+        return f"{prod}: {self.component.sku} ({self.tag.tag}) x {self.qty}"
+
+
+class DBCustomizerComponentRemove(models.Model):
+    customizer = models.ForeignKey(DBCustomizer, on_delete=models.CASCADE, related_name='removed_components')
+    product_model = models.ForeignKey('production.DBProductModel', on_delete=models.CASCADE, null=True, blank=True)
+    component = models.ForeignKey(DBComponent, on_delete=models.CASCADE)
+
+    def __str__(self):
+        prod = self.product_model.sku if self.product_model else "All Products"
+        return f"{prod}: Remove {self.component.sku}"
 
 
 class DBProductStages(models.Model):
