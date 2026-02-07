@@ -3,12 +3,34 @@ from asyncio import new_event_loop
 from .models import *
 
 def calculate(item, components):
+    apply_structure_changers(item)
     check_if_frame_panel_present(item)
     calculate_panel_dimensions(item)
     calculate_panel_dimension(item)
     calculate_second_panel(item)
 
     find_and_replace_sheets(item, components)
+
+def apply_structure_changers(item):
+    # Создаем рабочий BOM для конкретной позиции, начиная с базового BOM продукта
+    item.effective_bom = list(item.product.bom)
+
+    for customizer in item.customizers:
+        if customizer.tag.tag == "structure_changer":
+            # Удаляем компоненты
+            skus_to_remove = [c.sku for c in customizer.components_to_remove]
+            item.effective_bom = [
+                entry for entry in item.effective_bom
+                if entry['component'].sku not in skus_to_remove
+            ]
+
+            # Добавляем компоненты
+            for add_entry in customizer.components_to_add:
+                item.effective_bom.append({
+                    'component': add_entry['component'],
+                    'tag': add_entry['tag'],
+                    'qty': add_entry['qty']
+                })
 
     # print(f"panel dimensions: {item.panel_dimensions}, second panel dimensions: {item.second_panel_dimensions}")
 
@@ -18,7 +40,7 @@ def calculate_panel_dimension(item):
                                  item.height + item.product.panel_reduction_height - item.undercut)
 
 def check_if_frame_panel_present(item):
-    for entry in item.product.bom:
+    for entry in item.effective_bom:
         component = entry['component']
         if component.component_type == "frame":
             item.frame = True
@@ -38,7 +60,7 @@ def calculate_panel_dimensions(item):
     item.panel_dimensions = (item.width + item.product.panel_reduction_width, item.height + item.product.panel_reduction_height - item.undercut)
 
 def find_and_replace_sheets(item, components):
-    for entry in item.product.bom:
+    for entry in item.effective_bom:
         component = entry['component']
 
         if component.component_type == "sheet":

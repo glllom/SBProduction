@@ -8,7 +8,8 @@ class Order:
         self.items = []
 
 class ItemInOrder:
-    def __init__(self, product, width, height, direction, undercut, wall_thickness, opening):
+    def __init__(self, num_in_order, product, width, height, direction, undercut, wall_thickness, opening):
+        self.num_in_order = num_in_order
         self.product = product
         self.panel = False
         self.frame = False
@@ -77,3 +78,5 @@ class Customizer:
         self.par1_description = par1_description
         self.par2 = par2
         self.par3 = par3
+        self.components_to_remove = [] # List of Component objects
+        self.components_to_add = []    # List of dicts: {'component': Component, 'tag': str, 'qty': float}

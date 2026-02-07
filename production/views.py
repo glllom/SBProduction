@@ -18,7 +18,7 @@ def order_create(request):
     return render(request, 'production/order_form.html', {'form': form, 'title': 'Add Order'})
 
 def order_edit(request, pk):
-    order = get_object_or_404(DBOrder, pk=pk)
+    order = get_object_or_404(DBOrder.objects.prefetch_related('items__customizers__customizer'), pk=pk)
     if request.method == 'POST':
         form = OrderForm(request.POST, instance=order)
         formset = OrderItemFormSet(request.POST, instance=order)
@@ -29,13 +29,6 @@ def order_edit(request, pk):
     else:
         form = OrderForm(instance=order)
         formset = OrderItemFormSet(instance=order)
-
-    # Добавляем кастомайзеры для каждой формы
-    for item_form in formset:
-        if item_form.instance.pk:
-            item_form.customizer_list = item_form.instance.customizers.select_related('customizer')
-        else:
-            item_form.customizer_list = []
 
     return render(request, 'production/order_edit.html', {
         'form': form,
