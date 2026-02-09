@@ -10,6 +10,7 @@ def calculate(item, components):
     calculate_second_panel(item)
 
     find_and_replace_sheets(item, components)
+    find_and_replace_frames(item, components)
 
 def apply_structure_changers(item):
     # Создаем рабочий BOM для конкретной позиции, начиная с базового BOM продукта
@@ -106,3 +107,24 @@ def find_and_replace_sheets(item, components):
                 'qty': entry['qty']
             })
 
+def find_and_replace_frames(item, components):
+    def remove_frame():
+        item.bom = [entry for entry in item.bom if entry['tag'] != 'frame']
+    def pick_frame(wall, compatible_frames):
+        print(compatible_frames[0].width)
+        if not wall:
+            return None
+        return next((c for c in compatible_frames if c.component_type == "frame" and c.width >= wall and c.length >= item.height), None)
+    if item.frame:
+        base_frame = [entry for entry in item.bom if entry['tag'] == 'frame'][0]
+        tag = base_frame['component'].component_type
+        # print(', '.join(f"{key}:{value}" for key, value in base_frame['component'].__dict__.items()))
+        # tag = 'frame'
+        qty = base_frame['qty']
+        compatible_frames = [component for component in components if component.component_type == "frame"
+                             and component.group == base_frame['component'].group]
+        compatible_frames.sort(key=lambda frame: (frame.width, frame.length))
+        remove_frame()
+        frame = pick_frame(item.wall_thickness, compatible_frames)
+        if frame:
+            item.bom.append({'component': frame, 'tag': tag, 'qty': qty})
