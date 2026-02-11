@@ -28,7 +28,7 @@ def process_order_calculation(order_number):
 
         bom_summary = {}
         for entry in item.bom:
-            sku = entry['component'].sku
+            sku = entry['component'].name +'     '+ entry['component'].sku
             qty = entry['qty'] if entry['qty'] is not None else 0
             bom_summary[sku] = bom_summary.get(sku, 0) + qty
 

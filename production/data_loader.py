@@ -33,4 +33,17 @@ def update_all_bom():
                                                            tag=DBBomTag.objects.get(tag=component['tag']),
                                                            qty=component['qty']) for component in bom])
 
+def add_constructions():
+    wall_thickness_lst = [10, 12]
+    width_lst = [i for i in range(60, 130, 10) ]
+    height_lst = [200, 210, 240, 270, 300 ]
+    for wall_thickness in wall_thickness_lst:
+        for width in width_lst:
+            for height in height_lst:
+                DBComponent.objects.create(name=f"Absolute {wall_thickness}x{width}x{height}",
+                                           sku=f"mcn_abs{wall_thickness}x{width}x{height}", group="absolute",
+                                           width=width, length=height, thickness=wall_thickness,
+                                           component_type="construction", color="white", global_type="R")
 # update_all_bom()
+
+# add_constructions()
