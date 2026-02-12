@@ -2,50 +2,46 @@
 
 {% block content %}
 <div class="container-fluid">
-    <div class="card shadow">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h3 class="mb-0">{{ title }}</h3>
-            <a href="{% url 'order-list' %}" class="btn btn-light btn-sm">Back to List</a>
-        </div>
         <div class="card-body">
             <form method="post" id="order-form">
                 {% csrf_token %}
-                
-                <div class="row mb-4">
+
+                <div class="row mb-1">
                     <div class="col-md-4">
-                        <label class="form-label fw-bold">Order Number</label>
-                        {{ form.order_number }}
-                        {% if form.order_number.errors %}
-                            <div class="text-danger small">{{ form.order_number.errors }}</div>
-                        {% endif %}
+                        <label class="form-label fw-bold">Order - {{ form.order_number.value }}</label>
+                        {{ form.order_number.as_hidden }}
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold">Customer</label>
-                        {{ form.customer }}
-                        {% if form.customer.errors %}
-                            <div class="text-danger small">{{ form.customer.errors }}</div>
-                        {% endif %}
+                        <label class="form-label fw-bold">Customer - {{ form.customer.value }}</label>
+                        {{ form.customer.as_hidden }}
                     </div>
                 </div>
 
+                {% if form.errors or formset.errors %}
+                    <div class="alert alert-danger">
+                        {{ form.errors }}
+                        {{ formset.errors }}
+                    </div>
+                {% endif %}
+
                 <hr>
-                <h5 class="mb-3">Order Items</h5>
-                
+                <h5 class="mb-1">Order Items</h5>
+
                 {{ formset.management_form }}
-                
+
                 <div class="table-responsive">
                     <table class="table table-hover align-middle" id="items-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 60px;">#</th>
                                 <th style="min-width: 200px;">Product Model & Customizers</th>
-                                <th style="width: 80px;">Width</th>
-                                <th style="width: 80px;">Height</th>
-                                <th style="width: 80px;">Wall</th>
-                                <th style="width: 100px;">Direction</th>
-                                <th style="width: 100px;">Opening</th>
-                                <th style="width: 80px;">Undercut</th>
-                                <th style="min-width: 150px;">Comment</th>
+                                <th style="width: 90px;">Width</th>
+                                <th style="width: 90px;">Height</th>
+                                <th style="width: 90px;">Wall</th>
+                                <th style="width: 20px;">Direction</th>
+                                <th style="width: 20px;">Opening</th>
+                                <th style="width: 20px;">Undercut</th>
+                                <th style="min-width: 80px;">Comment</th>
                                 <th style="width: 50px;">Del</th>
                             </tr>
                         </thead>
@@ -53,11 +49,11 @@
                             {% for item_form in formset %}
                                 <tr class="item-form">
                                     {{ item_form.id }}
-                                    <td class="m-0 p-0">{{ item_form.number }}</td>
-                                    <td>
+                                    <td class="m-0 p-0 rounded-0">{{ item_form.number }}</td>
+                                    <td class="m-0 p-0">
                                         {{ item_form.product_model }}
                                         {% if item_form.instance.pk %}
-                                            <div class="mt-2">
+                                            <div class="mt-1">
                                                 {% for oc in item_form.instance.customizers.all %}
                                                     <span class="badge bg-secondary" style="font-size: 0.7rem;">{{ oc.customizer.name }}</span>
                                                 {% endfor %}
@@ -69,14 +65,14 @@
                                             <div class="small text-muted mt-1" style="font-size: 0.7rem;">Save item to add customizers</div>
                                         {% endif %}
                                     </td>
-                                    <td>{{ item_form.width }}</td>
-                                    <td>{{ item_form.height }}</td>
-                                    <td>{{ item_form.wall }}</td>
-                                    <td>{{ item_form.direction }}</td>
-                                    <td>{{ item_form.opening }}</td>
-                                    <td>{{ item_form.undercut }}</td>
-                                    <td>{{ item_form.comment }}</td>
-                                    <td class="text-center">
+                                    <td class="m-0 p-0">{{ item_form.width }}</td>
+                                    <td class="m-0 p-0">{{ item_form.height }}</td>
+                                    <td class="m-0 p-0">{{ item_form.wall }}</td>
+                                    <td class="m-0 p-0">{{ item_form.direction }}</td>
+                                    <td class="m-0 p-0">{{ item_form.opening }}</td>
+                                    <td class="m-0 p-0">{{ item_form.undercut }}</td>
+                                    <td class="m-0 p-0">{{ item_form.comment }}</td>
+                                    <td class="m-0 p-0" class="text-center">
                                         {% if formset.can_delete %}
                                             {{ item_form.DELETE }}
                                         {% endif %}
@@ -99,7 +95,7 @@
             </form>
         </div>
     </div>
-</div>
+
 
 {# Шаблон для новой строки (скрытый) #}
 <table style="display: none;">
@@ -127,10 +123,10 @@
 
 <style>
     .item-form td {
-        padding: 4px;
+        padding: 1px;
     }
     .item-form input, .item-form select, .item-form textarea {
-        font-size: 0.9rem;
+        font-size: 0.8rem;
     }
     .table-responsive {
         overflow-x: auto;
@@ -150,8 +146,7 @@
             newRow.removeAttribute('id');
             
             // Заменяем префикс __prefix__ на текущий индекс
-            const html = newRow.innerHTML.replace(/__prefix__/g, currentFormCount);
-            newRow.innerHTML = html;
+            newRow.innerHTML = newRow.innerHTML.replace(/__prefix__/g, currentFormCount);
             
             container.appendChild(newRow);
             totalForms.value = currentFormCount + 1;
