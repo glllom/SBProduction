@@ -10,17 +10,20 @@ def calculate(item, components):
     calculate_panel_dimension(item)
     calculate_second_panel(item)
 
+
     find_and_replace_sheets(item, components)
     find_and_replace_construction(item, components)
     find_and_replace_frames(item, components)
 
+    # print(f"item.bom: {item.bom}", f"item.effective_bom: {item.effective_bom}", sep="\n")
 
 def apply_structure_changers(item):
     # Создаем рабочий BOM для конкретной позиции, начиная с базового BOM продукта
     item.effective_bom = list(item.product.bom)
+    # print(item.effective_bom)
 
     for customizer in item.customizers:
-        if customizer.tag.tag in ["structure_changer", "front", "hardware"]:
+        if customizer.tag.tag in ["structure_changer", "front", "hardware", "color"]:
             # Удаляем компоненты
             skus_to_remove = [c.sku for c in customizer.components_to_remove]
             item.effective_bom = [
@@ -29,6 +32,7 @@ def apply_structure_changers(item):
             ]
             # Добавляем компоненты
             for add_entry in customizer.components_to_add:
+                # print(add_entry['component'].sku)
                 item.effective_bom.append({
                     'component': add_entry['component'],
                     'tag': add_entry['tag'],
@@ -73,14 +77,16 @@ def find_and_replace_sheets(item, components):
     for entry in item.effective_bom:
         component = entry['component']
 
-        if component.component_type == "sheet":
+
+        if entry['tag'] == "cover_material" or component.component_type == "sheet":
+            # print(component.sku)
             group = component.group
 
             # Собираем все доступные листы той же группы и сортируем по (width, length)
-            sheets = [c for c in components if c.component_type == "sheet" and c.group == group]
+            sheets = [c for c in components if c.component_type == "sheet" and c.group == group and c.color == component.color]
             sheets.sort(key=lambda sheet: (sheet.width, sheet.length))
-            # print(f"sheets: {sheets}")
-
+            # print(f"sheets: {[sheet.sku for sheet in sheets]}")
+    
             def pick_sheet(dimensions):
                 if not dimensions:
                     return None
@@ -109,7 +115,9 @@ def find_and_replace_sheets(item, components):
                         'qty': entry['qty']
                     })
         else:
+            # print(component.sku, component.group, "is not sheet")
             # Не листовые компоненты переносим без изменений
+
             item.bom.append({
                 'component': component,
                 'tag': entry['tag'],
@@ -120,14 +128,13 @@ def find_and_replace_frames(item, components):
     def remove_frame():
         item.bom = [entry for entry in item.bom if entry['tag'] != 'frame']
     def pick_frame(wall, compatible_frames):
-        if not wall:
-            return None
+        if not wall or wall == 0:
+            return next((c for c in compatible_frames if
+                         c.component_type == "frame" and c.length >= item.height), None)
         return next((c for c in compatible_frames if c.component_type == "frame" and c.width >= wall and c.length >= item.height), None)
     if item.frame:
         base_frame = [entry for entry in item.bom if entry['tag'] == 'frame'][0]
         tag = base_frame['component'].component_type
-        # print(', '.join(f"{key}:{value}" for key, value in base_frame['component'].__dict__.items()))
-        # tag = 'frame'
         qty = base_frame['qty']
         compatible_frames = [component for component in components if component.component_type == "frame"
                              and component.group == base_frame['component'].group]
