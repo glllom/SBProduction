@@ -9,29 +9,33 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      # English: Stop the service first to unlock files in the venv
+      # 1. СНАЧАЛА останавливаем службу, чтобы разблокировать файлы
       - name: Stop Service
         shell: powershell
         run: |
-          # We use ErrorAction SilentlyContinue so it doesn't fail if service is already stopped
           Stop-Service -Name "DjangoAPI" -Force -ErrorAction SilentlyContinue
-          # Give Windows 3 seconds to release the files
           Start-Sleep -s 3
 
+      # 2. ТЕПЕРЬ подтягиваем новый код (файлы уже не заблокированы)
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          clean: false  # Предотвращает ошибки удаления заблокированных логов/файлов
 
+      # 3. Обновляем окружение и базу
       - name: Production Update
         shell: powershell
         run: |
-          # Now we are in C:\actions-runner\_work\SBProduction\SBProduction
-          
-          # ensure venv exists (if you deleted it manually)
           if (!(Test-Path "venv")) { python -m venv venv }
 
+          & ".\venv\Scripts\python.exe" -m pip install --upgrade pip
           & ".\venv\Scripts\python.exe" -m pip install -r requirements.txt
           & ".\venv\Scripts\python.exe" manage.py collectstatic --noinput
-          & ".\venv\Scripts\python.exe" manage.py migrate --fake-initial --noinput
-          
-          # Restart-Service will start it back up
-          Restart-Service -Name "DjangoAPI" -Force
+          & ".\venv\Scripts\python.exe" manage.py migrate --noinput
+
+      # 4. ВЫПОЛНЯЕТСЯ ВСЕГДА (даже если сборка упала на миграциях), чтобы сервер не остался выключенным
+      - name: Start Service
+        if: always()
+        shell: powershell
+        run: |
+          Start-Service -Name "DjangoAPI" -ErrorAction SilentlyContinue
