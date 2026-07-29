@@ -17,13 +17,13 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
+# Quick-start development settings - unsuitable for production_old
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
+# SECURITY WARNING: keep the secret key used in production_old secret!
 SECRET_KEY = 'django-insecure-u%*obf81a+x=-(oa5s!&hud2((o_+z4$hncgzv8%ah_lkhs8@$'
 
-# SECURITY WARNING: don't run with debug turned on in production!
+# SECURITY WARNING: don't run with debug turned on in production_old!
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
@@ -37,9 +37,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework',
-    'api.apps.ApiConfig',
-    'production.apps.ProductionConfig',
+    'apps.accounts',
+    'apps.production',
+    'apps.orders',
+    'apps.catalog',
 ]
 
 
@@ -88,7 +89,7 @@ DATABASES = {
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
-
+AUTH_USER_MODEL = 'accounts.User'
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
