@@ -1,10 +1,18 @@
+from enum import Enum
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
 
-class UserRole(models.TextChoices):
-    ADMIN = 'ADMIN', 'Administrator'
-    USER = 'USER', 'Standard User / Manager'
+class UserRole(str, Enum):
+    ADMIN = 'ADMIN'
+    USER = 'USER'
+
+    @classmethod
+    def choices(cls):
+        return [
+            (cls.ADMIN.value, 'Administrator'),
+            (cls.USER.value, 'Standard User / Manager'),
+        ]
 
 
 class User(AbstractUser):
