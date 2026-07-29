@@ -6,7 +6,7 @@ from django.db import models
 # ==========================================
 
 class ProductType(models.Model):
-    """Top-level classification type for products (e.g., Land, Water, Air transport)."""
+    code = models.CharField('Code', max_length=32, unique=True)
     name = models.CharField('Name', max_length=100, unique=True)
     description = models.TextField('Description', blank=True)
 
@@ -19,7 +19,6 @@ class ProductType(models.Model):
 
 
 class ProductFamily(models.Model):
-    """Product family belonging to a specific ProductType (e.g., Buses, Trains, Taxis)."""
     product_type = models.ForeignKey(
         ProductType,
         on_delete=models.PROTECT,
@@ -27,6 +26,9 @@ class ProductFamily(models.Model):
         verbose_name='Product Type'
     )
     name = models.CharField('Name', max_length=100)
+    code = models.CharField('Code', max_length=32, unique=True)
+    description = models.TextField('Description', blank=True)
+
 
     class Meta:
         verbose_name = 'Product Family'
@@ -42,7 +44,7 @@ class ProductFamily(models.Model):
 # ==========================================
 
 class Series(models.Model):
-    """Cross-family aesthetic or technical series (e.g., Metallic, Wooden)."""
+    code = models.CharField('Code', max_length=32, unique=True)
     name = models.CharField('Name', max_length=100, unique=True)
     description = models.TextField('Description', blank=True)
 
@@ -55,7 +57,6 @@ class Series(models.Model):
 
 
 class Front(models.Model):
-    """Front/Finish option strictly attached to a specific Series (e.g., Yellow, Red)."""
     series = models.ForeignKey(
         Series,
         on_delete=models.CASCADE,
@@ -78,21 +79,14 @@ class Front(models.Model):
 # 3. MATERIALS & COMPONENTS
 # ==========================================
 
-class MaterialType(models.TextChoices):
-    SHEET = 'SHEET', 'Sheet Material'
-    HARDWARE = 'HARDWARE', 'Hardware / Accessories'
-    EDGE = 'EDGE', 'Edge Banding'
-
 
 class Material(models.Model):
-    """Raw materials, sheet goods, and hardware inventory items."""
     name = models.CharField('Name', max_length=255)
     sku = models.CharField('SKU', max_length=100, unique=True)
     material_type = models.CharField(
         'Material Type',
         max_length=20,
-        choices=MaterialType,
-        default=MaterialType.SHEET
+
     )
 
     thickness = models.DecimalField('Thickness, mm', max_digits=5, decimal_places=2, null=True, blank=True)
