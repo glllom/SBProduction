@@ -1,213 +1,607 @@
 {% extends "base.html" %}
 
-{% block page_title %}הזמנה #{{ order.order_number }}{% endblock %}
+{% block page_title %}הזמנה: {{ order.order_number }}
+    <span class="badge bg-primary">   {{ order.get_status_display }}</span>{% endblock %}
 
 {% block content %}
-<div class="row mb-4 align-items-end">
-    <div class="col">
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb mb-1">
-                <li class="breadcrumb-item"><a href="{% url 'order-list' %}">הזמנות</a></li>
-                <li class="breadcrumb-item active">הזמנה #{{ order.order_number }}</li>
-            </ol>
-        </nav>
-        <h2 class="h3 mb-0">{{ order.customer }}</h2>
+    <div class="mb-4 align-items-end">
+        <div class="d-flex align-items-center mb-2">
+            <button class="btn btn-sm btn-outline-primary ms-3" data-bs-toggle="modal"
+                    data-bs-target="#editHeaderModal">
+                <i class="bi bi-pencil"></i>
+            </button>
+            <h2 class="h3 mb-0 mx-3 fw-bolder">{{ order.customer }}</h2>
+        </div>
+        <div class="row">
+            <div class="mb-3 col-1">
+                <label class="text-muted small d-block">סדרה</label>
+                <span class="fw-medium">{{ order.series.name|default:"-" }}</span>
+            </div>
+            <div class="mb-3 col-2">
+                <label class="text-muted small d-block">חזית / גימור</label>
+                <span class="fw-medium">{{ order.front.name|default:"-" }}</span>
+            </div>
+            <div class="mb-3 col-1">
+                <label class="text-muted small d-block">גוון בכנפיים</label>
+                <span class="fw-medium">{{ order.color_panels|default:"-" }}</span>
+            </div>
+            <div class="mb-3 col-2">
+                <label class="text-muted small d-block">גוון במשקופים</label>
+                <span class="fw-medium">{{ order.color_frames|default:"-" }}</span>
+            </div>
+            <div class="mb-3 col-3"></div>
+            <div class="mb-3 col-1 ">
+                <label class="text-muted small d-block">ירידה לייצור</label>
+                <span class="fw-normal">{{ order.created_at|date:"d/m/Y" }}</span>
+            </div>
+            <div class="mb-3 col-1 ">
+                <label class="text-muted small d-block">סיום ייצור</label>
+                <span class="fw-normal">{{ order.completion_date|date:"d/m/Y" }}</span>
+            </div>
+            <div class="mb-3 col-1 ">
+                <label class="text-muted small d-block">סיום צבע</label>
+                <span class="fw-normal">{{ order.painting_date|date:"d/m/Y" }}</span>
+            </div>
+        </div>
     </div>
     <div class="col-auto">
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
             <i class="bi bi-plus-lg ms-2"></i>הוספת קבוצת דלתות
         </button>
     </div>
-</div>
-
-<div class="row">
-    <div class="col-lg-4 mb-4">
-        <div class="card shadow-sm border-0 h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>פרטי הזמנה</span>
-                <span class="badge bg-primary">{{ order.get_status_display }}</span>
-            </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label class="text-muted small d-block">לקוח</label>
-                    <span class="fw-medium">{{ order.customer|default:"-" }}</span>
-                </div>
-                <div class="mb-3">
-                    <label class="text-muted small d-block">מספר הזמנה</label>
-                    <span class="fw-medium">{{ order.order_number }}</span>
-                </div>
-                <div class="mb-3">
-                    <label class="text-muted small d-block">סדרה</label>
-                    <span class="fw-medium">{{ order.series.name|default:"-" }}</span>
-                </div>
-                <div class="mb-3">
-                    <label class="text-muted small d-block">חזית / גימור</label>
-                    <span class="fw-medium">{{ order.front.name|default:"-" }}</span>
-                </div>
-                <div class="mb-0">
-                    <label class="text-muted small d-block">נוצר בתאריך</label>
-                    <span class="fw-medium">{{ order.created_at|date:"d.m.Y H:i" }}</span>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-lg-8 mb-4">
-        {% for group in order.groups.all %}
-        <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
-                <div>
-                    <h5 class="mb-0 fw-bold text-primary">{{ group.product_family.name }} × {{ group.series.name }}</h5>
-                    <small class="text-muted">Группа #{{ group.id }} | Кол-во дверей: {{ group.quantity }}</small>
-                </div>
-                <div class="dropdown">
-                    <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
-                        <i class="bi bi-three-dots-vertical"></i>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="#"><i class="bi bi-pencil me-2"></i> Редактировать</a></li>
-                        <li><a class="dropdown-item text-danger" href="#"><i class="bi bi-trash me-2"></i> Удалить</a></li>
-                    </ul>
-                </div>
-            </div>
-            <div class="card-body p-0">
-                <!-- Nav tabs -->
-                <ul class="nav nav-tabs nav-fill border-0 bg-light" role="tablist">
-                    <li class="nav-item">
-                        <a class="nav-link active py-3 border-0 rounded-0" data-bs-toggle="tab" href="#doors-{{ group.id }}">
-                            <i class="bi bi-door-closed me-2"></i>Изделия (Двери)
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link py-3 border-0 rounded-0" data-bs-toggle="tab" href="#custom-{{ group.id }}">
-                            <i class="bi bi-sliders me-2"></i>Кастомизаторы
-                        </a>
-                    </li>
-                </ul>
-
-                <!-- Tab panes -->
-                <div class="tab-content">
-                    <div id="doors-{{ group.id }}" class="tab-pane active">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover mb-0 align-middle">
-                                <thead class="small text-muted bg-white">
-                                    <tr>
-                                        <th class="ps-4">Маркировка</th>
-                                        <th>Размеры (ВхШхГ)</th>
-                                        <th>Открывание</th>
-                                        <th class="text-end pe-4">Статус</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for item in group.items.all %}
-                                    <tr>
-                                        <td class="ps-4">
-                                            <span class="fw-medium text-dark">{{ item.mark }}</span>
-                                        </td>
-                                        <td>
-                                            {{ item.height|default:"-" }} × {{ item.width|default:"-" }} × {{ item.depth|default:"-" }}
-                                        </td>
-                                        <td>{{ item.get_opening_side_display|default:"Не выбрано" }}</td>
-                                        <td class="text-end pe-4">
-                                            <span class="badge rounded-pill bg-light text-dark border">Замер</span>
-                                        </td>
-                                    </tr>
-                                    {% empty %}
-                                    <tr>
-                                        <td colspan="4" class="text-center py-4 text-muted small">Двери еще не созданы</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+    <div class="row">
+        <div class="col-lg-8 mb-4">
+            {% for group in order.groups.all %}
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
+                        <div>
+                            <h5 class="mb-0 fw-bold text-primary">{{ group.product_family.name }}
+                                × {{ group.series.name }}</h5>
+                            <small class="text-muted">Группа #{{ group.id }} | Кол-во
+                                дверей: {{ group.quantity }}</small>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <button class="dropdown-item btn-edit-group" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#editGroupModal-{{ group.id }}">
+                                        <i class="bi bi-pencil me-2"></i>ערוך קבוצה
+                                    </button>
+                                </li>
+                                <li>
+                                    <form action="{% url 'group-delete' group.id %}" method="post" 
+                                          onsubmit="return confirm('האם אתה בטוח שברצונך למחוק קבוצה זו?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item text-danger">
+                                            <i class="bi bi-trash me-2"></i>מחק קבוצה
+                                        </button>
+                                    </form>
+                                </li>
+                            </ul>
                         </div>
                     </div>
-                    <div id="custom-{{ group.id }}" class="tab-pane fade p-4">
-                        <div class="row row-cols-1 row-cols-md-2 g-3">
-                            {% for cust in group.customizers.all %}
-                            <div class="col">
-                                <div class="d-flex align-items-center p-2 border rounded">
-                                    <div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">
-                                        <i class="bi bi-check2-circle"></i>
+
+                    <!-- Modal Edit Group -->
+                    <div class="modal fade edit-group-modal" id="editGroupModal-{{ group.id }}" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content border-0 shadow">
+                                <div class="modal-header">
+                                    <h5 class="modal-title fw-bold">עריכת קבוצה #{{ group.id }}</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form action="{% url 'group-edit' group.id %}" method="post">
+                                    {% csrf_token %}
+                                    <div class="modal-body">
+                                        <!-- Note: We are using manual fields here because group_form in context is for new group -->
+                                        <!-- In a real scenario, we'd use a formset or AJAX, but for this task I'll use a simple approach -->
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold">כמות</label>
+                                                <input type="number" name="quantity" value="{{ group.quantity }}" class="form-control" min="1">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold">חזית / גימור</label>
+                                                <select name="front" class="form-select">
+                                                    <option value="">---------</option>
+                                                    {% for f in group.series.fronts.all %}
+                                                        <option value="{{ f.id }}" {% if f.id == group.front_id %}selected{% endif %}>{{ f.name }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+
+                                            <hr class="my-3">
+
+                                            <div class="col-md-12">
+                                                <label class="form-label fw-bold d-block">אופציית צביעת פנל (דלת)</label>
+                                                <div class="d-flex gap-4">
+                                                    <div class="form-check">
+                                                        <input type="radio" name="panel_paint_option" value="NO_PAINT" id="p_no_{{ group.id }}" class="form-check-input" {% if group.panel_paint_option == 'NO_PAINT' %}checked{% endif %}>
+                                                        <label class="form-check-label" for="p_no_{{ group.id }}">לא לצבוע</label>
+                                                    </div>
+                                                    <div class="form-check">
+                                                        <input type="radio" name="panel_paint_option" value="MAIN_COLOR" id="p_main_{{ group.id }}" class="form-check-input" {% if group.panel_paint_option == 'MAIN_COLOR' %}checked{% endif %}>
+                                                        <label class="form-check-label" for="p_main_{{ group.id }}">גוון ראשי</label>
+                                                    </div>
+                                                    <div class="form-check">
+                                                        <input type="radio" name="panel_paint_option" value="SPECIAL_COLOR" id="p_spec_{{ group.id }}" class="form-check-input" {% if group.panel_paint_option == 'SPECIAL_COLOR' %}checked{% endif %}>
+                                                        <label class="form-check-label" for="p_spec_{{ group.id }}">גוון מיוחד</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-12">
+                                                <label class="form-label fw-bold">צבע פנלים (גוון מיוחד)</label>
+                                                <input type="text" name="color_panels" value="{{ group.color_panels|default:'' }}" class="form-control">
+                                            </div>
+
+                                            <hr class="my-3">
+
+                                            <div class="col-md-12">
+                                                <label class="form-label fw-bold d-block">אופציית צביעת משקוף</label>
+                                                <div class="d-flex gap-4">
+                                                    <div class="form-check">
+                                                        <input type="radio" name="frame_paint_option" value="NO_PAINT" id="f_no_{{ group.id }}" class="form-check-input" {% if group.frame_paint_option == 'NO_PAINT' %}checked{% endif %}>
+                                                        <label class="form-check-label" for="f_no_{{ group.id }}">לא לצבוע</label>
+                                                    </div>
+                                                    <div class="form-check">
+                                                        <input type="radio" name="frame_paint_option" value="MAIN_COLOR" id="f_main_{{ group.id }}" class="form-check-input" {% if group.frame_paint_option == 'MAIN_COLOR' %}checked{% endif %}>
+                                                        <label class="form-check-label" for="f_main_{{ group.id }}">גוון ראשי</label>
+                                                    </div>
+                                                    <div class="form-check">
+                                                        <input type="radio" name="frame_paint_option" value="SPECIAL_COLOR" id="f_spec_{{ group.id }}" class="form-check-input" {% if group.frame_paint_option == 'SPECIAL_COLOR' %}checked{% endif %}>
+                                                        <label class="form-check-label" for="f_spec_{{ group.id }}">גוון מיוחד</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-12">
+                                                <label class="form-label fw-bold">צבע משקופים (גוון מיוחד)</label>
+                                                <input type="text" name="color_frames" value="{{ group.color_frames|default:'' }}" class="form-control">
+                                            </div>
+                                            
+                                            <div class="col-md-12">
+                                                <label class="form-label fw-bold">הערות</label>
+                                                <textarea name="comments" class="form-control" rows="3">{{ group.comments|default:'' }}</textarea>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div class="fw-medium small">{{ cust.name }}</div>
-                                        <div class="text-muted extra-small">Применен</div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
+                                        <button type="submit" class="btn btn-primary px-4">שמור שינויים</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <!-- Nav tabs -->
+                        <ul class="nav nav-tabs nav-fill border-0 bg-light" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link active py-3 border-0 rounded-0" data-bs-toggle="tab"
+                                   href="#doors-{{ group.id }}">
+                                    <i class="bi bi-door-closed me-2"></i>Изделия (Двери)
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-3 border-0 rounded-0" data-bs-toggle="tab"
+                                   href="#custom-{{ group.id }}">
+                                    <i class="bi bi-sliders me-2"></i>Кастомизаторы
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link py-3 border-0 rounded-0" data-bs-toggle="tab"
+                                   href="#paint-{{ group.id }}">
+                                    <i class="bi bi-palette me-2"></i>צביעה (פנל ומשקוף)
+                                </a>
+                            </li>
+                        </ul>
+
+                        <!-- Tab panes -->
+                        <div class="tab-content">
+                            <div id="doors-{{ group.id }}" class="tab-pane active">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0 align-middle">
+                                        <thead class="small text-muted bg-white">
+                                        <tr>
+                                            <th class="ps-4">Маркировка</th>
+                                            <th>Размеры (ВхШхГ)</th>
+                                            <th>Открывание</th>
+                                            <th class="text-end pe-4">Статус</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {% for item in group.items.all %}
+                                            <tr>
+                                                <td class="ps-4">
+                                                    <span class="fw-medium text-dark">{{ item.mark }}</span>
+                                                </td>
+                                                <td>
+                                                    {{ item.height|default:"-" }} × {{ item.width|default:"-" }}
+                                                    × {{ item.depth|default:"-" }}
+                                                </td>
+                                                <td>{{ item.get_opening_side_display|default:"Не выбрано" }}</td>
+                                                <td class="text-end pe-4">
+                                                    <span class="badge rounded-pill bg-light text-dark border">Замер</span>
+                                                </td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="4" class="text-center py-4 text-muted small">Двери еще не
+                                                    созданы
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="custom-{{ group.id }}" class="tab-pane fade p-4">
+                                <div class="row row-cols-1 row-cols-md-2 g-3">
+                                    {% for cust in group.customizers.all %}
+                                        <div class="col">
+                                            <div class="d-flex align-items-center p-2 border rounded">
+                                                <div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">
+                                                    <i class="bi bi-check2-circle"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="fw-medium small">{{ cust.name }}</div>
+                                                    <div class="text-muted extra-small">Применен</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% empty %}
+                                        <div class="col-12 text-center text-muted small">Кастомизаторы не применены
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                <div class="mt-3 text-end">
+                                    <button class="btn btn-sm btn-outline-primary">Управлять кастомизаторами</button>
+                                </div>
+                            </div>
+                            <div id="paint-{{ group.id }}" class="tab-pane fade p-4">
+                                <div class="row">
+                                    <div class="col-md-6 border-end">
+                                        <h6 class="fw-bold text-primary mb-3">צביעת פנל (דלת)</h6>
+                                        <div class="mb-2">
+                                            <span class="text-muted small">אופציית צביעה:</span>
+                                            <span class="fw-medium">{{ group.get_panel_paint_option_display }}</span>
+                                        </div>
+                                        <div>
+                                            <span class="text-muted small">גוון:</span>
+                                            <span class="fw-bold">{{ group.color_panels|default:"ללא / ירושה" }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 ps-md-4">
+                                        <h6 class="fw-bold text-primary mb-3">צביעת משקוף</h6>
+                                        <div class="mb-2">
+                                            <span class="text-muted small">אופציית צביעה:</span>
+                                            <span class="fw-medium">{{ group.get_frame_paint_option_display }}</span>
+                                        </div>
+                                        <div>
+                                            <span class="text-muted small">גוון:</span>
+                                            <span class="fw-bold">{{ group.color_frames|default:"ללא / ירושה" }}</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            {% empty %}
-                            <div class="col-12 text-center text-muted small">Кастомизаторы не применены</div>
-                            {% endfor %}
-                        </div>
-                        <div class="mt-3 text-end">
-                            <button class="btn btn-sm btn-outline-primary">Управлять кастомизаторами</button>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-        {% empty %}
-        <div class="card shadow-sm border-0">
-            <div class="card-body text-center py-5">
-                <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
-                <h5 class="text-muted">В заказе пока нет групп изделий</h5>
-                <p class="text-muted small">Добавьте группу, чтобы начать конфигурацию дверей</p>
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
-                    Добавить первую группу
-                </button>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-
-<!-- Modal Add Group -->
-<div class="modal fade" id="addGroupModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header">
-                <h5 class="modal-title fw-bold">Добавление группы изделий</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form action="#" method="post">
-                {% csrf_token %}
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Семейство продукции</label>
-                        <select class="form-select" name="family" required>
-                            <option value="">Выберите семейство...</option>
-                            {% for family in families %}
-                            <option value="{{ family.id }}">{{ family.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Серия</label>
-                        <select class="form-select" name="series" required>
-                            <option value="">Выберите серию...</option>
-                            {% for s in series %}
-                            <option value="{{ s.id }}">{{ s.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Количество изделий (дверей)</label>
-                        <input type="number" class="form-control" name="quantity" min="1" value="1" required>
-                    </div>
-                    <div class="alert alert-info py-2 small">
-                        <i class="bi bi-info-circle me-2"></i>Двери будут созданы автоматически после сохранения группы.
+            {% empty %}
+                <div class="card shadow-sm border-0">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
+                        <h5 class="text-muted">В заказе пока нет групп изделий</h5>
+                        <p class="text-muted small">Добавьте группу, чтобы начать конфигурацию дверей</p>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
+                            Добавить первую группу
+                        </button>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
-                    <button type="submit" class="btn btn-primary px-4">Добавить</button>
-                </div>
-            </form>
+            {% endfor %}
         </div>
     </div>
-</div>
 
-<style>
-    .extra-small { font-size: 0.75rem; }
-</style>
+    <!-- Modal Edit Header -->
+    <div class="modal fade" id="editHeaderModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">עריכת פרטי הזמנה</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <!-- Hidden form for deletion -->
+                <form action="{% url 'order-delete' order.pk %}" method="post" id="deleteOrderForm">
+                    {% csrf_token %}
+                </form>
+
+                <form action="{% url 'order-edit-header' order.pk %}" method="post" id="editHeaderForm">
+                    {% csrf_token %}
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold">לקוח</label>
+                                {{ header_form.customer }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">תאריך צביעה</label>
+                                {{ header_form.painting_date }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">תאריך סיום</label>
+                                {{ header_form.completion_date }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">סדרה</label>
+                                {{ header_form.series }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">חזית / גימור</label>
+                                {{ header_form.front }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">צבע פנלים (כנף)</label>
+                                {{ header_form.color_panels }}
+                            </div>
+                            <div class="col-md-4 d-flex align-items-center pt-4">
+                                <div class="form-check">
+                                    {{ header_form.is_frames_to_paint }}
+                                    <label class="form-check-label fw-bold" for="{{ header_form.is_frames_to_paint.id_for_label }}">
+                                        לצבוע משקופים?
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">צבע משקופים</label>
+                                {{ header_form.color_frames }}
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold">הערות</label>
+                                {{ header_form.comments }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="d-flex justify-content-between w-100">
+                            <button type="submit" form="deleteOrderForm" class="btn btn-outline-danger">
+                                <i class="bi bi-trash me-1"></i>מחק
+                            </button>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
+                                <button type="submit" class="btn btn-primary px-4">שמור שינויים</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Add Group -->
+    <div class="modal fade" id="addGroupModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">הוספת קבוצת דלתות</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="{% url 'group-add' order.pk %}" method="post">
+                    {% csrf_token %}
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">דגם מוצר</label>
+                                {{ group_form.product }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">כמות</label>
+                                {{ group_form.quantity }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">סדרה (אם שונה מההזמנה)</label>
+                                {{ group_form.series }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">חזית / גימור</label>
+                                {{ group_form.front }}
+                            </div>
+
+                            <hr class="my-3">
+
+                            <!-- Panels Painting -->
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold d-block">אופציית צביעת פנל (דלת)</label>
+                                <div class="d-flex gap-4">
+                                    {% for radio in group_form.panel_paint_option %}
+                                        <div class="form-check">
+                                            {{ radio.tag }}
+                                            <label class="form-check-label" for="{{ radio.id_for_label }}">
+                                                {{ radio.choice_label }}
+                                            </label>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold">צבע פנלים (גוון מיוחד)</label>
+                                {{ group_form.color_panels }}
+                            </div>
+
+                            <hr class="my-3">
+
+                            <!-- Frames Painting -->
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold d-block">אופציית צביעת משקוף</label>
+                                <div class="d-flex gap-4">
+                                    {% for radio in group_form.frame_paint_option %}
+                                        <div class="form-check">
+                                            {{ radio.tag }}
+                                            <label class="form-check-label" for="{{ radio.id_for_label }}">
+                                                {{ radio.choice_label }}
+                                            </label>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold">צבע משקופים (גוון מיוחד)</label>
+                                {{ group_form.color_frames }}
+                            </div>
+
+                            <hr class="my-3">
+                            
+                            <div class="col-md-6">
+                                <div class="form-check pt-2">
+                                    {{ group_form.is_split_installation }}
+                                    <label class="form-check-label fw-bold" for="{{ group_form.is_split_installation.id_for_label }}">
+                                        התקנה מפוצלת
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold">הערות לקבוצה</label>
+                                {{ group_form.comments }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
+                        <button type="submit" class="btn btn-primary px-4">הוסף קבוצה</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .extra-small {
+            font-size: 0.75rem;
+        }
+    </style>
+{% endblock %}
+
+{% block extra_js %}
+    <script>
+        $(document).ready(function () {
+            // Ensure Bootstrap classes are applied for modal fields correctly
+            $('#editHeaderModal input, #editHeaderModal select, #editHeaderModal textarea').each(function () {
+                if (!$(this).hasClass('form-select') && !$(this).hasClass('select2-hidden-accessible')) {
+                    $(this).addClass('form-control');
+                }
+            });
+
+            // Confirmation for saving changes
+            const $editHeaderForm = $('#editHeaderForm');
+            if ($editHeaderForm.length) {
+                $editHeaderForm.on('submit', function (e) {
+                    if (!confirm('לשמור שינויים?')) {
+                        e.preventDefault();
+                    }
+                });
+            }
+
+            // Confirmation for deleting order
+            const $deleteOrderForm = $('#deleteOrderForm');
+            if ($deleteOrderForm.length) {
+                $deleteOrderForm.on('submit', function (e) {
+                    if (!confirm('האם אתה בטוח שברצונך למחוק את ההזמנה? פעולה זו אינה ניתנת לביטול.')) {
+                        e.preventDefault();
+                    }
+                });
+            }
+
+            // Logic for dependent selects in edit modal
+            $(document).on('change', 'select[name="series"]', function () {
+                const $seriesSelect = $(this);
+                const seriesId = $seriesSelect.val();
+                
+                // Find the associated front select in the same container (modal or form)
+                const $container = $seriesSelect.closest('.modal-body, form, .card-body');
+                const $frontSelect = $container.find('select[name="front"]');
+
+                if (!$frontSelect.length) return;
+
+                if (!seriesId) {
+                    $frontSelect.html('<option value="">---------</option>').trigger('change');
+                    return;
+                }
+
+                fetch(`/catalog/api/fronts/?series=${seriesId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        let options = '<option value="">---------</option>';
+                        const fronts = (Array.isArray(data) ? data : data.results) || [];
+                        fronts.forEach(front => {
+                            options += `<option value="${front.id}">${front.name}</option>`;
+                        });
+                        $frontSelect.html(options).trigger('change');
+                    })
+                    .catch(error => console.error('Error fetching fronts:', error));
+            });
+
+            // Painting logic for Order Header
+            const $headerForm = $('#editHeaderForm');
+            if ($headerForm.length) {
+                const $colorPanels = $headerForm.find('input[name="color_panels"]');
+                const $colorFrames = $headerForm.find('input[name="color_frames"]');
+                const $isFramesToPaint = $headerForm.find('input[name="is_frames_to_paint"]');
+
+                function updateHeaderFramesState() {
+                    const isChecked = $isFramesToPaint.is(':checked');
+                    $colorFrames.prop('disabled', !isChecked);
+                    if (isChecked && !$colorFrames.val()) {
+                        $colorFrames.val($colorPanels.val());
+                    }
+                }
+
+                $isFramesToPaint.on('change', updateHeaderFramesState);
+                updateHeaderFramesState();
+
+                // Enable disabled fields before submit so they are sent
+                $headerForm.on('submit', function() {
+                    $colorFrames.prop('disabled', false);
+                });
+            }
+
+            // Painting logic for Groups (Add/Edit modals)
+            function setupGroupPaintingLogic($modal) {
+                const $panelOptions = $modal.find('input[name="panel_paint_option"]');
+                const $panelColorField = $modal.find('input[name="color_panels"]');
+                const $frameOptions = $modal.find('input[name="frame_paint_option"]');
+                const $frameColorField = $modal.find('input[name="color_frames"]');
+
+                function updateGroupPanelsState() {
+                    const selected = $panelOptions.filter(':checked').val();
+                    $panelColorField.prop('disabled', selected !== 'SPECIAL_COLOR');
+                }
+
+                function updateGroupFramesState() {
+                    const selected = $frameOptions.filter(':checked').val();
+                    $frameColorField.prop('disabled', selected !== 'SPECIAL_COLOR');
+                }
+
+                $panelOptions.on('change', updateGroupPanelsState);
+                $frameOptions.on('change', updateGroupFramesState);
+
+                updateGroupPanelsState();
+                updateGroupFramesState();
+
+                $modal.find('form').on('submit', function() {
+                    $panelColorField.prop('disabled', false);
+                    $frameColorField.prop('disabled', false);
+                });
+            }
+
+            const $addGroupModal = $('#addGroupModal');
+            if ($addGroupModal.length) {
+                setupGroupPaintingLogic($addGroupModal);
+            }
+
+            $('.edit-group-modal').each(function() {
+                setupGroupPaintingLogic($(this));
+            });
+        });
+    </script>
 {% endblock %}

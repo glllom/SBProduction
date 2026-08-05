@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Order, OrderItemsGroup, OrderItem
+from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog
 
 
 from django.contrib import admin
@@ -90,7 +90,6 @@ class OrderAdmin(admin.ModelAdmin):
         "order_number",
         "customer",
         "status",
-        "start_date",
         "painting_date",
         "completion_date",
         "series",
@@ -101,7 +100,6 @@ class OrderAdmin(admin.ModelAdmin):
     list_filter = (
         "status",
         "series",
-        "start_date",
         "painting_date",
         "completion_date",
     )
@@ -128,7 +126,6 @@ class OrderAdmin(admin.ModelAdmin):
             "Даты и График",
             {
                 "fields": (
-                    "start_date",
                     "painting_date",
                     "completion_date",
                 )
@@ -168,6 +165,20 @@ class OrderItemInline(admin.TabularInline):
         "place",
         "custom_lock_height",
     )
+
+
+@admin.register(OrderChangeLog)
+class OrderChangeLogAdmin(admin.ModelAdmin):
+    list_display = ("timestamp", "order", "user", "field_name", "old_value", "new_value")
+    list_filter = ("timestamp", "field_name", "user")
+    search_fields = ("order__order_number", "field_name")
+    readonly_fields = ("timestamp", "order", "user", "field_name", "old_value", "new_value")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(OrderItem)

@@ -55,7 +55,7 @@
                         <td>
                             <span class="badge bg-secondary-subtle text-secondary px-2">{{ order.get_status_display }}</span>
                         </td>
-                        <td>{{ order.created_at|date:"d.m.Y H:i" }}</td>
+                        <td>{{ order.created_at|date:"d/m/Y" }}</td>
                         <td class="text-end pe-4">
                             <a href="{% url 'order-detail' order.id %}" class="btn btn-outline-secondary btn-sm">
                                 <i class="bi bi-eye"></i>

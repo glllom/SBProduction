@@ -15,6 +15,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+    
+    <!-- Select2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <!-- Select2 Bootstrap 5 Theme -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.rtl.min.css" />
+    
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -118,6 +124,10 @@
 
     <!-- Bootstrap 5 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery (required for Select2) -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <!-- Select2 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const sidebarCollapse = document.getElementById('sidebarCollapse');
@@ -127,6 +137,46 @@
                     document.getElementById('content').classList.toggle('active');
                 });
             }
+        });
+        
+        // Initialize Select2 globally
+        $(document).ready(function() {
+            function initSelect2(container) {
+                $(container).find('select').each(function() {
+                    if (!$(this).hasClass('select2-hidden-accessible')) {
+                        let options = {
+                            theme: 'bootstrap-5',
+                            width: '100%',
+                            dir: 'rtl',
+                            placeholder: $(this).attr('placeholder') || 'בחר אפשרות'
+                        };
+                        
+                        // Fix for Select2 in Bootstrap Modals
+                        const modal = $(this).closest('.modal');
+                        if (modal.length) {
+                            options.dropdownParent = modal;
+                        } else {
+                            // Ensure dropdown is attached to the body for correct orientation 
+                            // detection in standard forms
+                            options.dropdownParent = $(document.body);
+                        }
+
+                        $(this).select2(options);
+                    }
+                });
+            }
+
+            initSelect2(document);
+
+            // Re-initialize for Bootstrap Modals
+            $('.modal').on('shown.bs.modal', function() {
+                initSelect2(this);
+            });
+            
+            // Re-initialize when Select2 is destroyed or content is added dynamically
+            $(document).on('select2:destroy', 'select', function() {
+                setTimeout(() => initSelect2(this.parentElement), 1);
+            });
         });
     </script>
     {% block extra_js %}{% endblock %}

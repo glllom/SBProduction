@@ -26,6 +26,17 @@
     background-color: var(--primary-color) !important;
 }
 
+.btn-outline-primary {
+    color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    color: #fff !important;
+}
+
 /* Custom Styles */
 body {
     font-family: 'Inter', sans-serif;

@@ -77,7 +77,7 @@ class Front(models.Model):
         unique_together = ('series', 'name')
 
     def __str__(self):
-        return f"{self.series.name} - Front: {self.name}"
+        return self.name
 
 
 # ==========================================

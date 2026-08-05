@@ -54,9 +54,6 @@ class Order(models.Model):
     )
 
     # --- Stage dates ---
-    start_date = models.DateField(
-        auto_now_add=True, null=True, verbose_name="תאריך התחלה"
-    )
     painting_date = models.DateField(
         null=True, blank=True, verbose_name="תאריך צביעה"
     )
@@ -79,6 +76,10 @@ class Order(models.Model):
         null=True,
         verbose_name="חזית / גימור"
     )
+    is_frames_to_paint = models.BooleanField(
+        default=False,
+        verbose_name="לצבוע משקופים?",
+    )
     color_panels = models.CharField(
         max_length=100,
         blank=True,
@@ -86,7 +87,10 @@ class Order(models.Model):
         verbose_name="צבע פנלים (כנף)",
     )
     color_frames = models.CharField(
-        max_length=100, blank=True, null=True, verbose_name="צבע משקופים"
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקופים",
     )
 
     # --- Comments and System fields ---
@@ -95,9 +99,6 @@ class Order(models.Model):
     )
     created_at = models.DateTimeField(
         auto_now_add=True, verbose_name="נוצר במערכת"
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True, verbose_name="עודכן"
     )
 
     class Meta:
@@ -108,11 +109,44 @@ class Order(models.Model):
 
     def __str__(self):
         return f"הזמנה מס' {self.order_number} ({self.customer or 'ללא לקוח'})"
+
+
+class OrderChangeLog(models.Model):
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="changelogs",
+        verbose_name="הזמנה"
+    )
+    user = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="משתמש"
+    )
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="זמן שינוי")
+    field_name = models.CharField(max_length=100, verbose_name="שדה")
+    old_value = models.TextField(null=True, blank=True, verbose_name="ערך ישן")
+    new_value = models.TextField(null=True, blank=True, verbose_name="ערך חדש")
+
+    class Meta:
+        verbose_name = "יומן שינויים"
+        verbose_name_plural = "יומני שינויים"
+        ordering = ["-timestamp"]
+
+    def __str__(self):
+        return f"{self.order.order_number} - {self.field_name}"
 # ==========================================
 # 2. PRODUCT GROUP (ORDER Items GROUP)
 # ==========================================
 
 class OrderItemsGroup(models.Model):
+    class PaintOption(models.TextChoices):
+        NO_PAINT = 'NO_PAINT', 'לא לצבוע'
+        MAIN_COLOR = 'MAIN_COLOR', 'גוון ראשי'
+        SPECIAL_COLOR = 'SPECIAL_COLOR', 'גוון מיוחד'
+
     # Django will automatically create an `order_id` field in the DB
     order = models.ForeignKey(
         "Order",
@@ -149,11 +183,23 @@ class OrderItemsGroup(models.Model):
         help_text="אם ריק - יימשך מההזמנה",
     )
 
+    panel_paint_option = models.CharField(
+        max_length=20,
+        choices=PaintOption.choices,
+        default=PaintOption.MAIN_COLOR,
+        verbose_name="אופציית צביעת פנל",
+    )
     color_panels = models.CharField(
         max_length=100,
         blank=True,
         null=True,
         verbose_name="צבע פנלים (כנף)",
+    )
+    frame_paint_option = models.CharField(
+        max_length=20,
+        choices=PaintOption.choices,
+        default=PaintOption.NO_PAINT,
+        verbose_name="אופציית צביעת משקוף",
     )
     color_frames = models.CharField(
         max_length=100,
@@ -190,6 +236,20 @@ class OrderItemsGroup(models.Model):
                 self.series = self.order.series
             if not self.front and getattr(self.order, "front", None):
                 self.front = self.order.front
+
+            # Logic for Panels
+            if self.panel_paint_option == self.PaintOption.MAIN_COLOR:
+                self.color_panels = self.order.color_panels
+            elif self.panel_paint_option == self.PaintOption.NO_PAINT:
+                self.color_panels = None
+            # For SPECIAL_COLOR, color_panels should already be set by user
+
+            # Logic for Frames
+            if self.frame_paint_option == self.PaintOption.MAIN_COLOR:
+                self.color_frames = self.order.color_frames
+            elif self.frame_paint_option == self.PaintOption.NO_PAINT:
+                self.color_frames = None
+            # For SPECIAL_COLOR, color_frames should already be set by user
 
         # Save group
         super().save(*args, **kwargs)
