@@ -1,26 +1,134 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}SBProduction{% endblock %}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <title>{% block title %}SB Production ERP{% endblock %}</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="{% static 'logo.svg' %}">
+    <!-- Bootstrap 5 RTL CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
+    <div class="wrapper">
+        {% if user.is_authenticated %}
+        <!-- Sidebar -->
+        <nav id="sidebar">
+            <div class="sidebar-header p-1 bg-dark">
+                <span class="border border-2 border-dark bg-white rounded-2 w-100">
+                <img src="{% static 'logo_large.jpg' %}" alt="SB Production Logo">
+                    </span>
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container">
-            <a class="navbar-brand" href="{% url 'order-list' %}">SBProduction</a>
-            <div class="navbar-nav">
-                <a class="nav-link" href="{% url 'order-list' %}">Orders</a>
-                <a class="nav-link" href="{% url 'order-add' %}">Add Order</a>
+            </div>
+
+            <ul class="list-unstyled components">
+                <li class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+                    <a href="/"><i class="bi bi-speedometer2"></i> לוח בקרה</a>
+                </li>
+                
+                <div class="nav-section-title">הזמנות</div>
+                <li class="{% if 'order' in request.path and 'catalog' not in request.path %}active{% endif %}">
+                    <a href="{% url 'order-list' %}"><i class="bi bi-cart3"></i> הזמנות</a>
+                </li>
+                
+                <div class="nav-section-title">קטלוג</div>
+                <li class="{% if 'catalog/productfamily' in request.path %}active{% endif %}">
+                    <a href="{% url 'catalog:family-list' %}"><i class="bi bi-collection"></i> משפחות</a>
+                </li>
+                <li class="{% if 'catalog/series' in request.path %}active{% endif %}">
+                    <a href="{% url 'catalog:series-list' %}"><i class="bi bi-layers"></i> סדרות</a>
+                </li>
+                <li class="{% if 'catalog/productmodel' in request.path %}active{% endif %}">
+                    <a href="{% url 'catalog:model-list' %}"><i class="bi bi-box-seam"></i> מוצרים</a>
+                </li>
+                <li class="{% if 'catalog/customizer' in request.path %}active{% endif %}">
+                    <a href="{% url 'catalog:customizer-list' %}"><i class="bi bi-sliders"></i> קסטומייזרים</a>
+                </li>
+
+                {% if user.is_staff %}
+                <div class="nav-section-title">ניהול מערכת</div>
+                <li>
+                    <a href="/admin/"><i class="bi bi-shield-lock"></i> פאנל ניהול</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+
+        <!-- Page Content -->
+        <div id="content" {% if not user.is_authenticated %}style="margin-right: 0; width: 100%;"{% endif %}>
+            <!-- Topbar -->
+            <nav class="top-navbar">
+                <div class="d-flex align-items-center">
+                    {% if user.is_authenticated %}
+                    <button type="button" id="sidebarCollapse" class="btn btn-link text-dark p-0 ms-3 d-md-none">
+                        <i class="bi bi-list fs-4"></i>
+                    </button>
+                    <h5 class="mb-0">{% block page_title %}ראשי{% endblock %}</h5>
+                    {% endif %}
+                </div>
+                <div class="d-flex align-items-center">
+                    {% if user.is_authenticated %}
+                    <div class="dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center ms-2" style="width: 32px; height: 32px; font-size: 0.8rem;">
+                                {{ user.username|slice:":1"|upper }}
+                            </div>
+                            <span class="d-none d-md-inline">{{ user.username }}</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 text-end">
+                            <li><a class="dropdown-item" href="#"><i class="bi bi-person ms-2"></i> פרופיל</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form action="{% url 'logout' %}" method="post">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item text-danger"><i class="bi bi-box-arrow-right ms-2"></i> יציאה</button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                    {% else %}
+                    <a href="{% url 'login' %}" class="btn btn-primary btn-sm">כניסה</a>
+                    {% endif %}
+                </div>
+            </nav>
+
+            <div class="main-content">
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                {% block content %}{% endblock %}
             </div>
         </div>
-    </nav>
-    <div class="container-fluid">
-        {% block content %}{% endblock %}
     </div>
+
+    <!-- Bootstrap 5 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const sidebarCollapse = document.getElementById('sidebarCollapse');
+            if (sidebarCollapse) {
+                sidebarCollapse.addEventListener('click', function () {
+                    document.getElementById('sidebar').classList.toggle('active');
+                    document.getElementById('content').classList.toggle('active');
+                });
+            }
+        });
+    </script>
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

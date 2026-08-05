@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block page_title %}מוצרים (דגמים){% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="h4 mb-0">דגמי מוצרים</h2>
+    <button class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg ms-2"></i>הוסף דגם
+    </button>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light text-muted small text-uppercase">
+                    <tr>
+                        <th class="ps-4">שם</th>
+                        <th>משפחה × סדרה</th>
+                        <th>קוד</th>
+                        <th class="text-end pe-4">פעולות</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for model in models %}
+                    <tr>
+                        <td class="ps-4 fw-medium">{{ model.name }}</td>
+                        <td>{{ model.product_family.name }} × {{ model.series.name }}</td>
+                        <td><code>{{ model.code|default:"-" }}</code></td>
+                        <td class="text-end pe-4">
+                            <button class="btn btn-link btn-sm text-dark"><i class="bi bi-pencil"></i></button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center py-4">אין נתונים</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

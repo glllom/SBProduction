@@ -1,181 +1,325 @@
 from django.db import models
 from django.db import transaction
 
-from apps.catalog.models import Product, Front
+from apps.catalog.models import ProductModel, Front
 
 
 
 class OrderStatus(models.TextChoices):
-    DRAFT = 'DRAFT', 'Draft'
-    MEASUREMENT = 'MEASUREMENT', 'Pending Measurement'
-    IN_PRODUCTION = 'IN_PRODUCTION', 'In Production'
-    READY = 'READY', 'Ready for Ship'
-    COMPLETED = 'COMPLETED', 'Completed'
-    CANCELED = 'CANCELED', 'Canceled'
+    DRAFT = 'DRAFT', 'טיוטה'
+    MEASUREMENT = 'MEASUREMENT', 'ממתין למדידה'
+    IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
+    READY = 'READY', 'מוכן למשלוח'
+    COMPLETED = 'COMPLETED', 'הושלם'
+    CANCELED = 'CANCELED', 'בוטל'
 
 
 class OpeningDirection(models.TextChoices):
-    LEFT = 'LEFT', 'Left'
-    RIGHT = 'RIGHT', 'Right'
+    LEFT = 'LEFT', 'שמאל'
+    RIGHT = 'RIGHT', 'ימין'
 
 
 class OpeningType(models.TextChoices):
-    OUTWARD = 'OUTWARD', 'Outward'
-    INWARD = 'INWARD', 'Inward'
+    OUTWARD = 'OUTWARD', 'חוץ'
+    INWARD = 'INWARD', 'פנים'
 
 
 # ==========================================
-# 1. ЗАКАЗ (ORDER)
+# 1. ORDER
 # ==========================================
+
+from django.db import models
 
 class Order(models.Model):
-    """Manufacturing order header."""
-    order_number = models.CharField('Order Number', max_length=50, unique=True)
+    # --- Identifiers and base data ---
+    order_number = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+        verbose_name="מספר הזמנה",
+        help_text="מספר ייחודי (למשל ORD-2026-001)",
+    )
+    customer = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="לקוח",
+    )
     status = models.CharField(
-        'Status',
         max_length=20,
-        choices=OrderStatus,
-        default=OrderStatus.DRAFT
+        choices=OrderStatus.choices,
+        default=OrderStatus.DRAFT,
+        db_index=True,
+        verbose_name="סטטוס",
     )
 
-    # Global order parameters (deadlines, global notes)
-    created_at = models.DateTimeField('Created At', auto_now_add=True)
-    updated_at = models.DateTimeField('Updated At', auto_now=True)
-    note = models.TextField('General Order Note', blank=True)
+    # --- Stage dates ---
+    start_date = models.DateField(
+        auto_now_add=True, null=True, verbose_name="תאריך התחלה"
+    )
+    painting_date = models.DateField(
+        null=True, blank=True, verbose_name="תאריך צביעה"
+    )
+    completion_date = models.DateField(
+        null=True, blank=True, verbose_name="תאריך סיום"
+    )
+
+    # --- Engineering / Specific order properties ---
+    series = models.ForeignKey(
+        'catalog.Series',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="סדרה"
+    )
+    front = models.ForeignKey(
+        'catalog.Front',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="חזית / גימור"
+    )
+    color_panels = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע פנלים (כנף)",
+    )
+    color_frames = models.CharField(
+        max_length=100, blank=True, null=True, verbose_name="צבע משקופים"
+    )
+
+    # --- Comments and System fields ---
+    comments = models.TextField(
+        blank=True, null=True, verbose_name="הערות"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name="נוצר במערכת"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True, verbose_name="עודכן"
+    )
 
     class Meta:
-        verbose_name = 'Order'
-        verbose_name_plural = 'Orders'
+        db_table = "orders"
+        verbose_name = "הזמנה"
+        verbose_name_plural = "הזמנות"
+        ordering = ["-id"]
 
     def __str__(self):
-        return f"Order #{self.order_number} [{self.get_status_display()}]"
-
-    def get_next_position_number(self):
-        """Возвращает следующий сквозной номер позиции внутри заказа."""
-        last_item = OrderItem.objects.filter(
-            group__order=self
-        ).order_by('-position_number').first()
-
-        return (last_item.position_number + 1) if last_item else 1
-
-
+        return f"הזמנה מס' {self.order_number} ({self.customer or 'ללא לקוח'})"
 # ==========================================
-# 2. ГРУППА ИЗДЕЛИЙ (ORDER Items GROUP)
+# 2. PRODUCT GROUP (ORDER Items GROUP)
 # ==========================================
 
 class OrderItemsGroup(models.Model):
-    """
-    Group of items sharing common customizable attributes
-    (e.g., color, engraving, glass/window type, finish).
-    """
+    # Django will automatically create an `order_id` field in the DB
     order = models.ForeignKey(
-        Order,
+        "Order",
         on_delete=models.CASCADE,
-        related_name='groups',
-        verbose_name='Order'
+        related_name="groups",
+        verbose_name="הזמנה",
     )
-    name = models.CharField('Group Name/Label', max_length=100, help_text='e.g., 2nd Floor Doors')
 
-    # Technology / Base Product definition
+    quantity = models.PositiveIntegerField(
+        default=1,
+        verbose_name="כמות בקבוצה",
+        help_text="מספר פריטים זהים (דלתות) בקבוצה זו",
+    )
     product = models.ForeignKey(
-        Product,
+        "catalog.ProductModel",
         on_delete=models.PROTECT,
-        related_name='order_groups',
-        verbose_name='Product Model'
+        related_name="order_groups",
+        verbose_name="דגם מוצר",
+    )
+    series = models.ForeignKey(
+        'catalog.Series',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="סדרה",
+        help_text="אם ריק - יימשך מההזמנה",
     )
     front = models.ForeignKey(
-        Front,
+        'catalog.Front',
         on_delete=models.SET_NULL,
-        null=True,
         blank=True,
-        related_name='order_groups',
-        verbose_name='Catalog Front'
+        null=True,
+        verbose_name="חזית / גימור",
+        help_text="אם ריק - יימשך מההזמנה",
     )
 
-    # Custom front option
-    is_custom_front = models.BooleanField('Is Custom Front', default=False)
-    custom_front_name = models.CharField('Custom Front Ref', max_length=255, blank=True)
-    quantity = models.PositiveIntegerField('Items Quantity in Group', default=1)
-    # Group parameters (Shared customization)
-    has_window = models.BooleanField('Has Glass/Bathroom Window', default=False)
-    engraving_code = models.CharField('Engraving Pattern / Code', max_length=100, blank=True)
+    color_panels = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע פנלים (כנף)",
+    )
+    color_frames = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקופים",
+    )
 
-    # Flexible container for less frequent or dynamic group parameters
-    group_custom_params = models.JSONField('Additional Group Parameters', default=dict, blank=True)
+    is_split_installation = models.BooleanField(
+        default=False,
+        verbose_name="התקנה מפוצלת",
+        help_text="True = משקוף וכנף בתאריכים שונים, False = בו זמנית",
+    )
+
+    comments = models.TextField(
+        blank=True, null=True, verbose_name="הערות"
+    )
 
     class Meta:
-        verbose_name = 'Order Items Group'
-        verbose_name_plural = 'Order Items Groups'
+        db_table = "order_items_groups"
+        verbose_name = "קבוצת פריטי הזמנה"
+        verbose_name_plural = "קבוצות פריטי הזמנה"
+        ordering = ["id"]
 
     def __str__(self):
-        return f"{self.order.order_number} — Group: {self.name} ({self.product.name})"
+        return f"קבוצה #{self.id} — {self.quantity} יח' (הזמנה ID:{self.order_id})"
 
     def save(self, *args, **kwargs):
-        is_new = self.pk is None
+        is_new = self.pk is None  # Check if the record is being created for the first time
+
+        # Pull default values from Parent Order
+        if self.order_id:
+            if not self.series and getattr(self.order, "series", None):
+                self.series = self.order.series
+            if not self.front and getattr(self.order, "front", None):
+                self.front = self.order.front
+
+        # Save group
         super().save(*args, **kwargs)
 
-        # При первичном создании группы автоматически создаем заготовки дверей
+        # Generate physical doors (OrderItems) when creating a group
         if is_new and self.quantity > 0:
-            with transaction.atomic():
-                start_number = self.order.get_next_position_number()
-                items_to_create = []
+            from .models import OrderItem
 
-                for i in range(self.quantity):
-                    items_to_create.append(
-                        OrderItem(
-                            group=self,
-                            position_number=start_number + i,
-                            item_label=f"Door #{start_number + i}"
-                        )
+            items_to_create = [
+                OrderItem(
+                    group=self,
+                    item_number=item_index,
                     )
+                for item_index in range(1, self.quantity + 1)
+            ]
+
+            with transaction.atomic():
                 OrderItem.objects.bulk_create(items_to_create)
 
+# ==========================================
+# 3. PRODUCT (ORDER ITEM)
+# ==========================================
 
-# ==========================================
-# 3. ИЗДЕЛИЕ (ORDER ITEM)
-# ==========================================
+class OpeningSide(models.TextChoices):
+    LEFT = "LEFT", "שמאל (L)"
+    RIGHT = "RIGHT", "ימין (R)"
+
 
 class OrderItem(models.Model):
-    """
-    Individual door item inside a group, containing specific measurements
-    filled by the measurer.
-    """
+    # --- Link to parent group ---
     group = models.ForeignKey(
-        OrderItemsGroup,
+        "OrderItemsGroup",
         on_delete=models.CASCADE,
-        related_name='items',
-        verbose_name='Order Group'
-    )
-    item_label = models.CharField('Item Tag/Room', max_length=100, blank=True, help_text='e.g., Bathroom, Bedroom 1')
-    # Сквозной порядковый номер двери относительно ВСЕГО заказа
-    position_number = models.PositiveIntegerField(
-        'Item Number in Order',
-        db_index=True
-    )
-    # Measurer dimensions (Item Parameters)
-    height = models.DecimalField('Height (H), mm', max_digits=7, decimal_places=2, null=True, blank=True)
-    width = models.DecimalField('Width (W), mm', max_digits=7, decimal_places=2, null=True, blank=True)
-    wall_thickness = models.DecimalField('Wall Thickness, mm', max_digits=7, decimal_places=2, null=True, blank=True)
-
-    opening_direction = models.CharField(
-        'Opening Direction',
-        max_length=10,
-        choices=OpeningDirection,
-        blank=True
-    )
-    opening_type = models.CharField(
-        'Opening Type',
-        max_length=10,
-        choices=OpeningType,
-        blank=True
+        related_name="items",
+        verbose_name="קבוצת פריטים",
     )
 
-    note = models.CharField('Measurer / Production Note', max_length=255, blank=True)
+    # --- Dimensions (in mm) ---
+    width = models.PositiveIntegerField(
+        blank=True, null=True, verbose_name='רוחב (מ""מ)'
+    )
+    height = models.PositiveIntegerField(
+        blank=True, null=True, verbose_name='גובה (מ""מ)'
+    )
+    wall = models.PositiveIntegerField(
+        blank=True, null=True, verbose_name='עובי קיר / פתח (מ""מ)'
+    )
+
+    # --- Structure and Opening ---
+    direction = models.CharField(
+        max_length=10,
+        choices=OpeningDirection.choices,
+        blank=True,
+        null=True,
+        verbose_name="כיוון פתיחה",
+    )
+    opening = models.CharField(
+        max_length=10,
+        choices=OpeningSide.choices,
+        blank=True,
+        null=True,
+        verbose_name="צד פתיחה",
+    )
+    addition_cut = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="חיתוך / קיצור נוסף",
+    )
+
+    # --- Site location ---
+    place = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="מיקום התקנה (קומה / ציר / חדר)",
+    )
+    comment = models.TextField(
+        blank=True, null=True, verbose_name="הערה למוצר"
+    )
+
+    # --- Engineering customizers (milling heights) ---
+    custom_lock_height = models.DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='גובה מנעול מותאם (מ""מ)',
+    )
+    custom_hinge1 = models.DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 1 (מ""מ)',
+    )
+    custom_hinge2 = models.DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 2 (מ""מ)',
+    )
+    custom_hinge3 = models.DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 3 (מ""מ)',
+    )
+    custom_hinge4 = models.DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 4 (מ""מ)',
+    )
+    custom_hinge5 = models.DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 5 (מ""מ)',
+    )
 
     class Meta:
-        verbose_name = 'Order Item'
-        verbose_name_plural = 'Order Items'
+        db_table = "order_items"
+        verbose_name = "פריט הזמנה"
+        verbose_name_plural = "פריטי הזמנה"
+        ordering = ["id"]
 
     def __str__(self):
-        dimensions = f"{self.height}x{self.width}mm" if self.height and self.width else "No measurements"
-        return f"{self.group.name} - {self.item_label or 'Item'} ({dimensions})"
+        return f"פריט #{self.id} (קבוצה מס' {self.group_id})"

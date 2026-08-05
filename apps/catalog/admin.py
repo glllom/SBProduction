@@ -5,7 +5,7 @@ from .models import (
     Series,
     Front,
     Material,
-    Product,
+    ProductModel,
     ProductMaterial,
 )
 
@@ -56,9 +56,96 @@ class ProductMaterialInline(admin.TabularInline):
     extra = 1
 
 
-@admin.register(Product)
+@admin.register(ProductModel)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id', 'sku', 'name', 'family', 'series')
-    list_filter = ('family__product_type', 'family', 'series')
-    search_fields = ('sku', 'name')
+    list_display = ('id', 'code', 'name', 'product_family', 'series')
+    list_filter = ('product_family__product_type', 'product_family', 'series')
+    search_fields = ('code', 'name')
     inlines = [ProductMaterialInline]
+
+from django.contrib import admin
+from .models import Customizer
+
+
+@admin.register(Customizer)
+class CustomizerAdmin(admin.ModelAdmin):
+    # Поля, отображаемые в списке
+    list_display = (
+        "id",
+        "code",
+        "name",
+        "tag",
+        "priority",
+        "active",
+        "product_type",
+        "product_family",
+        "product_model",
+    )
+
+    # Быстрый фильтр справа
+    list_filter = (
+        "active",
+        "tag",
+        "product_type",
+        "product_family",
+        "product_model",
+    )
+
+    # Поиск по коду и названию
+    search_fields = ("code", "name", "description", "tag")
+
+    # Сортировка по умолчанию
+    ordering = ("priority", "code")
+
+    # Группировка полей в форме редактирования
+    fieldsets = (
+        (
+            "Основная информация",
+            {"fields": ("code", "name", "description", "active")},
+        ),
+        (
+            "Привязка к каталогу",
+            {
+                "fields": (
+                    "product_type",
+                    "product_family",
+                    "product_model",
+                )
+            },
+        ),
+        (
+            "Настройки движка (Pipeline)",
+            {
+                "fields": ("tag", "priority"),
+                "classes": ("collapse",),  # Можно свернуть блок
+            },
+        ),
+        (
+            "Параметр 1",
+            {
+                "fields": ("par1_label", "par1_value", "par1_hint"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Параметр 2",
+            {
+                "fields": ("par2_label", "par2_value", "par2_hint"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Параметр 3",
+            {
+                "fields": ("par3_label", "par3_value", "par3_hint"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Параметр 4",
+            {
+                "fields": ("par4_label", "par4_value", "par4_hint"),
+                "classes": ("collapse",),
+            },
+        ),
+    )

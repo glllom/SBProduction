@@ -10,15 +10,15 @@ class UserRole(str, Enum):
     @classmethod
     def choices(cls):
         return [
-            (cls.ADMIN.value, 'Administrator'),
-            (cls.USER.value, 'Standard User / Manager'),
+            (cls.ADMIN.value, 'מנהל מערכת'),
+            (cls.USER.value, 'משתמש רגיל / מנהל'),
         ]
 
 
 class User(AbstractUser):
     """Custom User model with role-based access control."""
     role = models.CharField(
-        'User Role',
+        'תפקיד משתמש',
         max_length=20,
         choices=UserRole.choices,
         default=UserRole.USER
@@ -29,5 +29,5 @@ class User(AbstractUser):
         return self.role == UserRole.ADMIN or self.is_superuser
 
     class Meta:
-        verbose_name = 'User'
-        verbose_name_plural = 'Users'
+        verbose_name = 'משתמש'
+        verbose_name_plural = 'משתמשים'

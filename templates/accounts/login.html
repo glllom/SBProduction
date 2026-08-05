@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}כניסה | SB Production ERP{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="col-md-4">
+        <div class="card shadow border-0">
+            <div class="card-body p-5">
+                <div class="text-center mb-4">
+                    <img src="{% static 'logo.svg' %}" alt="SB Production Logo" style="height: 80px; width: auto;" class="mb-3">
+                    <h3 class="fw-bold mt-2">SB Production</h3>
+                    <p class="text-muted">היכנס לחשבון שלך</p>
+                </div>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="id_username" class="form-label">שם משתמש</label>
+                        <input type="text" name="username" autofocus maxlength="150" required id="id_username" class="form-control">
+                    </div>
+                    <div class="mb-4">
+                        <label for="id_password" class="form-label">סיסמה</label>
+                        <input type="password" name="password" required id="id_password" class="form-control">
+                    </div>
+                    
+                    {% if form.errors %}
+                    <div class="alert alert-danger py-2" role="alert">
+                        <small>שם משתמש או סיסמה לא נכונים.</small>
+                    </div>
+                    {% endif %}
+                    
+                    <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">כניסה</button>
+                </form>
+            </div>
+        </div>
+        <div class="text-center mt-4 text-muted">
+            <small>&copy; 2026 SB Production ERP System</small>
+        </div>
+    </div>
+</div>
+{% endblock %}

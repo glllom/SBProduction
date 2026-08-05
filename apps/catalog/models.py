@@ -6,13 +6,14 @@ from django.db import models
 # ==========================================
 
 class ProductType(models.Model):
-    code = models.CharField('Code', max_length=32, unique=True)
-    name = models.CharField('Name', max_length=100, unique=True)
-    description = models.TextField('Description', blank=True)
+    code = models.CharField('קוד', max_length=32, unique=True)
+    name = models.CharField('שם', max_length=100, unique=True)
+    description = models.TextField('תיאור', blank=True)
+    active = models.BooleanField('פעיל', default=True)
 
     class Meta:
-        verbose_name = 'Product Type'
-        verbose_name_plural = 'Product Types'
+        verbose_name = 'סוג מוצר'
+        verbose_name_plural = 'סוגי מוצרים'
 
     def __str__(self):
         return self.name
@@ -23,16 +24,17 @@ class ProductFamily(models.Model):
         ProductType,
         on_delete=models.PROTECT,
         related_name='families',
-        verbose_name='Product Type'
+        verbose_name='סוג מוצר'
     )
-    name = models.CharField('Name', max_length=100)
-    code = models.CharField('Code', max_length=32, unique=True)
-    description = models.TextField('Description', blank=True)
+    name = models.CharField('שם', max_length=100)
+    code = models.CharField('קוד', max_length=32, unique=True)
+    description = models.TextField('תיאור', blank=True)
+    active = models.BooleanField('פעיל', default=True)
 
 
     class Meta:
-        verbose_name = 'Product Family'
-        verbose_name_plural = 'Product Families'
+        verbose_name = 'משפחת מוצרים'
+        verbose_name_plural = 'משפחות מוצרים'
         unique_together = ('product_type', 'name')
 
     def __str__(self):
@@ -44,13 +46,14 @@ class ProductFamily(models.Model):
 # ==========================================
 
 class Series(models.Model):
-    code = models.CharField('Code', max_length=32, unique=True)
-    name = models.CharField('Name', max_length=100, unique=True)
-    description = models.TextField('Description', blank=True)
+    code = models.CharField('קוד', max_length=32, unique=True)
+    name = models.CharField('שם', max_length=100, unique=True)
+    description = models.TextField('תיאור', blank=True)
+    active = models.BooleanField('פעיל', default=True)
 
     class Meta:
-        verbose_name = 'Series'
-        verbose_name_plural = 'Series'
+        verbose_name = 'סדרה'
+        verbose_name_plural = 'סדרות'
 
     def __str__(self):
         return self.name
@@ -61,14 +64,16 @@ class Front(models.Model):
         Series,
         on_delete=models.CASCADE,
         related_name='fronts',
-        verbose_name='Series'
+        verbose_name='סדרה'
     )
-    name = models.CharField('Name', max_length=100)
-    code = models.CharField('Code/SKU', max_length=50, blank=True)
+    name = models.CharField('שם', max_length=100)
+    code = models.CharField('קוד/SKU', max_length=50, blank=True)
+    description = models.TextField('תיאור', blank=True)
+    active = models.BooleanField('פעיל', default=True)
 
     class Meta:
-        verbose_name = 'Front'
-        verbose_name_plural = 'Fronts'
+        verbose_name = 'חזית'
+        verbose_name_plural = 'חזיתות'
         unique_together = ('series', 'name')
 
     def __str__(self):
@@ -81,24 +86,24 @@ class Front(models.Model):
 
 
 class Material(models.Model):
-    name = models.CharField('Name', max_length=255)
-    sku = models.CharField('SKU', max_length=100, unique=True)
+    name = models.CharField('שם', max_length=255)
+    sku = models.CharField('מק""ט', max_length=100, unique=True)
     material_type = models.CharField(
-        'Material Type',
+        'סוג חומר',
         max_length=20,
 
     )
 
-    thickness = models.DecimalField('Thickness, mm', max_digits=5, decimal_places=2, null=True, blank=True)
-    length = models.DecimalField('Standard Length, mm', max_digits=7, decimal_places=2, null=True, blank=True)
-    width = models.DecimalField('Standard Width, mm', max_digits=7, decimal_places=2, null=True, blank=True)
+    thickness = models.DecimalField('עובי, מ""מ', max_digits=5, decimal_places=2, null=True, blank=True)
+    length = models.DecimalField('אורך סטנדרטי, מ""מ', max_digits=7, decimal_places=2, null=True, blank=True)
+    width = models.DecimalField('רוחב סטנדרטי, מ""מ', max_digits=7, decimal_places=2, null=True, blank=True)
 
-    price_per_unit = models.DecimalField('Price per unit', max_digits=10, decimal_places=2, default=0)
-    unit_of_measure = models.CharField('Unit of Measure', max_length=20, default='pcs')
+    price_per_unit = models.DecimalField('מחיר ליחידה', max_digits=10, decimal_places=2, default=0)
+    unit_of_measure = models.CharField('יחידת מידה', max_length=20, default='pcs')
 
     class Meta:
-        verbose_name = 'Material'
-        verbose_name_plural = 'Materials'
+        verbose_name = 'חומר'
+        verbose_name_plural = 'חומרים'
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
@@ -108,59 +113,38 @@ class Material(models.Model):
 # 4. PRODUCT & BILL OF MATERIALS (BOM)
 # ==========================================
 
-class Product(models.Model):
+class ProductModel(models.Model):
     """
     Product master definition.
     Represents a unique intersection of ProductFamily x Series.
     Stores all technological requirements, manufacturing parameters, and CNC rules.
     """
-    sku = models.CharField('SKU', max_length=100, unique=True)
-    name = models.CharField('Name', max_length=255)
+    code = models.CharField('מק""ט', max_length=100, unique=True)
+    name = models.CharField('שם', max_length=255)
+    description = models.TextField('תיאור', blank=True)
+    active = models.BooleanField('פעיל', default=True)
 
-    family = models.ForeignKey(
+    product_family = models.ForeignKey(
         ProductFamily,
         on_delete=models.PROTECT,
         related_name='products',
-        verbose_name='Product Family'
+        verbose_name='משפחת מוצרים'
     )
     series = models.ForeignKey(
         Series,
         on_delete=models.PROTECT,
         related_name='products',
-        verbose_name='Series'
+        verbose_name='סדרה'
     )
 
-    base_material_thickness = models.DecimalField(
-        'Base Material Thickness, mm',
-        max_digits=5,
-        decimal_places=2,
-        null=True,
-        blank=True
-    )
-    finished_thickness = models.DecimalField(
-        'Finished Product Thickness, mm',
-        max_digits=5,
-        decimal_places=2,
-        null=True,
-        blank=True
-    )
-
-    parametric_rules = models.JSONField(
-        'Parametric Calculation & CNC Rules',
-        default=dict,
-        blank=True
-    )
-
-    created_at = models.DateTimeField('Created At', auto_now_add=True)
-    updated_at = models.DateTimeField('Updated At', auto_now=True)
 
     class Meta:
-        verbose_name = 'Product'
-        verbose_name_plural = 'Products'
-        unique_together = ('family', 'series')
+        verbose_name = 'מוצר'
+        verbose_name_plural = 'מוצרים'
+        unique_together = ('product_family', 'series')
 
     def __str__(self):
-        return f"[{self.sku}] {self.name} ({self.family.name} / {self.series.name})"
+        return f"[{self.code}] {self.name} ({self.product_family.name} / {self.series.name})"
 
 
 class ProductMaterial(models.Model):
@@ -168,31 +152,178 @@ class ProductMaterial(models.Model):
     Bill of Materials (BOM) linking products and raw materials with formulas.
     """
     product = models.ForeignKey(
-        Product,
+        ProductModel,
         on_delete=models.CASCADE,
         related_name='bom_items',
-        verbose_name='Product'
+        verbose_name='מוצר'
     )
     material = models.ForeignKey(
         Material,
         on_delete=models.PROTECT,
         related_name='used_in_products',
-        verbose_name='Material'
+        verbose_name='חומר'
     )
 
     quantity_formula = models.CharField(
-        'Consumption Formula',
+        'נוסחת צריכה',
         max_length=255,
         default='1',
-        help_text='Use variables like H (height), W (width), D (depth)'
+        help_text='השתמש במשתנים כמו H (גובה), W (רוחב), D (עומק)'
     )
 
-    note = models.CharField('Part / Component Note', max_length=255, blank=True)
+    note = models.CharField('הערת חלק / רכיב', max_length=255, blank=True)
 
     class Meta:
-        verbose_name = 'BOM Item'
-        verbose_name_plural = 'BOM Items'
+        verbose_name = 'פריט עץ מוצר'
+        verbose_name_plural = 'פריטי עץ מוצר'
         unique_together = ('product', 'material', 'note')
 
     def __str__(self):
         return f"{self.product.sku} -> {self.material.name} ({self.quantity_formula})"
+
+from django.db import models
+
+
+class Customizer(models.Model):
+    # --- Main identifiers ---
+    code = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+        verbose_name='קוד / מק""ט קסטומייזר',
+        help_text="קוד ייחודי לחיפוש מהיר על ידי מנהל (למשל cmz1)",
+    )
+    name = models.CharField(max_length=255, verbose_name="שם")
+    description = models.TextField(
+        blank=True, null=True, verbose_name="תיאור"
+    )
+    active = models.BooleanField(
+        default=True, verbose_name="פעיל", db_index=True
+    )
+
+    # --- Catalog hierarchy link (Optional / Nullable) ---
+    product_type = models.ForeignKey(
+        "ProductType",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customizers",
+        verbose_name="סוג מוצר",
+    )
+    product_family = models.ForeignKey(
+        "ProductFamily",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customizers",
+        verbose_name="משפחת מוצרים",
+    )
+    product_model = models.ForeignKey(
+        "ProductModel",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customizers",
+        verbose_name="דגם מוצר",
+    )
+
+    # --- Engine/Pipeline settings (Strategy & Chain of Responsibility) ---
+    tag = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        db_index=True,
+        verbose_name="תג / אלגוריתם",
+        help_text="מזהה אסטרטגיית עיבוד בקוד (למשל LOCK_SELECTION)",
+    )
+    priority = models.IntegerField(
+        default=100,
+        verbose_name="עדיפות",
+        help_text="סדר ביצוע בתוך השלב (מספר קטן יותר מבוצע מוקדם יותר)",
+    )
+
+    # --- Parameters 1..4 (Labels, Default Values, Hints) ---
+    par1_label = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 1: תווית",
+    )
+    par1_value = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 1: ערך ברירת מחדל",
+    )
+    par1_hint = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 1: רמז",
+    )
+
+    par2_label = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 2: תווית",
+    )
+    par2_value = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 2: ערך ברירת מחדל",
+    )
+    par2_hint = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 2: רמז",
+    )
+
+    par3_label = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 3: תווית",
+    )
+    par3_value = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 3: ערך ברירת מחדל",
+    )
+    par3_hint = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 3: רמז",
+    )
+
+    par4_label = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 4: תווית",
+    )
+    par4_value = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 4: ערך ברירת מחדל",
+    )
+    par4_hint = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 4: רמז",
+    )
+
+    class Meta:
+        db_table = "customizers"
+        verbose_name = "קסטומייזר / אפשרות"
+        verbose_name_plural = "קסטומייזרים / אפשרויות"
+        ordering = ["priority", "code"]
+
+    def __str__(self):
+        return f"[{self.code}] {self.name}"

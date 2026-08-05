@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block page_title %}יצירת הזמנה{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header">
+                <h5 class="mb-0">מידע בסיסי על ההזמנה</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <h6 class="text-primary mb-3"><i class="bi bi-info-circle ms-2"></i>פרטי הזמנה כלליים</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">מספר הזמנה</label>
+                            {{ form.order_number }}
+                            {% if form.order_number.errors %}
+                                <div class="text-danger small">{{ form.order_number.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">שם הלקוח</label>
+                            {{ form.customer }}
+                            {% if form.customer.errors %}
+                                <div class="text-danger small">{{ form.customer.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <h6 class="text-primary mb-3"><i class="bi bi-calendar-event ms-2"></i>לוח זמנים</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">תאריך צביעה</label>
+                            {{ form.painting_date }}
+                            {% if form.painting_date.errors %}
+                                <div class="text-danger small">{{ form.painting_date.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">תאריך סיום</label>
+                            {{ form.completion_date }}
+                            {% if form.completion_date.errors %}
+                                <div class="text-danger small">{{ form.completion_date.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <h6 class="text-primary mb-3"><i class="bi bi-tools ms-2"></i>פרטים טכניים</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">סדרה</label>
+                            {{ form.series }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">חזית / גימור</label>
+                            {{ form.front }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">צבע פנלים (כנף)</label>
+                            {{ form.color_panels }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">צבע משקופים</label>
+                            {{ form.color_frames }}
+                        </div>
+                    </div>
+
+                    <h6 class="text-primary mb-3"><i class="bi bi-chat-left-text ms-2"></i>הערות</h6>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            {{ form.comments }}
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-top d-flex justify-content-end gap-2">
+                        <a href="{% url 'order-list' %}" class="btn btn-light">ביטול</a>
+                        <button type="submit" class="btn btn-primary px-4">צור הזמנה</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+        if (!el.classList.contains('form-select')) {
+            el.classList.add('form-control');
+        }
+    });
+
+    const seriesSelect = document.querySelector('select[name="series"]');
+    const frontSelect = document.querySelector('select[name="front"]');
+
+    if (seriesSelect && frontSelect) {
+        seriesSelect.addEventListener('change', function() {
+            const seriesId = this.value;
+            if (!seriesId) {
+                frontSelect.innerHTML = '<option value="">---------</option>';
+                return;
+            }
+
+            fetch(`{% url 'catalog:fronts-list' %}?series=${seriesId}`)
+                .then(response => response.json())
+                .then(data => {
+                    frontSelect.innerHTML = '<option value="">---------</option>';
+                    // DRF returns a list directly or in a 'results' key if paginated.
+                    // Default ViewSet without pagination returns a list.
+                    const fronts = Array.isArray(data) ? data : data.results;
+                    
+                    fronts.forEach(front => {
+                        const option = document.createElement('option');
+                        option.value = front.id;
+                        option.textContent = front.name;
+                        frontSelect.appendChild(option);
+                    });
+                })
+                .catch(error => console.error('Error fetching fronts:', error));
+        });
+    }
+</script>
+{% endblock %}

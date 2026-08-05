@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}לוח בקרה - SB Production{% endblock %}
+
+{% block page_title %}לוח בקרה{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row g-4">
+        <!-- סטטיסטיקה -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="flex-shrink-0 bg-primary-subtle text-primary rounded-3 p-3 ms-3">
+                            <i class="bi bi-graph-up fs-3"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle text-muted mb-1">סקירה כללית</h6>
+                            <h4 class="card-title mb-0">סטטיסטיקה</h4>
+                        </div>
+                    </div>
+                    <p class="card-text text-muted small">כאן תוכלו לראות את נתוני הייצור, המכירות והביצועים של המפעל בזמן אמת.</p>
+                    <div class="mt-auto">
+                        <span class="badge bg-light text-primary border border-primary-subtle">בקרוב</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- הזמנות מעוכבות -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="flex-shrink-0 bg-danger-subtle text-danger rounded-3 p-3 ms-3">
+                            <i class="bi bi-exclamation-triangle fs-3"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle text-muted mb-1">טיפול דחוף</h6>
+                            <h4 class="card-title mb-0">הזמנות מעוכבות</h4>
+                        </div>
+                    </div>
+                    <p class="card-text text-muted small">מעקב אחר הזמנות שחרגו מלוח הזמנים ודורשות התייחסות מיידית למניעת עיכובים.</p>
+                    <div class="mt-auto">
+                        <span class="badge bg-light text-danger border border-danger-subtle">בקרוב</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- מחסן -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="flex-shrink-0 bg-success-subtle text-success rounded-3 p-3 ms-3">
+                            <i class="bi bi-box-seam fs-3"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle text-muted mb-1">ניהול מלאי</h6>
+                            <h4 class="card-title mb-0">מחסן</h4>
+                        </div>
+                    </div>
+                    <p class="card-text text-muted small">ניהול מלאי חומרי גלם, מוצרים מוכנים ובקרת כניסות ויציאות מהמחסן.</p>
+                    <div class="mt-auto">
+                        <span class="badge bg-light text-success border border-success-subtle">בקרוב</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- הגדרות -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="flex-shrink-0 bg-secondary-subtle text-secondary rounded-3 p-3 ms-3">
+                            <i class="bi bi-gear fs-3"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle text-muted mb-1">תצורת מערכת</h6>
+                            <h4 class="card-title mb-0">הגדרות</h4>
+                        </div>
+                    </div>
+                    <p class="card-text text-muted small">ניהול משתמשים, הרשאות, פרמטרים של המערכת והתאמה אישית של ממשק העבודה.</p>
+                    <div class="mt-auto">
+                        <span class="badge bg-light text-secondary border border-secondary-subtle">בקרוב</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        cursor: default;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+    }
+</style>
+{% endblock %}
