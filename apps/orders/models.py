@@ -4,7 +4,6 @@ from django.db import transaction
 from apps.catalog.models import ProductModel, Front
 
 
-
 class OrderStatus(models.TextChoices):
     DRAFT = 'DRAFT', 'טיוטה'
     MEASUREMENT = 'MEASUREMENT', 'ממתין למדידה'
@@ -29,6 +28,7 @@ class OpeningType(models.TextChoices):
 # ==========================================
 
 from django.db import models
+
 
 class Order(models.Model):
     # --- Identifiers and base data ---
@@ -110,6 +110,26 @@ class Order(models.Model):
     def __str__(self):
         return f"הזמנה מס' {self.order_number} ({self.customer or 'ללא לקוח'})"
 
+    def recalculate_item_marks(self):
+        """
+        Recalculates sequential numbers (mark) for all OrderItems in this order.
+        Orders by group.id and then item.id.
+        """
+        from .models import OrderItem
+
+        # Prefetch items for efficiency if needed, but OrderItem.objects.filter is clear
+        all_items = OrderItem.objects.filter(group__order=self).order_by('group__id', 'id')
+
+        items_to_update = []
+        for i, item in enumerate(all_items, start=1):
+            new_mark = str(i)
+            if item.mark != new_mark:
+                item.mark = new_mark
+                items_to_update.append(item)
+
+        if items_to_update:
+            OrderItem.objects.bulk_update(items_to_update, ['mark'])
+
 
 class OrderChangeLog(models.Model):
     order = models.ForeignKey(
@@ -137,6 +157,8 @@ class OrderChangeLog(models.Model):
 
     def __str__(self):
         return f"{self.order.order_number} - {self.field_name}"
+
+
 # ==========================================
 # 2. PRODUCT GROUP (ORDER Items GROUP)
 # ==========================================
@@ -251,23 +273,67 @@ class OrderItemsGroup(models.Model):
                 self.color_frames = None
             # For SPECIAL_COLOR, color_frames should already be set by user
 
-        # Save group
-        super().save(*args, **kwargs)
+        # Save group and items in one transaction
+        with transaction.atomic():
+            super().save(*args, **kwargs)
 
-        # Generate physical doors (OrderItems) when creating a group
-        if is_new and self.quantity > 0:
-            from .models import OrderItem
+            # Sync physical doors (OrderItems) with group quantity
+            if self.quantity is not None:
+                from .models import OrderItem
 
-            items_to_create = [
-                OrderItem(
-                    group=self,
-                    item_number=item_index,
-                    )
-                for item_index in range(1, self.quantity + 1)
-            ]
+                # Get existing items for this group
+                existing_items = self.items.all().order_by('id')
+                current_count = existing_items.count()
 
-            with transaction.atomic():
-                OrderItem.objects.bulk_create(items_to_create)
+                if current_count < self.quantity:
+                    # Create missing items
+                    items_to_create = [
+                        OrderItem(
+                            group=self,
+                            mark=str(item_index),
+                        )
+                        for item_index in range(current_count + 1, self.quantity + 1)
+                    ]
+                    OrderItem.objects.bulk_create(items_to_create)
+                elif current_count > self.quantity:
+                    # Remove excess items from the end
+                    items_to_delete = existing_items[self.quantity:]
+                    OrderItem.objects.filter(id__in=[item.id for item in items_to_delete]).delete()
+
+            # After syncing items in this group, recalculate marks for the entire order
+            self.order.recalculate_item_marks()
+
+    def delete(self, *args, **kwargs):
+        order = self.order
+        super().delete(*args, **kwargs)
+        # After deleting the group, recalculate marks for the remaining items in the order
+        order.recalculate_item_marks()
+
+
+class OrderItemsGroupCustomizer(models.Model):
+    group = models.ForeignKey(
+        'OrderItemsGroup',
+        on_delete=models.CASCADE,
+        related_name='customizers',
+        verbose_name='קבוצת פריטים'
+    )
+    customizer = models.ForeignKey(
+        'catalog.Customizer',
+        on_delete=models.CASCADE,
+        verbose_name='קסטומייזר'
+    )
+    par1 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 1")
+    par2 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 2")
+    par3 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 3")
+    par4 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 4")
+
+    class Meta:
+        verbose_name = 'קסטומייזר לקבוצה'
+        verbose_name_plural = 'קסטומייזרים לקבוצה'
+
+    def __str__(self):
+        return f"{self.group} - {self.customizer.name}"
+
 
 # ==========================================
 # 3. PRODUCT (ORDER ITEM)
@@ -285,6 +351,13 @@ class OrderItem(models.Model):
         on_delete=models.CASCADE,
         related_name="items",
         verbose_name="קבוצת פריטים",
+    )
+
+    mark = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        verbose_name="סימון",
     )
 
     # --- Dimensions (in mm) ---

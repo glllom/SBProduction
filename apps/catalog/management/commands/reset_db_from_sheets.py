@@ -249,6 +249,7 @@ class Command(BaseCommand):
             OrderItem.objects.create(
                 id=item_id,
                 group_id=group_id,
+                mark=row.get('mark', ''),
                 width=int(row.get('width')) if row.get('width') and str(row.get('width')).isdigit() else None,
                 height=int(row.get('height')) if row.get('height') and str(row.get('height')).isdigit() else None,
                 wall=int(row.get('wall')) if row.get('wall') and str(row.get('wall')).isdigit() else None,

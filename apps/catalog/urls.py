@@ -9,6 +9,7 @@ router.register(r'series', views.SeriesViewSet, basename='series')
 router.register(r'fronts', views.FrontViewSet, basename='fronts')
 router.register(r'families', views.ProductFamilyViewSet, basename='families')
 router.register(r'models', views.ProductModelViewSet, basename='models')
+router.register(r'customizers', views.CustomizerViewSet, basename='customizers')
 
 urlpatterns = [
     path('api/', include(router.urls)),

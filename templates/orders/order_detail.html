@@ -44,21 +44,23 @@
             </div>
         </div>
     </div>
-    <div class="col-auto">
+    <div class="col-auto mb-2">
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
             <i class="bi bi-plus-lg ms-2"></i>הוספת קבוצת דלתות
         </button>
     </div>
     <div class="row">
-        <div class="col-lg-8 mb-4">
+        <div class="col-lg-10 mb-4">
             {% for group in order.groups.all %}
-                <div class="card shadow-sm border-0 mb-4">
+                <div class="card shadow-sm border-0 mb-4 group-card" 
+                     data-group-id="{{ group.id }}" 
+                     data-group-name="{{ group.product.name }}" 
+                     data-group-qty="{{ group.quantity }}" 
+                     data-group-details="{{ group.product.product_family.name }} / {{ group.series.name }}">
                     <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
                         <div>
-                            <h5 class="mb-0 fw-bold text-primary">{{ group.product_family.name }}
-                                × {{ group.series.name }}</h5>
-                            <small class="text-muted">Группа #{{ group.id }} | Кол-во
-                                дверей: {{ group.quantity }}</small>
+                            <h5 class="mb-0 fw-bold text-primary">{{ group.product.name }}</h5>
+                            <small class="text-muted">כמות דלתות: {{ group.quantity }}</small>
                         </div>
                         <div class="dropdown">
                             <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
@@ -90,7 +92,7 @@
                         <div class="modal-dialog modal-lg">
                             <div class="modal-content border-0 shadow">
                                 <div class="modal-header">
-                                    <h5 class="modal-title fw-bold">עריכת קבוצה #{{ group.id }}</h5>
+                                    <h5 class="modal-title fw-bold">עריכת קבוצה</h5>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                 </div>
                                 <form action="{% url 'group-edit' group.id %}" method="post">
@@ -99,9 +101,15 @@
                                         <!-- Note: We are using manual fields here because group_form in context is for new group -->
                                         <!-- In a real scenario, we'd use a formset or AJAX, but for this task I'll use a simple approach -->
                                         <div class="row g-3">
+                                            <!-- Row 1: Series & Front -->
                                             <div class="col-md-6">
-                                                <label class="form-label fw-bold">כמות</label>
-                                                <input type="number" name="quantity" value="{{ group.quantity }}" class="form-control" min="1">
+                                                <label class="form-label fw-bold">סדרה</label>
+                                                <select name="series" class="form-select">
+                                                    <option value="">---------</option>
+                                                    {% for s in series %}
+                                                        <option value="{{ s.id }}" {% if s.id == group.series_id %}selected{% endif %}>{{ s.name }}</option>
+                                                    {% endfor %}
+                                                </select>
                                             </div>
                                             <div class="col-md-6">
                                                 <label class="form-label fw-bold">חזית / גימור</label>
@@ -113,11 +121,49 @@
                                                 </select>
                                             </div>
 
+                                            <!-- Row 2: Product Type & Product Family -->
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold">סוג מוצר</label>
+                                                <select name="product_type" class="form-select">
+                                                    <option value="">---------</option>
+                                                    {% for pt in product_types %}
+                                                        <option value="{{ pt.id }}" {% if pt.id == group.product.product_family.product_type_id %}selected{% endif %}>{{ pt.name }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold">משפחת מוצרים</label>
+                                                <select name="product_family" class="form-select">
+                                                    <option value="">---------</option>
+                                                    {% for pf in group.product.product_family.product_type.families.all %}
+                                                        <option value="{{ pf.id }}" {% if pf.id == group.product.product_family_id %}selected{% endif %}>{{ pf.name }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+
+                                            <!-- Row 3: Info & Quantity -->
+                                            <div class="col-md-8">
+                                                <label class="form-label fw-bold">מוצר שנמצא</label>
+                                                <div class="product-info-display alert alert-info py-2 mb-0" style="min-height: 38px;">
+                                                    <strong class="text-success"><i class="bi bi-check-circle-fill me-1"></i> {{ group.product.name }} ({{ group.product.code }})</strong>
+                                                </div>
+                                                <div class="d-none">
+                                                     <select name="product" class="form-select">
+                                                         <option value="{{ group.product.id }}" selected>{{ group.product.name }}</option>
+                                                     </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label fw-bold">כמות</label>
+                                                <input type="number" name="quantity" value="{{ group.quantity }}" class="form-control" min="1">
+                                            </div>
+
                                             <hr class="my-3">
 
-                                            <div class="col-md-12">
+                                            <!-- Painting Options: Panel & Frame side-by-side -->
+                                            <div class="col-md-6 border-end">
                                                 <label class="form-label fw-bold d-block">אופציית צביעת פנל (דלת)</label>
-                                                <div class="d-flex gap-4">
+                                                <div class="d-flex gap-4 mb-2">
                                                     <div class="form-check">
                                                         <input type="radio" name="panel_paint_option" value="NO_PAINT" id="p_no_{{ group.id }}" class="form-check-input" {% if group.panel_paint_option == 'NO_PAINT' %}checked{% endif %}>
                                                         <label class="form-check-label" for="p_no_{{ group.id }}">לא לצבוע</label>
@@ -131,17 +177,15 @@
                                                         <label class="form-check-label" for="p_spec_{{ group.id }}">גוון מיוחד</label>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div class="col-md-12">
-                                                <label class="form-label fw-bold">צבע פנלים (גוון מיוחד)</label>
-                                                <input type="text" name="color_panels" value="{{ group.color_panels|default:'' }}" class="form-control">
+                                                <div class="mb-3">
+                                                    <label class="form-label fw-bold">צבע פנלים (גוון מיוחד)</label>
+                                                    <input type="text" name="color_panels" value="{{ group.color_panels|default:'' }}" class="form-control">
+                                                </div>
                                             </div>
 
-                                            <hr class="my-3">
-
-                                            <div class="col-md-12">
+                                            <div class="col-md-6 ps-md-4">
                                                 <label class="form-label fw-bold d-block">אופציית צביעת משקוף</label>
-                                                <div class="d-flex gap-4">
+                                                <div class="d-flex gap-4 mb-2">
                                                     <div class="form-check">
                                                         <input type="radio" name="frame_paint_option" value="NO_PAINT" id="f_no_{{ group.id }}" class="form-check-input" {% if group.frame_paint_option == 'NO_PAINT' %}checked{% endif %}>
                                                         <label class="form-check-label" for="f_no_{{ group.id }}">לא לצבוע</label>
@@ -155,20 +199,28 @@
                                                         <label class="form-check-label" for="f_spec_{{ group.id }}">גוון מיוחד</label>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div class="col-md-12">
-                                                <label class="form-label fw-bold">צבע משקופים (גוון מיוחד)</label>
-                                                <input type="text" name="color_frames" value="{{ group.color_frames|default:'' }}" class="form-control">
+                                                <div class="mb-3">
+                                                    <label class="form-label fw-bold">צבע משקופים (גוון מיוחד)</label>
+                                                    <input type="text" name="color_frames" value="{{ group.color_frames|default:'' }}" class="form-control">
+                                                </div>
                                             </div>
                                             
-                                            <div class="col-md-12">
-                                                <label class="form-label fw-bold">הערות</label>
-                                                <textarea name="comments" class="form-control" rows="3">{{ group.comments|default:'' }}</textarea>
+                                            <div class="col-md-6">
+                                                <div class="form-check pt-2">
+                                                    <input type="checkbox" name="is_split_installation" id="split_{{ group.id }}" class="form-check-input" {% if group.is_split_installation %}checked{% endif %}>
+                                                    <label class="form-check-label fw-bold" for="split_{{ group.id }}">
+                                                        התקנה מפוצלת
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <textarea name="comments" class="form-control" rows="3" placeholder="הערות">{{ group.comments|default:'' }}</textarea>
                                             </div>
                                         </div>
                                     </div>
                                     <div class="modal-footer">
                                         <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
+                                        <button type="submit" name="action" value="customize" class="btn btn-outline-primary px-4">שינוי\שדרוג</button>
                                         <button type="submit" class="btn btn-primary px-4">שמור שינויים</button>
                                     </div>
                                 </form>
@@ -179,21 +231,21 @@
                         <!-- Nav tabs -->
                         <ul class="nav nav-tabs nav-fill border-0 bg-light" role="tablist">
                             <li class="nav-item">
-                                <a class="nav-link active py-3 border-0 rounded-0" data-bs-toggle="tab"
+                                <a class="nav-link  active py-3 border-0 rounded-0" data-bs-toggle="tab"
                                    href="#doors-{{ group.id }}">
-                                    <i class="bi bi-door-closed me-2"></i>Изделия (Двери)
+                                    <i class="bi bi-door-closed me-2"></i>פירוט מוצרים
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link py-3 border-0 rounded-0" data-bs-toggle="tab"
+                                <a class="nav-link  py-3 border-0 rounded-0" data-bs-toggle="tab"
                                    href="#custom-{{ group.id }}">
-                                    <i class="bi bi-sliders me-2"></i>Кастомизаторы
+                                    <i class="bi bi-sliders me-2"></i>קסטומייזרים
                                 </a>
                             </li>
                             <li class="nav-item">
                                 <a class="nav-link py-3 border-0 rounded-0" data-bs-toggle="tab"
                                    href="#paint-{{ group.id }}">
-                                    <i class="bi bi-palette me-2"></i>צביעה (פנל ומשקוף)
+                                    <i class="bi bi-palette me-2"></i>צביעה
                                 </a>
                             </li>
                         </ul>
@@ -205,10 +257,10 @@
                                     <table class="table table-sm table-hover mb-0 align-middle">
                                         <thead class="small text-muted bg-white">
                                         <tr>
-                                            <th class="ps-4">Маркировка</th>
-                                            <th>Размеры (ВхШхГ)</th>
-                                            <th>Открывание</th>
-                                            <th class="text-end pe-4">Статус</th>
+                                            <th class="ps-4">סימון</th>
+                                            <th>מידות</th>
+                                            <th>פתיחה</th>
+                                            <th class="text-end pe-4">סטטוס</th>
                                         </tr>
                                         </thead>
                                         <tbody>
@@ -219,18 +271,16 @@
                                                 </td>
                                                 <td>
                                                     {{ item.height|default:"-" }} × {{ item.width|default:"-" }}
-                                                    × {{ item.depth|default:"-" }}
+                                                    × {{ item.wall|default:"-" }}
                                                 </td>
-                                                <td>{{ item.get_opening_side_display|default:"Не выбрано" }}</td>
+                                                <td>{{ item.get_opening_display|default:"לא נבחר" }}</td>
                                                 <td class="text-end pe-4">
-                                                    <span class="badge rounded-pill bg-light text-dark border">Замер</span>
+                                                    <span class="badge rounded-pill bg-light text-dark border">מדידה</span>
                                                 </td>
                                             </tr>
                                         {% empty %}
                                             <tr>
-                                                <td colspan="4" class="text-center py-4 text-muted small">Двери еще не
-                                                    созданы
-                                                </td>
+                                                <td colspan="4" class="text-center py-4 text-muted small">דלתות טרם נוצרו</td>
                                             </tr>
                                         {% endfor %}
                                         </tbody>
@@ -241,23 +291,58 @@
                                 <div class="row row-cols-1 row-cols-md-2 g-3">
                                     {% for cust in group.customizers.all %}
                                         <div class="col">
-                                            <div class="d-flex align-items-center p-2 border rounded">
-                                                <div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">
-                                                    <i class="bi bi-check2-circle"></i>
+                                            <div class="p-2 border rounded bg-white shadow-sm h-100">
+                                                <div class="d-flex align-items-center mb-2">
+                                                    <div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">
+                                                        <i class="bi bi-check2-circle"></i>
+                                                    </div>
+                                                    <div>
+                                                        <div class="fw-bold small text-primary">{{ cust.customizer.name }}</div>
+                                                        <div class="text-muted extra-small">{{ cust.customizer.code }}</div>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <div class="fw-medium small">{{ cust.name }}</div>
-                                                    <div class="text-muted extra-small">Применен</div>
+
+                                                <div class="ps-5">
+                                                    <div class="row g-1">
+                                                        {% if cust.customizer.par1_label %}
+                                                            <div class="col-6 extra-small">
+                                                                <span class="text-muted">{{ cust.customizer.par1_label }}:</span>
+                                                                <span class="fw-medium">{{ cust.par1|default:"-" }}</span>
+                                                            </div>
+                                                        {% endif %}
+                                                        {% if cust.customizer.par2_label %}
+                                                            <div class="col-6 extra-small">
+                                                                <span class="text-muted">{{ cust.customizer.par2_label }}:</span>
+                                                                <span class="fw-medium">{{ cust.par2|default:"-" }}</span>
+                                                            </div>
+                                                        {% endif %}
+                                                        {% if cust.customizer.par3_label %}
+                                                            <div class="col-6 extra-small">
+                                                                <span class="text-muted">{{ cust.customizer.par3_label }}:</span>
+                                                                <span class="fw-medium">{{ cust.par3|default:"-" }}</span>
+                                                            </div>
+                                                        {% endif %}
+                                                        {% if cust.customizer.par4_label %}
+                                                            <div class="col-6 extra-small">
+                                                                <span class="text-muted">{{ cust.customizer.par4_label }}:</span>
+                                                                <span class="fw-medium">{{ cust.par4|default:"-" }}</span>
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     {% empty %}
-                                        <div class="col-12 text-center text-muted small">Кастомизаторы не применены
+                                        <div class="col-12 text-center text-muted py-4 small">
+                                            <i class="bi bi-info-circle me-1"></i> לא יושמו קסטומייזרים לקבוצה זו
                                         </div>
                                     {% endfor %}
                                 </div>
-                                <div class="mt-3 text-end">
-                                    <button class="btn btn-sm btn-outline-primary">Управлять кастомизаторами</button>
+                                <div class="mt-4 text-end">
+                                    <button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn"
+                                            data-group-id="{{ group.id }}">
+                                        <i class="bi bi-gear me-1"></i> ניהול קסטומייזרים
+                                    </button>
                                 </div>
                             </div>
                             <div id="paint-{{ group.id }}" class="tab-pane fade p-4">
@@ -290,13 +375,13 @@
                     </div>
                 </div>
             {% empty %}
-                <div class="card shadow-sm border-0">
+                <div class="card shadow-sm border-0 m-1">
                     <div class="card-body text-center py-5">
                         <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
-                        <h5 class="text-muted">В заказе пока нет групп изделий</h5>
-                        <p class="text-muted small">Добавьте группу, чтобы начать конфигурацию дверей</p>
+                        <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
+                        <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות</p>
                         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
-                            Добавить первую группу
+                            הוסף קבוצה ראשונה
                         </button>
                     </div>
                 </div>
@@ -391,16 +476,9 @@
                     {% csrf_token %}
                     <div class="modal-body">
                         <div class="row g-3">
+                            <!-- Row 1: Series & Front -->
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">דגם מוצר</label>
-                                {{ group_form.product }}
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">כמות</label>
-                                {{ group_form.quantity }}
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">סדרה (אם שונה מההזמנה)</label>
+                                <label class="form-label fw-bold">סדרה</label>
                                 {{ group_form.series }}
                             </div>
                             <div class="col-md-6">
@@ -408,12 +486,37 @@
                                 {{ group_form.front }}
                             </div>
 
+                            <!-- Row 2: Product Type & Product Family -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">סוג מוצר</label>
+                                {{ group_form.product_type }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">משפחת מוצרים</label>
+                                {{ group_form.product_family }}
+                            </div>
+
+                            <!-- Row 3: Info & Quantity -->
+                            <div class="col-md-10">
+                                <label class="form-label fw-bold">מוצר שנמצא</label>
+                                <div class="product-info-display alert alert-info py-2 mb-0" style="min-height: 38px;">
+                                    <small class="text-secondry">בחר סדרה ומשפחה לחיפוש מוצר...</small>
+                                </div>
+                                <div class="d-none">
+                                    {{ group_form.product }}
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label fw-bold">כמות</label>
+                                {{ group_form.quantity }}
+                            </div>
+
                             <hr class="my-3">
 
-                            <!-- Panels Painting -->
-                            <div class="col-md-12">
+                            <!-- Painting Options: Panel & Frame side-by-side -->
+                            <div class="col-md-6 border-end">
                                 <label class="form-label fw-bold d-block">אופציית צביעת פנל (דלת)</label>
-                                <div class="d-flex gap-4">
+                                <div class="d-flex gap-4 mb-2">
                                     {% for radio in group_form.panel_paint_option %}
                                         <div class="form-check">
                                             {{ radio.tag }}
@@ -423,18 +526,15 @@
                                         </div>
                                     {% endfor %}
                                 </div>
-                            </div>
-                            <div class="col-md-12">
-                                <label class="form-label fw-bold">צבע פנלים (גוון מיוחד)</label>
-                                {{ group_form.color_panels }}
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">צבע פנלים (גוון מיוחד)</label>
+                                    {{ group_form.color_panels }}
+                                </div>
                             </div>
 
-                            <hr class="my-3">
-
-                            <!-- Frames Painting -->
-                            <div class="col-md-12">
+                            <div class="col-md-6 ps-md-4">
                                 <label class="form-label fw-bold d-block">אופציית צביעת משקוף</label>
-                                <div class="d-flex gap-4">
+                                <div class="d-flex gap-4 mb-2">
                                     {% for radio in group_form.frame_paint_option %}
                                         <div class="form-check">
                                             {{ radio.tag }}
@@ -444,10 +544,10 @@
                                         </div>
                                     {% endfor %}
                                 </div>
-                            </div>
-                            <div class="col-md-12">
-                                <label class="form-label fw-bold">צבע משקופים (גוון מיוחד)</label>
-                                {{ group_form.color_frames }}
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">צבע משקופים (גוון מיוחד)</label>
+                                    {{ group_form.color_frames }}
+                                </div>
                             </div>
 
                             <hr class="my-3">
@@ -460,17 +560,72 @@
                                     </label>
                                 </div>
                             </div>
-                            <div class="col-md-12">
-                                <label class="form-label fw-bold">הערות לקבוצה</label>
+                            <div class="col-md-6">
                                 {{ group_form.comments }}
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
+                        <button type="submit" name="action" value="customize" class="btn btn-outline-primary px-4">שינוי\שדרוג</button>
                         <button type="submit" class="btn btn-primary px-4">הוסף קבוצה</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Group Customizer -->
+    <div class="modal fade" id="groupCustomizerModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title fw-bold">ניהול שינויים ושדרוגים (Customizer)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="customizerGroupInfo" class="mb-4 p-3 border rounded bg-light">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="fw-bold mb-1" id="custModalGroupName">-</h6>
+                                <small class="text-muted" id="custModalGroupDetails">-</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-primary fs-6" id="custModalGroupQty">-</span>
+                                <div class="extra-small text-muted mt-1">כמות דלתות</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4 position-relative">
+                        <label class="form-label fw-bold">הוספת שינוי / שדרוג</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
+                            <input type="text" id="customizerSearch" class="form-control border-start-0 ps-0" placeholder="חפש לפי שם או קוד...">
+                        </div>
+                        <div id="customizerSearchResults" class="list-group mt-1 shadow-sm d-none" style="max-height: 300px; overflow-y: auto; position: absolute; z-index: 1060; width: 100%;">
+                            <!-- Results will appear here -->
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle" id="groupCustomizersTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>שינוי / שדרוג</th>
+                                    <th>פרמטרים</th>
+                                    <th style="width: 50px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="groupCustomizersList">
+                                <!-- Applied customizers will be here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">סיום</button>
+                </div>
             </div>
         </div>
     </div>
@@ -512,6 +667,349 @@
                 });
             }
 
+            // --- Group Confirmation Logic ---
+            function getGroupFormState($form) {
+                const $disabled = $form.find(':disabled');
+                $disabled.prop('disabled', false);
+                const state = $form.serialize();
+                $disabled.prop('disabled', true);
+                return state;
+            }
+
+            // Track changes in group modals (Add and Edit)
+            $('.edit-group-modal, #addGroupModal').on('show.bs.modal', function() {
+                const $form = $(this).find('form');
+                $form.data('initial-state', getGroupFormState($form));
+            });
+
+            $('.edit-group-modal, #addGroupModal').on('hide.bs.modal', function(e) {
+                const $form = $(this).find('form');
+                const initialState = $form.data('initial-state');
+                const currentState = getGroupFormState($form);
+
+                if (initialState !== currentState && !$(this).data('force-close')) {
+                    if (!confirm('יש שינויים שלא נשמרו. האם אתה בטוח שברצונך לסגור?')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    }
+                }
+            });
+
+            $(document).on('submit', '#addGroupModal form, .modal form[action*="groups/"]', function (e) {
+                const $form = $(this);
+                const $modal = $form.closest('.modal');
+                const initialState = $form.data('initial-state');
+                const currentState = getGroupFormState($form);
+
+                if (initialState !== currentState) {
+                    if (!confirm('לשמור שינויים?')) {
+                        e.preventDefault();
+                        return;
+                    }
+                }
+                
+                if ($modal.length) {
+                    $modal.data('force-close', true);
+                }
+            });
+
+            function updateMainListCustomizers(groupId) {
+                fetch(`/orders/api/group-customizers/?group_id=${groupId}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const items = Array.isArray(data) ? data : (data.results || []);
+                        const $tab = $(`#custom-${groupId}`);
+                        let $container = $tab.find('.row-cols-1');
+                        
+                        if (items.length === 0) {
+                            $tab.html(`
+                                <div class="row row-cols-1 row-cols-md-2 g-3"></div>
+                                <div class="col-12 text-center text-muted py-4 small">
+                                    <i class="bi bi-info-circle me-1"></i> לא יושמו קסטומייזרים לקבוצה זו
+                                </div>
+                                <div class="mt-4 text-end">
+                                    <button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn"
+                                            data-group-id="${groupId}">
+                                        <i class="bi bi-gear me-1"></i> ניהול קסטומייזרים
+                                    </button>
+                                </div>
+                            `);
+                            return;
+                        }
+
+                        // Ensure container exists
+                        if ($container.length === 0) {
+                           $tab.html(`
+                                <div class="row row-cols-1 row-cols-md-2 g-3"></div>
+                                <div class="mt-4 text-end">
+                                    <button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn"
+                                            data-group-id="${groupId}">
+                                        <i class="bi bi-gear me-1"></i> ניהול קסטומייזרים
+                                    </button>
+                                </div>
+                           `);
+                           $container = $tab.find('.row-cols-1');
+                        }
+                        
+                        let html = '';
+                        items.forEach(cust => {
+                            let paramsHtml = '';
+                            for (let i = 1; i <= 4; i++) {
+                                const label = cust[`par${i}_label`];
+                                const val = cust[`par${i}`];
+                                if (label) {
+                                    paramsHtml += `
+                                        <div class="col-6 extra-small">
+                                            <span class="text-muted">${label}:</span>
+                                            <span class="fw-medium">${val || '-'}</span>
+                                        </div>`;
+                                }
+                            }
+
+                            html += `
+                                <div class="col">
+                                    <div class="p-2 border rounded bg-white shadow-sm h-100">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">
+                                                <i class="bi bi-check2-circle"></i>
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold small text-primary">${cust.customizer_name}</div>
+                                                <div class="text-muted extra-small">${cust.customizer_code}</div>
+                                            </div>
+                                        </div>
+                                        <div class="ps-5">
+                                            <div class="row g-1">
+                                                ${paramsHtml}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>`;
+                        });
+                        $container.html(html);
+                        
+                        // Remove empty message if exists
+                        $tab.find('.text-center.text-muted.py-4').remove();
+                    });
+            }
+
+            const $custModal = $('#groupCustomizerModal');
+            const $custSearch = $('#customizerSearch');
+            const $custResults = $('#customizerSearchResults');
+            const $custTableBody = $('#groupCustomizersList');
+
+            function openCustomizerModal(groupId) {
+                const $groupCard = $(`.group-card[data-group-id="${groupId}"]`);
+                if (!$groupCard.length) {
+                    // If card not found (maybe first load after add), try to fetch info or show simple
+                    $('#custModalGroupName').text(`קבוצה #${groupId}`);
+                } else {
+                    const name = $groupCard.data('group-name');
+                    const qty = $groupCard.data('group-qty');
+                    const details = $groupCard.data('group-details');
+
+                    $('#custModalGroupName').text(name);
+                    $('#custModalGroupQty').text(qty);
+                    $('#custModalGroupDetails').text(details);
+                }
+                
+                $custModal.data('group-id', groupId);
+                loadGroupCustomizers(groupId);
+                $custModal.modal('show');
+            }
+
+            function loadGroupCustomizers(groupId) {
+                $custTableBody.html('<tr><td colspan="3" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>');
+                
+                fetch(`/orders/api/group-customizers/?group_id=${groupId}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        let html = '';
+                        const items = Array.isArray(data) ? data : (data.results || []);
+                        items.forEach(item => {
+                            html += renderCustomizerRow(item);
+                        });
+                        if (items.length === 0) {
+                            html = '<tr><td colspan="3" class="text-center py-4 text-muted">לא נוספו קסטומייזרים לקבוצה זו</td></tr>';
+                        }
+                        $custTableBody.html(html);
+                    })
+                    .catch(err => {
+                        $custTableBody.html('<tr><td colspan="3" class="text-center text-danger py-4">שגיאה בטעינת נתונים</td></tr>');
+                    });
+            }
+
+            function renderCustomizerRow(item) {
+                let paramsHtml = '<div class="row g-2">';
+                let hasParams = false;
+                for (let i = 1; i <= 4; i++) {
+                    const label = item[`par${i}_label`];
+                    if (label) {
+                        hasParams = true;
+                        paramsHtml += `
+                            <div class="col-md-6">
+                                <label class="extra-small text-muted mb-0 d-block">${label}</label>
+                                <input type="text" class="form-control form-control-sm cust-param-input" 
+                                       data-id="${item.id}" data-param="par${i}" value="${item[`par${i}`] || ''}">
+                            </div>`;
+                    }
+                }
+                if (!hasParams) paramsHtml += '<div class="col-12 text-muted extra-small">אין פרמטרים להגדרה</div>';
+                paramsHtml += '</div>';
+
+                return `
+                    <tr data-item-id="${item.id}">
+                        <td>
+                            <div class="fw-bold text-primary">${item.customizer_name}</div>
+                            <div class="extra-small text-muted">${item.customizer_code}</div>
+                        </td>
+                        <td>${paramsHtml}</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-danger remove-cust-btn" data-id="${item.id}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            // Search logic
+            let searchTimeout;
+            $custSearch.on('input', function() {
+                clearTimeout(searchTimeout);
+                const query = $(this).val();
+                if (query.length < 2) {
+                    $custResults.addClass('d-none');
+                    return;
+                }
+
+                searchTimeout = setTimeout(() => {
+                    fetch(`/catalog/api/customizers/?search=${encodeURIComponent(query)}`)
+                        .then(r => r.json())
+                        .then(data => {
+                            const results = Array.isArray(data) ? data : (data.results || []);
+                            let html = '';
+                            results.forEach(c => {
+                                html += `
+                                    <a href="#" class="list-group-item list-group-item-action add-customizer-item" data-id="${c.id}">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <div class="fw-bold">${c.name}</div>
+                                                <small class="text-muted">${c.code}</small>
+                                            </div>
+                                            <i class="bi bi-plus-circle text-primary"></i>
+                                        </div>
+                                    </a>`;
+                            });
+                            if (results.length === 0) {
+                                html = '<div class="list-group-item text-muted">לא נמצאו תוצאות</div>';
+                            }
+                            $custResults.html(html).removeClass('d-none');
+                        });
+                }, 300);
+            });
+
+            // Add customizer
+            $(document).on('click', '.add-customizer-item', function(e) {
+                e.preventDefault();
+                const custId = $(this).data('id');
+                const groupId = $custModal.data('group-id');
+
+                fetch('/orders/api/group-customizers/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({
+                        group: groupId,
+                        customizer: custId
+                    })
+                })
+                .then(r => r.json())
+                .then(item => {
+                    $custSearch.val('');
+                    $custResults.addClass('d-none');
+                    loadGroupCustomizers(groupId);
+                    updateMainListCustomizers(groupId);
+                });
+            });
+
+            // Remove customizer
+            $(document).on('click', '.remove-cust-btn', function() {
+                if (!confirm('להסיר קסטומייזר זה?')) return;
+                const id = $(this).data('id');
+                const groupId = $custModal.data('group-id');
+                fetch(`/orders/api/group-customizers/${id}/`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+                }).then(() => {
+                    loadGroupCustomizers(groupId);
+                    updateMainListCustomizers(groupId);
+                });
+            });
+
+            // Update params with debounce
+            let updateParamTimeout;
+            $(document).on('input', '.cust-param-input', function() {
+                const $input = $(this);
+                const id = $input.data('id');
+                const param = $input.data('param');
+                const value = $input.val();
+                const groupId = $custModal.data('group-id');
+
+                clearTimeout(updateParamTimeout);
+                $input.addClass('border-warning');
+
+                updateParamTimeout = setTimeout(() => {
+                    fetch(`/orders/api/group-customizers/${id}/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        body: JSON.stringify({ [param]: value })
+                    })
+                    .then(r => {
+                        if (r.ok) {
+                            $input.removeClass('border-warning').addClass('border-success');
+                            setTimeout(() => $input.removeClass('border-success'), 1000);
+                            updateMainListCustomizers(groupId);
+                        }
+                    });
+                }, 1000);
+            });
+
+            // Close search on click outside
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('#customizerSearch, #customizerSearchResults').length) {
+                    $custResults.addClass('d-none');
+                }
+            });
+
+            // Check for open_customize param in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const groupToCustomize = urlParams.get('open_customize');
+            if (groupToCustomize) {
+                openCustomizerModal(groupToCustomize);
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, newUrl);
+            }
+
+            // Also allow opening from the "Manage Customizers" buttons on the page
+            $(document).on('click', '.open-customizer-btn', function() {
+                const groupId = $(this).data('group-id');
+                if (groupId) openCustomizerModal(groupId);
+            });
+
+            $(document).on('click', 'button:contains("ניהול קסטומייזרים")', function() {
+                if ($(this).hasClass('open-customizer-btn')) return; // handled above
+                const $card = $(this).closest('.group-card');
+                const groupId = $card.data('group-id');
+                if (groupId) openCustomizerModal(groupId);
+            });
+
             // Logic for dependent selects in edit modal
             $(document).on('change', 'select[name="series"]', function () {
                 const $seriesSelect = $(this);
@@ -539,6 +1037,85 @@
                         $frontSelect.html(options).trigger('change');
                     })
                     .catch(error => console.error('Error fetching fronts:', error));
+            });
+
+            // Logic for dependent product type -> family
+            $(document).on('change', 'select[name="product_type"]', function () {
+                const $typeSelect = $(this);
+                const typeId = $typeSelect.val();
+                const $container = $typeSelect.closest('.modal-body, form');
+                const $familySelect = $container.find('select[name="product_family"]');
+
+                if (!typeId) {
+                    $familySelect.html('<option value="">---------</option>').trigger('change');
+                    return;
+                }
+
+                fetch(`/catalog/api/families/?type=${typeId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        let options = '<option value="">---------</option>';
+                        const families = (Array.isArray(data) ? data : data.results) || [];
+                        families.forEach(family => {
+                            options += `<option value="${family.id}">${family.name}</option>`;
+                        });
+                        $familySelect.html(options).trigger('change');
+                    })
+                    .catch(error => console.error('Error fetching families:', error));
+            });
+
+            // Logic for (series + family) -> product search
+            $(document).on('change', 'select[name="series"], select[name="product_family"]', function () {
+                const $container = $(this).closest('.modal-body, form');
+                const seriesId = $container.find('select[name="series"]').val();
+                const familyId = $container.find('select[name="product_family"]').val();
+                const $productSelect = $container.find('select[name="product"]');
+                const $display = $container.find('.product-info-display');
+
+                if (!seriesId || !familyId) {
+                    if ($display.length) {
+                        $display.html('<small class="text-muted">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
+                    }
+                    $productSelect.val('').trigger('change');
+                    return;
+                }
+
+                fetch(`/catalog/api/models/?series=${seriesId}&family=${familyId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const models = (Array.isArray(data) ? data : data.results) || [];
+                        if (models.length > 0) {
+                            const model = models[0];
+                            if ($display.length) {
+                                $display.html(`<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ${model.name} (${model.code})</strong>`);
+                            }
+                            // Add the option if it doesn't exist so .val() works correctly
+                            if ($productSelect.find(`option[value="${model.id}"]`).length === 0) {
+                                $productSelect.append(`<option value="${model.id}">${model.name}</option>`);
+                            }
+                            $productSelect.val(model.id).trigger('change');
+                            $container.closest('form').find('button[type="submit"]').prop('disabled', false);
+                        } else {
+                            if ($display.length) {
+                                $display.html('<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> מוצר לא נמצא לשילוב זה</span>');
+                            }
+                            $productSelect.val('').trigger('change');
+                            $container.closest('form').find('button[type="submit"]').prop('disabled', true);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching product model:', error);
+                        $container.closest('form').find('button[type="submit"]').prop('disabled', false);
+                    });
+            });
+
+            // Trigger initial search for products when modal opens (especially for edit)
+            $('.modal').on('shown.bs.modal', function () {
+                const $modal = $(this);
+                const $familySelect = $modal.find('select[name="product_family"]');
+                if ($familySelect.val()) {
+                    $familySelect.trigger('change');
+                }
             });
 
             // Painting logic for Order Header

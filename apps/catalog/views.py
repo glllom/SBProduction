@@ -2,9 +2,10 @@ from django.shortcuts import render
 from django.views.generic import ListView, CreateView, UpdateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
+from django.db import models
 from .models import ProductFamily, Series, ProductModel, Customizer, Front
 from rest_framework import viewsets, permissions
-from .serializers import SeriesSerializer, FrontSerializer, ProductFamilySerializer, ProductModelSerializer
+from .serializers import SeriesSerializer, FrontSerializer, ProductFamilySerializer, ProductModelSerializer, CustomizerSerializer
 
 class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Series.objects.filter(active=True).order_by('name')
@@ -28,6 +29,13 @@ class ProductFamilyViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ProductFamilySerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        type_id = self.request.query_params.get('type')
+        if type_id:
+            queryset = queryset.filter(product_type_id=type_id)
+        return queryset.order_by('name')
+
 class ProductModelViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ProductModel.objects.filter(active=True)
     serializer_class = ProductModelSerializer
@@ -42,6 +50,20 @@ class ProductModelViewSet(viewsets.ReadOnlyModelViewSet):
         if family_id:
             queryset = queryset.filter(product_family_id=family_id)
         return queryset.order_by('name')
+
+class CustomizerViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Customizer.objects.filter(active=True)
+    serializer_class = CustomizerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                models.Q(name__icontains=search) | models.Q(code__icontains=search)
+            )
+        return queryset.order_by('priority', 'code')
 
 class FamilyListView(LoginRequiredMixin, ListView):
     model = ProductFamily

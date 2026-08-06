@@ -31,7 +31,6 @@ class ProductFamily(models.Model):
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
 
-
     class Meta:
         verbose_name = 'משפחת מוצרים'
         verbose_name_plural = 'משפחות מוצרים'
@@ -117,7 +116,7 @@ class ProductModel(models.Model):
     """
     Product master definition.
     Represents a unique intersection of ProductFamily x Series.
-    Stores all technological requirements, manufacturing parameters, and CNC rules.
+    Core catalog identity. Technological details are stored in apps.production.ProductTechnicalData.
     """
     code = models.CharField('מק""ט', max_length=100, unique=True)
     name = models.CharField('שם', max_length=255)
@@ -136,7 +135,6 @@ class ProductModel(models.Model):
         related_name='products',
         verbose_name='סדרה'
     )
-
 
     class Meta:
         verbose_name = 'מוצר'
@@ -180,8 +178,6 @@ class ProductMaterial(models.Model):
 
     def __str__(self):
         return f"{self.product.sku} -> {self.material.name} ({self.quantity_formula})"
-
-from django.db import models
 
 
 class Customizer(models.Model):

@@ -1,7 +1,12 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from . import views
 
+router = DefaultRouter()
+router.register(r'group-customizers', views.OrderItemsGroupCustomizerViewSet, basename='group-customizers')
+
 urlpatterns = [
+    path('api/', include(router.urls)),
     path('', views.OrderListView.as_view(), name='order-list'),
     path('add/', views.OrderCreateView.as_view(), name='order-add'),
     path('<int:pk>/', views.OrderDetailView.as_view(), name='order-detail'),

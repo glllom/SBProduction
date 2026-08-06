@@ -4,9 +4,11 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.db.models import Q
 from django.http import JsonResponse
-from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog
+from rest_framework import viewsets, permissions
+from .serializers import OrderItemsGroupCustomizerSerializer
+from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer
 from .forms import OrderForm, OrderHeaderForm, OrderItemsGroupForm
-from apps.catalog.models import ProductFamily, Series, Front
+from apps.catalog.models import ProductFamily, Series, Front, ProductType
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = 'dashboard.html'
@@ -49,6 +51,7 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context['families'] = ProductFamily.objects.all()
         context['series'] = Series.objects.all()
+        context['product_types'] = ProductType.objects.filter(active=True)
         context['header_form'] = OrderHeaderForm(instance=self.object)
         context['group_form'] = OrderItemsGroupForm(order=self.object)
         return context
@@ -96,6 +99,7 @@ class OrderDeleteView(LoginRequiredMixin, DeleteView):
 class OrderItemsGroupCreateView(LoginRequiredMixin, CreateView):
     model = OrderItemsGroup
     form_class = OrderItemsGroupForm
+    template_name = 'orders/orderitemsgroup_form.html'
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -105,22 +109,39 @@ class OrderItemsGroupCreateView(LoginRequiredMixin, CreateView):
     def form_valid(self, form):
         form.instance.order = get_object_or_404(Order, pk=self.kwargs.get('order_pk'))
         return super().form_valid(form)
+    
+    def form_invalid(self, form):
+        # Log errors for debugging
+        print(f"Group Create failed: {form.errors}")
+        return super().form_invalid(form)
 
     def get_success_url(self):
-        return reverse_lazy('order-detail', kwargs={'pk': self.object.order.pk})
+        base_url = reverse_lazy('order-detail', kwargs={'pk': self.object.order.pk})
+        if self.request.POST.get('action') == 'customize':
+            return f"{base_url}?open_customize={self.object.pk}"
+        return base_url
 
 
 class OrderItemsGroupUpdateView(LoginRequiredMixin, UpdateView):
     model = OrderItemsGroup
     form_class = OrderItemsGroupForm
+    template_name = 'orders/orderitemsgroup_form.html'
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs['order'] = self.object.order
         return kwargs
 
+    def form_invalid(self, form):
+        # Log errors for debugging
+        print(f"Group Update failed: {form.errors}")
+        return super().form_invalid(form)
+
     def get_success_url(self):
-        return reverse_lazy('order-detail', kwargs={'pk': self.object.order.pk})
+        base_url = reverse_lazy('order-detail', kwargs={'pk': self.object.order.pk})
+        if self.request.POST.get('action') == 'customize':
+            return f"{base_url}?open_customize={self.object.pk}"
+        return base_url
 
 
 class OrderItemsGroupDeleteView(LoginRequiredMixin, DeleteView):
@@ -128,3 +149,16 @@ class OrderItemsGroupDeleteView(LoginRequiredMixin, DeleteView):
 
     def get_success_url(self):
         return reverse_lazy('order-detail', kwargs={'pk': self.object.order.pk})
+
+
+class OrderItemsGroupCustomizerViewSet(viewsets.ModelViewSet):
+    queryset = OrderItemsGroupCustomizer.objects.all()
+    serializer_class = OrderItemsGroupCustomizerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        group_id = self.request.query_params.get('group_id')
+        if group_id:
+            queryset = queryset.filter(group_id=group_id)
+        return queryset
