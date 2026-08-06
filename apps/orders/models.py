@@ -350,7 +350,7 @@ class OrderItem(models.Model):
         "OrderItemsGroup",
         on_delete=models.CASCADE,
         related_name="items",
-        verbose_name="קבוצת פריטים",
+        verbose_name="קבוצת מוצרים",
     )
 
     mark = models.CharField(
@@ -446,6 +446,13 @@ class OrderItem(models.Model):
         blank=True,
         null=True,
         verbose_name='גובה ציר 5 (מ""מ)',
+    )
+    sketch = models.FileField(
+        upload_to='order_sketches/%Y/%m/',
+        blank=True,
+        null=True,
+        verbose_name='שרטוט ידני / קובץ',
+        help_text='ניתן להעלות PDF, JPEG, PNG וכדומה'
     )
 
     class Meta:

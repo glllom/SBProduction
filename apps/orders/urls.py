@@ -17,4 +17,7 @@ urlpatterns = [
     path('<int:order_pk>/groups/add/', views.OrderItemsGroupCreateView.as_view(), name='group-add'),
     path('groups/<int:pk>/edit/', views.OrderItemsGroupUpdateView.as_view(), name='group-edit'),
     path('groups/<int:pk>/delete/', views.OrderItemsGroupDeleteView.as_view(), name='group-delete'),
+    
+    # Order Items
+    path('items/<int:pk>/edit/', views.OrderItemUpdateView.as_view(), name='order-item-edit'),
 ]

@@ -7,8 +7,15 @@ from django.http import JsonResponse
 from rest_framework import viewsets, permissions
 from .serializers import OrderItemsGroupCustomizerSerializer
 from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer
-from .forms import OrderForm, OrderHeaderForm, OrderItemsGroupForm
+from .forms import OrderForm, OrderHeaderForm, OrderItemsGroupForm, OrderItemForm
 from apps.catalog.models import ProductFamily, Series, Front, ProductType
+
+class OrderItemUpdateView(LoginRequiredMixin, UpdateView):
+    model = OrderItem
+    form_class = OrderItemForm
+
+    def get_success_url(self):
+        return reverse_lazy('order-detail', kwargs={'pk': self.object.group.order.pk})
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = 'dashboard.html'

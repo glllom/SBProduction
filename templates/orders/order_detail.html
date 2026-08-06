@@ -264,7 +264,7 @@
                                         </tr>
                                         </thead>
                                         <tbody>
-                                        {% for item in group.items.all %}
+                                            {% for item in group.items.all %}
                                             <tr>
                                                 <td class="ps-4">
                                                     <span class="fw-medium text-dark">{{ item.mark }}</span>
@@ -275,7 +275,29 @@
                                                 </td>
                                                 <td>{{ item.get_opening_display|default:"לא נבחר" }}</td>
                                                 <td class="text-end pe-4">
-                                                    <span class="badge rounded-pill bg-light text-dark border">מדידה</span>
+                                                    <button class="btn btn-sm btn-outline-primary py-0 btn-edit-item"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#editItemModal"
+                                                            data-item-id="{{ item.id }}"
+                                                            data-item-mark="{{ item.mark }}"
+                                                            data-width="{{ item.width|default:'' }}"
+                                                            data-height="{{ item.height|default:'' }}"
+                                                            data-wall="{{ item.wall|default:'' }}"
+                                                            data-direction="{{ item.direction|default:'' }}"
+                                                            data-opening="{{ item.opening|default:'' }}"
+                                                            data-addition-cut="{{ item.addition_cut|default:'' }}"
+                                                            data-place="{{ item.place|default:'' }}"
+                                                            data-comment="{{ item.comment|default:'' }}"
+                                                            data-lock="{{ item.custom_lock_height|default:'' }}"
+                                                            data-h1="{{ item.custom_hinge1|default:'' }}"
+                                                            data-h2="{{ item.custom_hinge2|default:'' }}"
+                                                            data-h3="{{ item.custom_hinge3|default:'' }}"
+                                                            data-h4="{{ item.custom_hinge4|default:'' }}"
+                                                            data-h5="{{ item.custom_hinge5|default:'' }}"
+                                                            data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
+                                                            data-type-id="{{ group.product.product_family.product_type_id }}">
+                                                        <i class="bi bi-pencil small"></i> ערוך
+                                                    </button>
                                                 </td>
                                             </tr>
                                         {% empty %}
@@ -630,6 +652,118 @@
         </div>
     </div>
 
+    <div class="modal fade" id="editItemModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">עריכת פריט: <span id="modalItemMarkDisplay"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="" method="post" id="editItemForm" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">סימון</label>
+                                <input type="text" name="mark" id="id_item_mark" class="form-control">
+                            </div>
+                            <div class="col-md-4 field-dims">
+                                <label class="form-label fw-bold">רוחב (מ"מ)</label>
+                                <input type="number" name="width" id="id_item_width" class="form-control">
+                            </div>
+                            <div class="col-md-4 field-dims">
+                                <label class="form-label fw-bold">גובה (מ"מ)</label>
+                                <input type="number" name="height" id="id_item_height" class="form-control">
+                            </div>
+                            
+                            <div class="col-md-4 field-wall">
+                                <label class="form-label fw-bold">עובי קיר (מ"מ)</label>
+                                <input type="number" name="wall" id="id_item_wall" class="form-control">
+                            </div>
+                            
+                            <div class="col-md-4 field-door">
+                                <label class="form-label fw-bold">כיוון פתיחה</label>
+                                <select name="direction" id="id_item_direction" class="form-select">
+                                    <option value="">---------</option>
+                                    <option value="IN">פנימה</option>
+                                    <option value="OUT">החוצה</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-4 field-door">
+                                <label class="form-label fw-bold">צד פתיחה</label>
+                                <select name="opening" id="id_item_opening" class="form-select">
+                                    <option value="">---------</option>
+                                    <option value="LEFT">שמאל (L)</option>
+                                    <option value="RIGHT">ימין (R)</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-4 field-door">
+                                <label class="form-label fw-bold">חיתוך / קיצור נוסף</label>
+                                <input type="text" name="addition_cut" id="id_item_addition_cut" class="form-control">
+                            </div>
+
+                            <div class="col-md-4 field-place">
+                                <label class="form-label fw-bold">מיקום</label>
+                                <input type="text" name="place" id="id_item_place" class="form-control">
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">הערה</label>
+                                <textarea name="comment" id="id_item_comment" class="form-control" rows="1"></textarea>
+                            </div>
+
+                            <div class="col-12 border-top pt-3 field-door">
+                                <h6 class="fw-bold text-primary">פרמטרים הנדסיים (גובה עיבודים)</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label extra-small">גובה מנעול</label>
+                                        <input type="number" step="0.01" name="custom_lock_height" id="id_item_lock" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label extra-small">ציר 1</label>
+                                        <input type="number" step="0.01" name="custom_hinge1" id="id_item_h1" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label extra-small">ציר 2</label>
+                                        <input type="number" step="0.01" name="custom_hinge2" id="id_item_h2" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label extra-small">ציר 3</label>
+                                        <input type="number" step="0.01" name="custom_hinge3" id="id_item_h3" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label extra-small">ציר 4</label>
+                                        <input type="number" step="0.01" name="custom_hinge4" id="id_item_h4" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label extra-small">ציר 5</label>
+                                        <input type="number" step="0.01" name="custom_hinge5" id="id_item_h5" class="form-control form-control-sm">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-12 border-top pt-3">
+                                <label class="form-label fw-bold">שרטוט ידני / קובץ</label>
+                                <div id="currentSketchDisplay" class="mb-2 d-none">
+                                    <span class="badge bg-info text-dark me-2">קובץ קיים</span>
+                                    <a href="#" target="_blank" id="sketchLink" class="small">צפה בקובץ</a>
+                                </div>
+                                <input type="file" name="sketch" id="id_item_sketch" class="form-control">
+                                <small class="text-muted">ניתן להעלות PDF, JPEG, PNG וכדומה</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
+                        <button type="submit" class="btn btn-primary px-4">שמור שינויים</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <style>
         .extra-small {
             font-size: 0.75rem;
@@ -639,7 +773,94 @@
 
 {% block extra_js %}
     <script>
+        const productTypeConfig = {
+            {% for pt in product_types %}
+                "{{ pt.id }}": {
+                    "has_door": {{ pt.has_door|yesno:"true,false" }},
+                    "has_frame": {{ pt.has_frame|yesno:"true,false" }}
+                },
+            {% endfor %}
+        };
+
         $(document).ready(function () {
+            // Edit Item Modal Logic
+            $('.btn-edit-item').on('click', function() {
+                const $btn = $(this);
+                const itemId = $btn.data('item-id');
+                const typeId = $btn.data('type-id');
+                
+                const mark = $btn.data('item-mark');
+                const width = $btn.data('width');
+                const height = $btn.data('height');
+                const wall = $btn.data('wall');
+                const direction = $btn.data('direction');
+                const opening = $btn.data('opening');
+                const additionCut = $btn.data('addition-cut');
+                const place = $btn.data('place');
+                const comment = $btn.data('comment');
+                const sketchUrl = $btn.data('sketch-url');
+                
+                const lock = $btn.data('lock');
+                const h1 = $btn.data('h1');
+                const h2 = $btn.data('h2');
+                const h3 = $btn.data('h3');
+                const h4 = $btn.data('h4');
+                const h5 = $btn.data('h5');
+
+                // Populate form
+                $('#editItemForm').attr('action', `/orders/items/${itemId}/edit/`);
+                $('#modalItemMarkDisplay').text(mark);
+                $('#id_item_mark').val(mark);
+                $('#id_item_width').val(width);
+                $('#id_item_height').val(height);
+                $('#id_item_wall').val(wall);
+                $('#id_item_direction').val(direction);
+                $('#id_item_opening').val(opening);
+                $('#id_item_addition_cut').val(additionCut);
+                $('#id_item_place').val(place);
+                $('#id_item_comment').val(comment);
+                
+                $('#id_item_lock').val(lock);
+                $('#id_item_h1').val(h1);
+                $('#id_item_h2').val(h2);
+                $('#id_item_h3').val(h3);
+                $('#id_item_h4').val(h4);
+                $('#id_item_h5').val(h5);
+
+                if (sketchUrl) {
+                    $('#sketchLink').attr('href', sketchUrl);
+                    $('#currentSketchDisplay').removeClass('d-none');
+                } else {
+                    $('#currentSketchDisplay').addClass('d-none');
+                }
+
+                // Show/Hide fields based on Product Type config
+                const config = productTypeConfig[typeId] || { has_door: true, has_frame: true };
+                
+                if (config.has_frame) {
+                    $('.field-wall').show();
+                } else {
+                    $('.field-wall').hide();
+                }
+
+                if (config.has_door) {
+                    $('.field-door').show();
+                } else {
+                    $('.field-door').hide();
+                }
+
+                if (config.has_door || config.has_frame) {
+                    $('.field-dims').show();
+                    $('.field-place').show();
+                } else {
+                    $('.field-dims').hide();
+                    $('.field-place').hide();
+                }
+                
+                // Special case for Opening Lining (משקוף מעבר) - user mentioned it specifically.
+                // If it has a frame but no door, direction/opening will be hidden by the logic above.
+            });
+
             // Ensure Bootstrap classes are applied for modal fields correctly
             $('#editHeaderModal input, #editHeaderModal select, #editHeaderModal textarea').each(function () {
                 if (!$(this).hasClass('form-select') && !$(this).hasClass('select2-hidden-accessible')) {

@@ -162,6 +162,7 @@ class OrderItemInline(admin.TabularInline):
         "wall",
         "opening",
         "direction",
+        "sketch",
         "place",
         "custom_lock_height",
     )

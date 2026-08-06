@@ -3,35 +3,35 @@ from apps.catalog.models import ProductModel
 
 class ProductTechnicalData(models.Model):
     """
-    Техническая спецификация изделия для производства.
-    Хранит параметры, необходимые для CNC станков и формирования техзаданий.
+    Technical specification of the product for production.
+    Stores parameters required for CNC machines and technical task generation.
     """
     product = models.OneToOneField(
         ProductModel,
         on_delete=models.CASCADE,
         related_name='tech_data',
-        verbose_name='Модель продукции'
+        verbose_name='דגם מוצר'
     )
     
     cnc_program_name = models.CharField(
-        'Имя программы ЧПУ',
+        'שם תוכנית CNC',
         max_length=255,
         blank=True,
-        help_text='Например: door_v1_standard.prg'
+        help_text='למשל: door_v1_standard.prg'
     )
     
     technical_notes = models.TextField(
-        'Технические примечания',
+        'הערות טכניות',
         blank=True,
-        help_text='Инструкции для работников цеха'
+        help_text='הוראות לעובדי הייצור'
     )
     
-    # Здесь можно добавить любые другие технические параметры
-    # например, допуски, типы фрез, настройки оборудования и т.д.
+    # Add any other technical parameters here
+    # e.g., tolerances, cutter types, equipment settings, etc.
 
     class Meta:
-        verbose_name = 'Технические данные изделия'
-        verbose_name_plural = 'Технические данные изделий'
+        verbose_name = 'נתונים טכניים של המוצר'
+        verbose_name_plural = 'נתונים טכניים של מוצרים'
 
     def __str__(self):
-        return f"Tech data for {self.product.name}"
+        return f"נתונים טכניים עבור {self.product.name}"

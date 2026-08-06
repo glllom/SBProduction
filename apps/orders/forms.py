@@ -1,6 +1,75 @@
 from django import forms
-from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer
+from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer, OrderItem
 from apps.catalog.models import Series, Front, ProductModel, ProductType, ProductFamily
+
+class OrderItemForm(forms.ModelForm):
+    class Meta:
+        model = OrderItem
+        fields = [
+            'mark', 'width', 'height', 'wall', 
+            'direction', 'opening', 'addition_cut', 'place', 'comment',
+            'custom_lock_height', 'custom_hinge1', 'custom_hinge2', 
+            'custom_hinge3', 'custom_hinge4', 'custom_hinge5',
+            'sketch'
+        ]
+        widgets = {
+            'mark': forms.TextInput(attrs={'class': 'form-control'}),
+            'width': forms.NumberInput(attrs={'class': 'form-control'}),
+            'height': forms.NumberInput(attrs={'class': 'form-control'}),
+            'wall': forms.NumberInput(attrs={'class': 'form-control'}),
+            'direction': forms.Select(attrs={'class': 'form-select'}),
+            'opening': forms.Select(attrs={'class': 'form-select'}),
+            'addition_cut': forms.TextInput(attrs={'class': 'form-control'}),
+            'place': forms.TextInput(attrs={'class': 'form-control'}),
+            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'custom_lock_height': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'custom_hinge1': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'custom_hinge2': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'custom_hinge3': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'custom_hinge4': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'custom_hinge5': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'sketch': forms.FileInput(attrs={'class': 'form-control'}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        instance = self.instance
+        if not instance or not instance.group or not instance.group.product:
+            return cleaned_data
+            
+        product_type = instance.group.product.product_family.product_type
+        
+        # 1. Dimensions (width, height) - needed if has_door OR has_frame
+        if not (product_type.has_door or product_type.has_frame):
+            # For Wall Cladding, dimensions might be optional or hidden
+            pass
+        else:
+            if not cleaned_data.get('width'):
+                self.add_error('width', 'רוחב נדרש עבור סוג מוצר זה')
+            if not cleaned_data.get('height'):
+                self.add_error('height', 'גובה נדרש עבור סוג מוצר זה')
+        
+        # 2. Wall thickness dependency
+        if product_type.has_frame:
+            if not cleaned_data.get('wall'):
+                self.add_error('wall', 'עובי קיר נדרש עבור סוג מוצר זה')
+        else:
+            cleaned_data['wall'] = None
+            
+        # 3. Door parameters dependency
+        if not product_type.has_door:
+            # Clear door-only fields if they were somehow submitted
+            cleaned_data['direction'] = None
+            cleaned_data['opening'] = None
+            cleaned_data['addition_cut'] = None
+            cleaned_data['custom_lock_height'] = None
+            cleaned_data['custom_hinge1'] = None
+            cleaned_data['custom_hinge2'] = None
+            cleaned_data['custom_hinge3'] = None
+            cleaned_data['custom_hinge4'] = None
+            cleaned_data['custom_hinge5'] = None
+            
+        return cleaned_data
 
 class OrderForm(forms.ModelForm):
     class Meta:

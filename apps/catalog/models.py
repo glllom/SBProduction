@@ -10,6 +10,8 @@ class ProductType(models.Model):
     name = models.CharField('שם', max_length=100, unique=True)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
+    has_door = models.BooleanField('יש דלת (Есть дверь)', default=True)
+    has_frame = models.BooleanField('יש משקוף (Есть косяк)', default=True)
 
     class Meta:
         verbose_name = 'סוג מוצר'

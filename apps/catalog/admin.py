@@ -8,6 +8,7 @@ from .models import (
     ProductModel,
     ProductMaterial,
 )
+from apps.production.models import ProductTechnicalData
 
 
 @admin.register(ProductType)
@@ -24,7 +25,7 @@ class ProductFamilyAdmin(admin.ModelAdmin):
 
 
 class FrontInline(admin.TabularInline):
-    """Отображает список фронтов прямо внутри формы серии."""
+    """Displays the list of fronts directly inside the series form."""
     model = Front
     extra = 1
 
@@ -51,9 +52,15 @@ class MaterialAdmin(admin.ModelAdmin):
 
 
 class ProductMaterialInline(admin.TabularInline):
-    """Позволяет добавлять материалы/комплектующие прямо на странице Продукта."""
+    """Allows adding materials/components directly on the Product page."""
     model = ProductMaterial
     extra = 1
+
+
+class ProductTechnicalDataInline(admin.StackedInline):
+    model = ProductTechnicalData
+    can_delete = False
+    verbose_name_plural = 'נתונים טכניים'
 
 
 @admin.register(ProductModel)
@@ -61,7 +68,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ('id', 'code', 'name', 'product_family', 'series')
     list_filter = ('product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name')
-    inlines = [ProductMaterialInline]
+    inlines = [ProductMaterialInline, ProductTechnicalDataInline]
 
 from django.contrib import admin
 from .models import Customizer
@@ -69,7 +76,7 @@ from .models import Customizer
 
 @admin.register(Customizer)
 class CustomizerAdmin(admin.ModelAdmin):
-    # Поля, отображаемые в списке
+    # Fields displayed in the list
     list_display = (
         "id",
         "code",
@@ -82,7 +89,7 @@ class CustomizerAdmin(admin.ModelAdmin):
         "product_model",
     )
 
-    # Быстрый фильтр справа
+    # Quick filter on the right
     list_filter = (
         "active",
         "tag",
@@ -91,13 +98,13 @@ class CustomizerAdmin(admin.ModelAdmin):
         "product_model",
     )
 
-    # Поиск по коду и названию
+    # Search by code and name
     search_fields = ("code", "name", "description", "tag")
 
-    # Сортировка по умолчанию
+    # Default ordering
     ordering = ("priority", "code")
 
-    # Группировка полей в форме редактирования
+    # Grouping fields in the edit form
     fieldsets = (
         (
             "Основная информация",
@@ -117,7 +124,7 @@ class CustomizerAdmin(admin.ModelAdmin):
             "Настройки движка (Pipeline)",
             {
                 "fields": ("tag", "priority"),
-                "classes": ("collapse",),  # Можно свернуть блок
+                "classes": ("collapse",),  # Can be collapsed
             },
         ),
         (
