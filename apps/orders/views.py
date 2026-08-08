@@ -8,7 +8,7 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from rest_framework import viewsets, permissions
 from .serializers import OrderItemsGroupCustomizerSerializer
-from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer, OpeningDirection, OpeningSide
+from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer
 from .forms import OrderForm, OrderHeaderForm, OrderItemsGroupForm, OrderItemForm
 from apps.catalog.models import ProductFamily, Series, Front, ProductType
 
@@ -189,15 +189,30 @@ class OrderItemsGroupCustomizerViewSet(viewsets.ModelViewSet):
 def update_item_measurements(request, pk):
     item = get_object_or_404(OrderItem, pk=pk)
     # Fields that measurer can update
-    fields = ['height', 'width', 'wall', 'direction', 'opening', 'mark']
+    fields = [
+        'height', 'width', 'wall', 'direction', 'opening', 'mark',
+        'place', 'addition_cut', 'comment',
+        'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
+        'custom_hinge3', 'custom_hinge4', 'custom_hinge5'
+    ]
     for field in fields:
         if field in request.POST:
             val = request.POST.get(field)
             if val == '':
                 val = None
             setattr(item, field, val)
+    
+    if 'sketch' in request.FILES:
+        item.sketch = request.FILES['sketch']
+    elif request.POST.get('delete_sketch') == 'true':
+        item.sketch.delete(save=False)
+        item.sketch = None
+
     item.save()
-    return JsonResponse({'status': 'ok'})
+    return JsonResponse({
+        'status': 'ok',
+        'sketch_url': item.sketch.url if item.sketch else None
+    })
 
 
 @login_required
@@ -210,7 +225,7 @@ def duplicate_item_measurements(request, pk):
     items_to_update = OrderItem.objects.filter(group=group, id__gt=item.id)
     
     # Fields to duplicate
-    fields = ['height', 'width', 'wall', 'direction', 'opening']
+    fields = ['height', 'width', 'wall', 'direction', 'opening', 'place', 'addition_cut', 'comment']
     update_data = {}
     for field in fields:
         if field in request.POST:

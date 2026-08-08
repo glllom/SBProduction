@@ -6,8 +6,8 @@ class OrderItemForm(forms.ModelForm):
     class Meta:
         model = OrderItem
         fields = [
-            'mark', 'width', 'height', 'wall', 
-            'direction', 'opening', 'addition_cut', 'place', 'comment',
+            'mark', 'place', 'width', 'height', 'wall', 
+            'direction', 'opening', 'addition_cut', 'comment',
             'custom_lock_height', 'custom_hinge1', 'custom_hinge2', 
             'custom_hinge3', 'custom_hinge4', 'custom_hinge5',
             'sketch'

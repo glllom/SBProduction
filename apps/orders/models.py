@@ -1,3 +1,4 @@
+import math
 from django.db import models
 from django.db import transaction
 
@@ -13,21 +14,19 @@ class OrderStatus(models.TextChoices):
     CANCELED = 'CANCELED', 'בוטל'
 
 
-class OpeningDirection(models.TextChoices):
-    LEFT = 'LEFT', 'שמאל'
-    RIGHT = 'RIGHT', 'ימין'
+class OpeningSide(models.TextChoices):
+    LEFT = 'LEFT', 'L'
+    RIGHT = 'RIGHT', 'R'
 
 
 class OpeningType(models.TextChoices):
-    OUTWARD = 'OUTWARD', 'חוץ'
-    INWARD = 'INWARD', 'פנים'
+    IN = 'IN', 'פנימה'
+    OUT = 'OUT', 'החוצה'
 
 
 # ==========================================
 # 1. ORDER
 # ==========================================
-
-from django.db import models
 
 
 class Order(models.Model):
@@ -115,8 +114,6 @@ class Order(models.Model):
         Recalculates sequential numbers (mark) for all OrderItems in this order.
         Orders by group.id and then item.id.
         """
-        from .models import OrderItem
-
         # Prefetch items for efficiency if needed, but OrderItem.objects.filter is clear
         all_items = OrderItem.objects.filter(group__order=self).order_by('group__id', 'id')
 
@@ -279,8 +276,6 @@ class OrderItemsGroup(models.Model):
 
             # Sync physical doors (OrderItems) with group quantity
             if self.quantity is not None:
-                from .models import OrderItem
-
                 # Get existing items for this group
                 existing_items = self.items.all().order_by('id')
                 current_count = existing_items.count()
@@ -339,10 +334,6 @@ class OrderItemsGroupCustomizer(models.Model):
 # 3. PRODUCT (ORDER ITEM)
 # ==========================================
 
-class OpeningSide(models.TextChoices):
-    LEFT = "LEFT", "שמאל (L)"
-    RIGHT = "RIGHT", "ימין (R)"
-
 
 class OrderItem(models.Model):
     # --- Link to parent group ---
@@ -357,7 +348,7 @@ class OrderItem(models.Model):
         max_length=50,
         blank=True,
         null=True,
-        verbose_name="סימון",
+        verbose_name="#",
     )
 
     # --- Dimensions (in mm) ---
@@ -374,7 +365,7 @@ class OrderItem(models.Model):
     # --- Structure and Opening ---
     direction = models.CharField(
         max_length=10,
-        choices=OpeningDirection.choices,
+        choices=OpeningType.choices,
         blank=True,
         null=True,
         verbose_name="כיוון פתיחה",
@@ -386,8 +377,9 @@ class OrderItem(models.Model):
         null=True,
         verbose_name="צד פתיחה",
     )
-    addition_cut = models.CharField(
-        max_length=100,
+    addition_cut = models.DecimalField(
+        max_digits=5,
+        decimal_places=1,
         blank=True,
         null=True,
         verbose_name="חיתוך / קיצור נוסף",
@@ -482,11 +474,10 @@ class OrderItem(models.Model):
 
     def save(self, *args, **kwargs):
         # Truncate all decimal fields to 1 decimal place
-        import math
         decimal_fields = [
             'width', 'height', 'wall', 'custom_lock_height',
             'custom_hinge1', 'custom_hinge2', 'custom_hinge3',
-            'custom_hinge4', 'custom_hinge5'
+            'custom_hinge4', 'custom_hinge5', 'addition_cut'
         ]
         for field in decimal_fields:
             val = getattr(self, field)

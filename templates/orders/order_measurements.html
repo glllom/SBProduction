@@ -2,7 +2,7 @@
 
 {% block page_title %}טופס מידות: {{ order.order_number }}{% endblock %}
 {% block navbar_extra %}
-    <span class="text-muted ms-3 fw-normal small">{{ order.customer }}</span>
+    <span class=" mx-3 fw-bold">{{ order.customer }}</span>
     <a href="{% url 'order-detail' order.pk %}" class="btn btn-sm btn-outline-primary ms-3 no-print">
         <i class="bi bi-arrow-right me-1"></i> חזרה להזמנה
     </a>
@@ -42,29 +42,43 @@
             <table class="table table-bordered mb-0 align-middle text-center excel-table">
                 <thead class="table-secondary small">
                     <tr>
-                        <th style="width: 80px;">סימון</th>
-                        <th>גובה</th>
-                        <th>רוחב</th>
-                        <th>קיר</th>
-                        <th>פתיחה</th>
-                        <th style="width: 100px;" class="no-print"></th>
+                        <th style="width: 40px;">#</th>
+                        <th style="width: 8%;">מיקום</th>
+                        <th style="width: 6%;">רוחב</th>
+                        <th style="width: 7%;">גובה</th>
+                        <th style="width: 6%;">משקוף</th>
+                        <th style="width: 10%;">פתיחה</th>
+                        <th style="width: 6%;">חיתוך</th>
+                        <th>הערה</th>
+                        <th class="no-print" style="width: 160px;"></th>
                     </tr>
                 </thead>
                 <tbody id="group-body-{{ group.id }}">
                     {% for item in group.items.all %}
                     <tr id="row-{{ item.id }}" class="item-row clickable-row" data-item-id="{{ item.id }}" 
-                        data-mark="{{ item.mark }}" 
+                        data-mark="{{ item.mark|default:'' }}" 
                         data-height="{{ item.h_fmt }}" 
                         data-width="{{ item.w_fmt }}" 
                         data-wall="{{ item.wall_fmt }}" 
                         data-opening="{{ item.opening|default:'' }}"
                         data-direction="{{ item.direction|default:'' }}"
+                        data-place="{{ item.place|default:'' }}"
+                        data-addition-cut="{{ item.addition_cut|default:'' }}"
+                        data-comment="{{ item.comment|default:'' }}"
+                        data-custom-lock-height="{{ item.custom_lock_height|default:'' }}"
+                        data-custom-hinge1="{{ item.custom_hinge1|default:'' }}"
+                        data-custom-hinge2="{{ item.custom_hinge2|default:'' }}"
+                        data-custom-hinge3="{{ item.custom_hinge3|default:'' }}"
+                        data-custom-hinge4="{{ item.custom_hinge4|default:'' }}"
+                        data-custom-hinge5="{{ item.custom_hinge5|default:'' }}"
+                        data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
                         data-has-door="{{ group.product.product_family.product_type.has_door|yesno:'true,false' }}"
                         data-has-frame="{{ group.product.product_family.product_type.has_frame|yesno:'true,false' }}">
                         
                         <td class="fw-bold bg-light">{{ item.mark }}</td>
-                        <td class="field-height">{{ item.h_fmt }}</td>
+                        <td class="field-place small text-start">{{ item.place|default:'' }}</td>
                         <td class="field-width">{{ item.w_fmt }}</td>
+                        <td class="field-height">{{ item.h_fmt }}</td>
                         <td class="field-wall">{{ item.wall_fmt }}</td>
                         <td class="field-opening small">
                             {% if item.opening or item.direction %}
@@ -73,8 +87,33 @@
                                 -
                             {% endif %}
                         </td>
-                        <td class="no-print text-muted"><i class="bi bi-pencil-square opacity-50"></i></td>
+                        <td class="field-addition-cut small">{{ item.addition_cut|default:'' }}</td>
+                        <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
+                        <td class="no-print text-nowrap">
+                            {% if item.sketch %}
+                                <a href="{{ item.sketch.url }}" target="_blank" class="btn btn-sm btn-primary py-0" title="צפה בשרטוט">
+                                    <i class="bi bi-file-earmark-image"></i>
+                                </a>
+                            {% endif %}
+                            <i class="bi bi-pencil-square opacity-50 ms-2"></i>
+                        </td>
                     </tr>
+                    {% if item.custom_lock_height or item.custom_hinge1 or item.custom_hinge2 or item.custom_hinge3 or item.custom_hinge4 or item.custom_hinge5 %}
+                    <tr id="display-custom-{{ item.id }}" class="custom-heights-display-row text-muted">
+                        <td></td>
+                        <td colspan="7" class="text-start">
+                            <span class="ps-4">
+                                {% if item.custom_lock_height %}<span class="custom-label">מנעול:</span><span class="custom-value">{{ item.custom_lock_height }}</span>{% endif %}
+                                {% if item.custom_hinge1 %}<span class="custom-label">ציר 1:</span><span class="custom-value">{{ item.custom_hinge1 }}</span>{% endif %}
+                                {% if item.custom_hinge2 %}<span class="custom-label">ציר 2:</span><span class="custom-value">{{ item.custom_hinge2 }}</span>{% endif %}
+                                {% if item.custom_hinge3 %}<span class="custom-label">ציר 3:</span><span class="custom-value">{{ item.custom_hinge3 }}</span>{% endif %}
+                                {% if item.custom_hinge4 %}<span class="custom-label">ציר 4:</span><span class="custom-value">{{ item.custom_hinge4 }}</span>{% endif %}
+                                {% if item.custom_hinge5 %}<span class="custom-label">ציר 5:</span><span class="custom-value">{{ item.custom_hinge5 }}</span>{% endif %}
+                            </span>
+                        </td>
+                        <td class="no-print"></td>
+                    </tr>
+                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
@@ -92,6 +131,17 @@
     .clickable-row:hover { background-color: #f1f3f5 !important; }
     .edit-mode { background-color: #fffde7 !important; }
     .edit-mode td { padding: 2px !important; }
+    .custom-heights-row td { background-color: #f8f9fa !important; border-top: none !important; }
+    .custom-heights-row .input-group-text { font-size: 0.7rem; background-color: #e9ecef; }
+    .custom-heights-row input { text-align: center; font-size: 0.8rem; }
+    .custom-heights-display-row td {
+        font-size: 0.75rem;
+        padding: 0 0.4rem 0.2rem 0.4rem !important;
+        border-top: none !important;
+        background-color: #fdfdfe !important;
+    }
+    .custom-label { font-weight: 600; color: #666; margin-left: 2px; }
+    .custom-value { margin-right: 12px; }
     .form-control-sm { border-radius: 0; border: 1px solid #0d6efd; text-align: center; }
     
     @media print {
@@ -179,11 +229,12 @@ $(document).ready(function() {
         // Save current HTML to restore if canceled
         $row.data('old-html', $row.html());
         $row.addClass('edit-mode');
+        $(`#display-custom-${itemId}`).addClass('d-none');
         
         const openingOptions = `
             <option value="">-</option>
-            <option value="LEFT" ${data.opening === 'LEFT' ? 'selected' : ''}>L (שמאל)</option>
-            <option value="RIGHT" ${data.opening === 'RIGHT' ? 'selected' : ''}>R (ימין)</option>
+            <option value="LEFT" ${data.opening === 'LEFT' ? 'selected' : ''}>L</option>
+            <option value="RIGHT" ${data.opening === 'RIGHT' ? 'selected' : ''}>R</option>
         `;
         
         const directionOptions = `
@@ -191,11 +242,14 @@ $(document).ready(function() {
             <option value="IN" ${data.direction === 'IN' ? 'selected' : ''}>פנימה</option>
             <option value="OUT" ${data.direction === 'OUT' ? 'selected' : ''}>החוצה</option>
         `;
+        
+        const sketchBtnClass = data.sketchUrl ? 'btn-primary' : 'btn-outline-primary';
 
         let html = `
             <td class="fw-bold bg-light">${data.mark}</td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="height" value="${data.height}"></td>
+            <td><input type="text" class="form-control form-control-sm" name="place" value="${data.place || ''}"></td>
             <td><input type="text" class="form-control form-control-sm numeric-input" name="width" value="${data.width}"></td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="height" value="${data.height}"></td>
             <td><input type="text" class="form-control form-control-sm numeric-input" name="wall" value="${data.wall}" ${data.hasFrame ? '' : 'disabled'}></td>
             <td>
                 <div class="d-flex gap-1">
@@ -203,32 +257,131 @@ $(document).ready(function() {
                     <select class="form-select form-select-sm" name="direction" ${data.hasDoor ? '' : 'disabled'}>${directionOptions}</select>
                 </div>
             </td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="addition_cut" value="${data.additionCut || ''}"></td>
+            <td><input type="text" class="form-control form-control-sm" name="comment" value="${data.comment || ''}" style="width: 100%; min-width: 100px;"></td>
             <td class="text-nowrap">
                 <button class="btn btn-sm btn-success btn-save" title="שמור"><i class="bi bi-check-lg"></i></button>
                 <button class="btn btn-sm btn-outline-primary btn-duplicate" title="שכפל לשאר הקבוצה"><i class="bi bi-files"></i></button>
+                <button class="btn btn-sm btn-outline-info btn-toggle-custom" title="שינוי גבהי צירים ומנעול"><i class="bi bi-sliders"></i></button>
+                
+                <div class="d-inline-block position-relative">
+                    <button class="btn btn-sm ${sketchBtnClass} btn-sketch-upload" title="העלאת שרטוט">
+                        <i class="bi bi-file-earmark-image"></i>
+                    </button>
+                    ${data.sketchUrl ? '<button type="button" class="btn btn-sm btn-danger py-0 px-1 position-absolute top-0 start-0 translate-middle rounded-circle btn-sketch-delete" style="font-size: 8px; z-index: 5;" title="מחק שרטוט"><i class="bi bi-x"></i></button>' : ''}
+                    <input type="file" class="d-none sketch-file-input" accept="image/*,application/pdf">
+                    <input type="hidden" name="delete_sketch" value="false" class="delete-sketch-input">
+                </div>
+
                 <button class="btn btn-sm btn-outline-secondary btn-cancel" title="ביטול"><i class="bi bi-x-lg"></i></button>
             </td>
         `;
         
         $row.html(html);
-        $row.find('input[name="height"]').focus();
+
+        // Add custom heights row
+        let customHtml = `
+            <tr id="custom-row-${itemId}" class="edit-mode custom-heights-row d-none">
+                <td class="bg-light fw-bold small text-center">גובה מותאם</td>
+                <td colspan="7">
+                    <div class="d-flex gap-2 p-1 align-items-center">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">מנעול</span>
+                            <input type="text" class="form-control numeric-input" name="custom_lock_height" value="${data.customLockHeight || ''}">
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">ציר 1</span>
+                            <input type="text" class="form-control numeric-input" name="custom_hinge1" value="${data.customHinge1 || ''}">
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">ציר 2</span>
+                            <input type="text" class="form-control numeric-input" name="custom_hinge2" value="${data.customHinge2 || ''}">
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">ציר 3</span>
+                            <input type="text" class="form-control numeric-input" name="custom_hinge3" value="${data.customHinge3 || ''}">
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">ציר 4</span>
+                            <input type="text" class="form-control numeric-input" name="custom_hinge4" value="${data.customHinge4 || ''}">
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">ציר 5</span>
+                            <input type="text" class="form-control numeric-input" name="custom_hinge5" value="${data.customHinge5 || ''}">
+                        </div>
+                    </div>
+                </td>
+                <td class="no-print"></td>
+            </tr>
+        `;
+        $row.after(customHtml);
+
+        $row.find('input[name="place"]').focus();
+    });
+
+    $(document).on('click', '.btn-toggle-custom', function(e) {
+        e.stopPropagation();
+        const $row = $(this).closest('tr');
+        const itemId = $row.data('item-id');
+        $(`#custom-row-${itemId}`).toggleClass('d-none');
+    });
+
+    $(document).on('click', '.btn-sketch-upload', function(e) {
+        e.stopPropagation();
+        $(this).closest('div').find('.sketch-file-input').click();
+    });
+
+    $(document).on('click', '.btn-sketch-delete', function(e) {
+        e.stopPropagation();
+        const $container = $(this).closest('div');
+        $container.find('.delete-sketch-input').val('true');
+        $container.find('.btn-sketch-upload').removeClass('btn-primary').addClass('btn-outline-primary');
+        $(this).remove();
+    });
+
+    $(document).on('change', '.sketch-file-input', function(e) {
+        const file = this.files[0];
+        const $btn = $(this).prev('.btn-sketch-upload');
+        if (file) {
+            $btn.removeClass('btn-outline-primary').addClass('btn-primary');
+        }
     });
 
     $(document).on('click', '.btn-cancel', function(e) {
         e.stopPropagation();
         const $row = $(this).closest('tr');
-        $row.html($row.data('old-html')).removeClass('edit-mode');
+        const itemId = $row.data('item-id');
+        const oldHtml = $row.data('old-html');
+        
+        $row.html(oldHtml).removeClass('edit-mode');
+        $(`#custom-row-${itemId}`).remove();
+        $(`#display-custom-${itemId}`).removeClass('d-none');
     });
 
     $(document).on('click', '.btn-save', function(e) {
         e.stopPropagation();
         const $row = $(this).closest('tr');
         const itemId = $row.data('item-id');
-        const formData = {};
+        const $customRow = $(`#custom-row-${itemId}`);
+        const formData = new FormData();
         
         $row.find('input, select').each(function() {
-            formData[$(this).attr('name')] = $(this).val();
+            if (this.type === 'file') {
+                if (this.files[0]) {
+                    formData.append('sketch', this.files[0]);
+                }
+            } else if (this.className.includes('delete-sketch-input')) {
+                formData.append('delete_sketch', $(this).val());
+            } else {
+                formData.append($(this).attr('name'), $(this).val());
+            }
         });
+
+        if ($customRow.length) {
+            $customRow.find('input').each(function() {
+                formData.append($(this).attr('name'), $(this).val());
+            });
+        }
 
         const $btnSave = $(this);
         $btnSave.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
@@ -237,23 +390,38 @@ $(document).ready(function() {
             url: `/orders/items/${itemId}/update-measurements/`,
             method: 'POST',
             data: formData,
+            processData: false,
+            contentType: false,
             headers: {'X-CSRFToken': '{{ csrf_token }}'},
             success: function(response) {
                 if (response.status === 'ok') {
-                    const formattedH = formatNum(formData.height);
-                    const formattedW = formatNum(formData.width);
-                    const formattedWall = formatNum(formData.wall);
+                    const formattedH = formatNum(formData.get('height'));
+                    const formattedW = formatNum(formData.get('width'));
+                    const formattedWall = formatNum(formData.get('wall'));
+                    const formattedCut = formatNum(formData.get('addition_cut'));
 
                     // Update data attributes
-                    $row.data('height', formattedH);
                     $row.data('width', formattedW);
+                    $row.data('height', formattedH);
                     $row.data('wall', formattedWall);
-                    $row.data('opening', formData.opening);
-                    $row.data('direction', formData.direction);
+                    $row.data('opening', formData.get('opening'));
+                    $row.data('direction', formData.get('direction'));
+                    $row.data('place', formData.get('place'));
+                    $row.data('addition-cut', formattedCut);
+                    $row.data('comment', formData.get('comment'));
+                    $row.data('sketch-url', response.sketch_url);
+                    
+                    // Custom heights
+                    $row.data('custom-lock-height', formatNum(formData.get('custom_lock_height')));
+                    $row.data('custom-hinge1', formatNum(formData.get('custom_hinge1')));
+                    $row.data('custom-hinge2', formatNum(formData.get('custom_hinge2')));
+                    $row.data('custom-hinge3', formatNum(formData.get('custom_hinge3')));
+                    $row.data('custom-hinge4', formatNum(formData.get('custom_hinge4')));
+                    $row.data('custom-hinge5', formatNum(formData.get('custom_hinge5')));
                     
                     // Rebuild static row content
-                    const openingText = (formData.opening === 'LEFT' ? 'L' : (formData.opening === 'RIGHT' ? 'R' : ''));
-                    const directionText = (formData.direction === 'IN' ? 'פנימה' : (formData.direction === 'OUT' ? 'החוצה' : ''));
+                    const openingText = (formData.get('opening') === 'LEFT' ? 'L' : (formData.get('opening') === 'RIGHT' ? 'R' : ''));
+                    const directionText = (formData.get('direction') === 'IN' ? 'פנימה' : (formData.get('direction') === 'OUT' ? 'החוצה' : ''));
                     let combinedText = '-';
                     if (openingText || directionText) {
                         combinedText = `${openingText} / ${directionText}`;
@@ -261,13 +429,53 @@ $(document).ready(function() {
 
                     let staticHtml = `
                         <td class="fw-bold bg-light">${$row.data('mark')}</td>
-                        <td class="field-height">${formattedH}</td>
+                        <td class="field-place small text-start">${formData.get('place') || ''}</td>
                         <td class="field-width">${formattedW}</td>
+                        <td class="field-height">${formattedH}</td>
                         <td class="field-wall">${formattedWall}</td>
                         <td class="field-opening small">${combinedText}</td>
-                        <td class="no-print text-muted"><i class="bi bi-pencil-square opacity-50"></i></td>
+                        <td class="field-addition-cut small">${formattedCut}</td>
+                        <td class="field-comment small text-start">${formData.get('comment') || ''}</td>
+                        <td class="no-print text-nowrap">
+                            ${response.sketch_url ? `
+                                <a href="${response.sketch_url}" target="_blank" class="btn btn-sm btn-primary py-0" title="צפה בשרטוט">
+                                    <i class="bi bi-file-earmark-image"></i>
+                                </a>
+                            ` : ''}
+                            <i class="bi bi-pencil-square opacity-50 ms-2"></i>
+                        </td>
                     `;
                     $row.html(staticHtml).removeClass('edit-mode');
+                    $customRow.remove();
+                    $(`#display-custom-${itemId}`).remove();
+
+                    // Create new display row for custom heights if any exist
+                    const cLock = formatNum(formData.get('custom_lock_height'));
+                    const cH1 = formatNum(formData.get('custom_hinge1'));
+                    const cH2 = formatNum(formData.get('custom_hinge2'));
+                    const cH3 = formatNum(formData.get('custom_hinge3'));
+                    const cH4 = formatNum(formData.get('custom_hinge4'));
+                    const cH5 = formatNum(formData.get('custom_hinge5'));
+
+                    if (cLock || cH1 || cH2 || cH3 || cH4 || cH5) {
+                        let customDisplayHtml = `
+                            <tr id="display-custom-${itemId}" class="custom-heights-display-row text-muted">
+                                <td></td>
+                                <td colspan="7" class="text-start">
+                                    <span class="ps-4">
+                                        ${cLock ? `<span class="custom-label">מנעול:</span><span class="custom-value">${cLock}</span>` : ''}
+                                        ${cH1 ? `<span class="custom-label">ציר 1:</span><span class="custom-value">${cH1}</span>` : ''}
+                                        ${cH2 ? `<span class="custom-label">ציר 2:</span><span class="custom-value">${cH2}</span>` : ''}
+                                        ${cH3 ? `<span class="custom-label">ציר 3:</span><span class="custom-value">${cH3}</span>` : ''}
+                                        ${cH4 ? `<span class="custom-label">ציר 4:</span><span class="custom-value">${cH4}</span>` : ''}
+                                        ${cH5 ? `<span class="custom-label">ציר 5:</span><span class="custom-value">${cH5}</span>` : ''}
+                                    </span>
+                                </td>
+                                <td class="no-print"></td>
+                            </tr>
+                        `;
+                        $row.after(customDisplayHtml);
+                    }
 
                     // Move to next row
                     const $allRows = $('.clickable-row');
@@ -294,7 +502,9 @@ $(document).ready(function() {
         const formData = {};
         
         $row.find('input, select').each(function() {
-            formData[$(this).attr('name')] = $(this).val();
+            if (this.name && this.type !== 'file') {
+                formData[$(this).attr('name')] = $(this).val();
+            }
         });
 
         if (!confirm('האם להעתיק את הנתונים לכל שאר השורות בקבוצה זו?')) return;
