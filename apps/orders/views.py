@@ -4,9 +4,11 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.db.models import Q
 from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
 from rest_framework import viewsets, permissions
 from .serializers import OrderItemsGroupCustomizerSerializer
-from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer
+from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer, OpeningDirection, OpeningSide
 from .forms import OrderForm, OrderHeaderForm, OrderItemsGroupForm, OrderItemForm
 from apps.catalog.models import ProductFamily, Series, Front, ProductType
 
@@ -61,6 +63,17 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
         context['product_types'] = ProductType.objects.filter(active=True)
         context['header_form'] = OrderHeaderForm(instance=self.object)
         context['group_form'] = OrderItemsGroupForm(order=self.object)
+        return context
+
+
+class OrderMeasurementsView(LoginRequiredMixin, DetailView):
+    model = Order
+    template_name = 'orders/order_measurements.html'
+    context_object_name = 'order'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['product_types'] = ProductType.objects.filter(active=True)
         return context
 
 
@@ -169,3 +182,47 @@ class OrderItemsGroupCustomizerViewSet(viewsets.ModelViewSet):
         if group_id:
             queryset = queryset.filter(group_id=group_id)
         return queryset
+
+
+@login_required
+@require_POST
+def update_item_measurements(request, pk):
+    item = get_object_or_404(OrderItem, pk=pk)
+    # Fields that measurer can update
+    fields = ['height', 'width', 'wall', 'direction', 'opening', 'mark']
+    for field in fields:
+        if field in request.POST:
+            val = request.POST.get(field)
+            if val == '':
+                val = None
+            setattr(item, field, val)
+    item.save()
+    return JsonResponse({'status': 'ok'})
+
+
+@login_required
+@require_POST
+def duplicate_item_measurements(request, pk):
+    item = get_object_or_404(OrderItem, pk=pk)
+    group = item.group
+    
+    # Get all items in the same group that come AFTER the current item (by ID)
+    items_to_update = OrderItem.objects.filter(group=group, id__gt=item.id)
+    
+    # Fields to duplicate
+    fields = ['height', 'width', 'wall', 'direction', 'opening']
+    update_data = {}
+    for field in fields:
+        if field in request.POST:
+            val = request.POST.get(field)
+            if val == '':
+                val = None
+            update_data[field] = val
+            
+    if update_data:
+        # We also need to consider if fields are disabled (has_door, has_frame)
+        # But for now, we apply to all as per user request "она все данные из текущей строки должна продублировать"
+        # The frontend handles disabling, so if a field was empty/null it stays so.
+        items_to_update.update(**update_data)
+        
+    return JsonResponse({'status': 'ok'})

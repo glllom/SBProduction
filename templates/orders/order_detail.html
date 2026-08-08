@@ -44,10 +44,13 @@
             </div>
         </div>
     </div>
-    <div class="col-auto mb-2">
+    <div class="col-auto mb-2 d-flex gap-2">
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
             <i class="bi bi-plus-lg ms-2"></i>הוספת קבוצת דלתות
         </button>
+        <a href="{% url 'order-measurements' order.pk %}" class="btn btn-outline-secondary">
+            <i class="bi bi-rulers ms-2"></i>טופס מידות
+        </a>
     </div>
     <div class="row">
         <div class="col-lg-10 mb-4">
@@ -265,39 +268,17 @@
                                         </thead>
                                         <tbody>
                                             {% for item in group.items.all %}
-                                            <tr>
+                                            <tr class="item-row-{{ group.id }} {% if group.items.count > 5 and forloop.counter > 4 %}d-none{% endif %}">
                                                 <td class="ps-4">
                                                     <span class="fw-medium text-dark">{{ item.mark }}</span>
                                                 </td>
                                                 <td>
-                                                    {{ item.height|default:"-" }} × {{ item.width|default:"-" }}
-                                                    × {{ item.wall|default:"-" }}
+                                                    {{ item.h_fmt|default:"-" }} × {{ item.w_fmt|default:"-" }}
+                                                    × {{ item.wall_fmt|default:"-" }}
                                                 </td>
                                                 <td>{{ item.get_opening_display|default:"לא נבחר" }}</td>
                                                 <td class="text-end pe-4">
-                                                    <button class="btn btn-sm btn-outline-primary py-0 btn-edit-item"
-                                                            data-bs-toggle="modal"
-                                                            data-bs-target="#editItemModal"
-                                                            data-item-id="{{ item.id }}"
-                                                            data-item-mark="{{ item.mark }}"
-                                                            data-width="{{ item.width|default:'' }}"
-                                                            data-height="{{ item.height|default:'' }}"
-                                                            data-wall="{{ item.wall|default:'' }}"
-                                                            data-direction="{{ item.direction|default:'' }}"
-                                                            data-opening="{{ item.opening|default:'' }}"
-                                                            data-addition-cut="{{ item.addition_cut|default:'' }}"
-                                                            data-place="{{ item.place|default:'' }}"
-                                                            data-comment="{{ item.comment|default:'' }}"
-                                                            data-lock="{{ item.custom_lock_height|default:'' }}"
-                                                            data-h1="{{ item.custom_hinge1|default:'' }}"
-                                                            data-h2="{{ item.custom_hinge2|default:'' }}"
-                                                            data-h3="{{ item.custom_hinge3|default:'' }}"
-                                                            data-h4="{{ item.custom_hinge4|default:'' }}"
-                                                            data-h5="{{ item.custom_hinge5|default:'' }}"
-                                                            data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
-                                                            data-type-id="{{ group.product.product_family.product_type_id }}">
-                                                        <i class="bi bi-pencil small"></i> ערוך
-                                                    </button>
+                                                    <span class="small text-muted">{{ item.place|default:"" }}</span>
                                                 </td>
                                             </tr>
                                         {% empty %}
@@ -305,6 +286,15 @@
                                                 <td colspan="4" class="text-center py-4 text-muted small">דלתות טרם נוצרו</td>
                                             </tr>
                                         {% endfor %}
+                                        {% if group.items.count > 5 %}
+                                            <tr id="toggle-row-{{ group.id }}">
+                                                <td colspan="4" class="text-center py-1 bg-light">
+                                                    <button class="btn btn-sm btn-link text-decoration-none btn-toggle-items" data-group-id="{{ group.id }}">
+                                                        הצג עוד... ({{ group.items.count|add:"-4" }})
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        {% endif %}
                                         </tbody>
                                     </table>
                                 </div>
@@ -783,6 +773,22 @@
         };
 
         $(document).ready(function () {
+            // Toggle items logic
+            $('.btn-toggle-items').on('click', function() {
+                const groupId = $(this).data('group-id');
+                const $hiddenRows = $(`.item-row-${groupId}.d-none`);
+                if ($hiddenRows.length) {
+                    $hiddenRows.removeClass('d-none');
+                    $(this).text('הצג פחות');
+                } else {
+                    $(`.item-row-${groupId}`).each(function(index) {
+                        if (index >= 4) $(this).addClass('d-none');
+                    });
+                    const count = $(`.item-row-${groupId}`).length - 4;
+                    $(this).text(`הצג עוד... (${count})`);
+                }
+            });
+
             // Edit Item Modal Logic
             $('.btn-edit-item').on('click', function() {
                 const $btn = $(this);

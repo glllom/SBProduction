@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+
+{% block page_title %}טופס מידות: {{ order.order_number }}{% endblock %}
+{% block navbar_extra %}
+    <span class="text-muted ms-3 fw-normal small">{{ order.customer }}</span>
+    <a href="{% url 'order-detail' order.pk %}" class="btn btn-sm btn-outline-primary ms-3 no-print">
+        <i class="bi bi-arrow-right me-1"></i> חזרה להזמנה
+    </a>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-3" dir="rtl">
+    <div class="print-header d-none d-print-block mb-4">
+        <h2 class="h3 fw-bold">טופס מידות: {{ order.order_number }}</h2>
+        <p class="mb-0">לקוח: {{ order.customer }}</p>
+        <hr>
+    </div>
+
+    {% for group in order.groups.all %}
+    <div class="card mb-4 border-excel shadow-none">
+        <div class="card-header bg-light border-bottom py-2 d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0 fw-bold text-dark d-inline">{{ group.product.name }}</h5>
+                <span class="text-muted small ms-2">
+                    {% for gc in group.customizers.all %}
+                        {{ gc.customizer.name }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                </span>
+            </div>
+            {% if forloop.first %}
+            <div class="no-print">
+                <button class="btn btn-sm btn-light border" onclick="exportToExcel()" title="Скачать Excel">
+                    <i class="bi bi-download"></i>
+                </button>
+                <button class="btn btn-sm btn-light border" onclick="window.print()" title="Распечатать">
+                    <i class="bi bi-printer"></i>
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered mb-0 align-middle text-center excel-table">
+                <thead class="table-secondary small">
+                    <tr>
+                        <th style="width: 80px;">סימון</th>
+                        <th>גובה</th>
+                        <th>רוחב</th>
+                        <th>קיר</th>
+                        <th>פתיחה</th>
+                        <th style="width: 100px;" class="no-print"></th>
+                    </tr>
+                </thead>
+                <tbody id="group-body-{{ group.id }}">
+                    {% for item in group.items.all %}
+                    <tr id="row-{{ item.id }}" class="item-row clickable-row" data-item-id="{{ item.id }}" 
+                        data-mark="{{ item.mark }}" 
+                        data-height="{{ item.h_fmt }}" 
+                        data-width="{{ item.w_fmt }}" 
+                        data-wall="{{ item.wall_fmt }}" 
+                        data-opening="{{ item.opening|default:'' }}"
+                        data-direction="{{ item.direction|default:'' }}"
+                        data-has-door="{{ group.product.product_family.product_type.has_door|yesno:'true,false' }}"
+                        data-has-frame="{{ group.product.product_family.product_type.has_frame|yesno:'true,false' }}">
+                        
+                        <td class="fw-bold bg-light">{{ item.mark }}</td>
+                        <td class="field-height">{{ item.h_fmt }}</td>
+                        <td class="field-width">{{ item.w_fmt }}</td>
+                        <td class="field-wall">{{ item.wall_fmt }}</td>
+                        <td class="field-opening small">
+                            {% if item.opening or item.direction %}
+                                {{ item.get_opening_display|default:"" }} / {{ item.get_direction_display|default:"" }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="no-print text-muted"><i class="bi bi-pencil-square opacity-50"></i></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+    .border-excel { border: 1px solid #dee2e6 !important; border-radius: 0; }
+    .excel-table { border-collapse: collapse; }
+    .excel-table th, .excel-table td { border: 1px solid #dee2e6 !important; padding: 0.4rem !important; }
+    .excel-table thead th { background-color: #f8f9fa; color: #333; font-weight: 600; }
+    .clickable-row { cursor: pointer; transition: background 0.1s; }
+    .clickable-row:hover { background-color: #f1f3f5 !important; }
+    .edit-mode { background-color: #fffde7 !important; }
+    .edit-mode td { padding: 2px !important; }
+    .form-control-sm { border-radius: 0; border: 1px solid #0d6efd; text-align: center; }
+    
+    @media print {
+        .no-print { display: none !important; }
+        .container { width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+        .card { border: 1px solid #000 !important; margin-bottom: 20px !important; break-inside: avoid; }
+        .excel-table th, .excel-table td { border: 1px solid #000 !important; }
+        .bg-light { background-color: #fff !important; }
+        .table-secondary { background-color: #eee !important; -webkit-print-color-adjust: exact; }
+    }
+</style>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function exportToExcel() {
+    let csv = [];
+    csv.push("\uFEFF"); // BOM for Hebrew/UTF-8 support in Excel
+    csv.push("טופס מידות הזמנה: {{ order.order_number }}");
+    csv.push("לקוח: {{ order.customer }}");
+    csv.push("");
+
+    document.querySelectorAll('.card').forEach(card => {
+        const header = card.querySelector('h5');
+        if (!header) return;
+        
+        csv.push(header.innerText.trim());
+        
+        const table = card.querySelector('table');
+        const rows = table.querySelectorAll('tr');
+        
+        rows.forEach(row => {
+            const cols = row.querySelectorAll('th, td');
+            let rowData = [];
+            cols.forEach((col, index) => {
+                // Skip the last column (actions/icon) if it's the edit icon column
+                if (!col.classList.contains('no-print')) {
+                    rowData.push('"' + col.innerText.trim().replace(/"/g, '""') + '"');
+                }
+            });
+            if (rowData.length > 0) {
+                csv.push(rowData.join(","));
+            }
+        });
+        csv.push("");
+    });
+
+    const csvContent = csv.join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "מידות_הזמנה_{{ order.order_number }}.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+$(document).ready(function() {
+    const formatNum = (val) => {
+        if (!val && val !== 0) return '';
+        let n = parseFloat(val);
+        if (isNaN(n)) return val;
+        // Truncate to 1 decimal place
+        n = Math.floor(n * 10) / 10;
+        return n % 1 === 0 ? n.toString() : n.toFixed(1);
+    };
+
+    $(document).on('input', '.numeric-input', function() {
+        this.value = this.value.replace(/[^0-9.]/g, '');
+        if ((this.value.match(/\./g) || []).length > 1) {
+            this.value = this.value.replace(/\.$/, '');
+        }
+    });
+
+    $('.clickable-row').on('click', function(e) {
+        if ($(this).hasClass('edit-mode')) return;
+        
+        const $row = $(this);
+        const itemId = $row.data('item-id');
+        const data = $row.data();
+        
+        // Save current HTML to restore if canceled
+        $row.data('old-html', $row.html());
+        $row.addClass('edit-mode');
+        
+        const openingOptions = `
+            <option value="">-</option>
+            <option value="LEFT" ${data.opening === 'LEFT' ? 'selected' : ''}>L (שמאל)</option>
+            <option value="RIGHT" ${data.opening === 'RIGHT' ? 'selected' : ''}>R (ימין)</option>
+        `;
+        
+        const directionOptions = `
+            <option value="">-</option>
+            <option value="IN" ${data.direction === 'IN' ? 'selected' : ''}>פנימה</option>
+            <option value="OUT" ${data.direction === 'OUT' ? 'selected' : ''}>החוצה</option>
+        `;
+
+        let html = `
+            <td class="fw-bold bg-light">${data.mark}</td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="height" value="${data.height}"></td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="width" value="${data.width}"></td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="wall" value="${data.wall}" ${data.hasFrame ? '' : 'disabled'}></td>
+            <td>
+                <div class="d-flex gap-1">
+                    <select class="form-select form-select-sm" name="opening" ${data.hasDoor ? '' : 'disabled'}>${openingOptions}</select>
+                    <select class="form-select form-select-sm" name="direction" ${data.hasDoor ? '' : 'disabled'}>${directionOptions}</select>
+                </div>
+            </td>
+            <td class="text-nowrap">
+                <button class="btn btn-sm btn-success btn-save" title="שמור"><i class="bi bi-check-lg"></i></button>
+                <button class="btn btn-sm btn-outline-primary btn-duplicate" title="שכפל לשאר הקבוצה"><i class="bi bi-files"></i></button>
+                <button class="btn btn-sm btn-outline-secondary btn-cancel" title="ביטול"><i class="bi bi-x-lg"></i></button>
+            </td>
+        `;
+        
+        $row.html(html);
+        $row.find('input[name="height"]').focus();
+    });
+
+    $(document).on('click', '.btn-cancel', function(e) {
+        e.stopPropagation();
+        const $row = $(this).closest('tr');
+        $row.html($row.data('old-html')).removeClass('edit-mode');
+    });
+
+    $(document).on('click', '.btn-save', function(e) {
+        e.stopPropagation();
+        const $row = $(this).closest('tr');
+        const itemId = $row.data('item-id');
+        const formData = {};
+        
+        $row.find('input, select').each(function() {
+            formData[$(this).attr('name')] = $(this).val();
+        });
+
+        const $btnSave = $(this);
+        $btnSave.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
+        $.ajax({
+            url: `/orders/items/${itemId}/update-measurements/`,
+            method: 'POST',
+            data: formData,
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            success: function(response) {
+                if (response.status === 'ok') {
+                    const formattedH = formatNum(formData.height);
+                    const formattedW = formatNum(formData.width);
+                    const formattedWall = formatNum(formData.wall);
+
+                    // Update data attributes
+                    $row.data('height', formattedH);
+                    $row.data('width', formattedW);
+                    $row.data('wall', formattedWall);
+                    $row.data('opening', formData.opening);
+                    $row.data('direction', formData.direction);
+                    
+                    // Rebuild static row content
+                    const openingText = (formData.opening === 'LEFT' ? 'L' : (formData.opening === 'RIGHT' ? 'R' : ''));
+                    const directionText = (formData.direction === 'IN' ? 'פנימה' : (formData.direction === 'OUT' ? 'החוצה' : ''));
+                    let combinedText = '-';
+                    if (openingText || directionText) {
+                        combinedText = `${openingText} / ${directionText}`;
+                    }
+
+                    let staticHtml = `
+                        <td class="fw-bold bg-light">${$row.data('mark')}</td>
+                        <td class="field-height">${formattedH}</td>
+                        <td class="field-width">${formattedW}</td>
+                        <td class="field-wall">${formattedWall}</td>
+                        <td class="field-opening small">${combinedText}</td>
+                        <td class="no-print text-muted"><i class="bi bi-pencil-square opacity-50"></i></td>
+                    `;
+                    $row.html(staticHtml).removeClass('edit-mode');
+
+                    // Move to next row
+                    const $allRows = $('.clickable-row');
+                    const currentIndex = $allRows.index($row);
+                    if (currentIndex < $allRows.length - 1) {
+                        $allRows.eq(currentIndex + 1).click();
+                    }
+                } else {
+                    alert('שגיאה בשמירה');
+                    $btnSave.prop('disabled', false).html('<i class="bi bi-check-lg"></i>');
+                }
+            },
+            error: function() {
+                alert('שגיאה בתקשורת עם השרת');
+                $btnSave.prop('disabled', false).html('<i class="bi bi-check-lg"></i>');
+            }
+        });
+    });
+
+    $(document).on('click', '.btn-duplicate', function(e) {
+        e.stopPropagation();
+        const $row = $(this).closest('tr');
+        const itemId = $row.data('item-id');
+        const formData = {};
+        
+        $row.find('input, select').each(function() {
+            formData[$(this).attr('name')] = $(this).val();
+        });
+
+        if (!confirm('האם להעתיק את הנתונים לכל שאר השורות בקבוצה זו?')) return;
+
+        const $btnDup = $(this);
+        $btnDup.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
+        $.ajax({
+            url: `/orders/items/${itemId}/duplicate-measurements/`,
+            method: 'POST',
+            data: formData,
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            success: function(response) {
+                if (response.status === 'ok') {
+                    // Update all following rows in the same tbody
+                    const $tbody = $row.closest('tbody');
+                    const $followingRows = $row.nextAll('tr');
+                    
+                    // Also update the current row as if it was saved
+                    $row.find('.btn-save').click();
+                    
+                    // For following rows, we can just reload the page or update them via JS
+                    // Reload is safer to ensure all labels and data attributes are correct
+                    location.reload();
+                } else {
+                    alert('שגיאה בשכפול');
+                    $btnDup.prop('disabled', false).html('<i class="bi bi-files"></i>');
+                }
+            },
+            error: function() {
+                alert('שגיאה בתקשורת עם השרת');
+                $btnDup.prop('disabled', false).html('<i class="bi bi-files"></i>');
+            }
+        });
+    });
+    
+    // Prevent event bubbling when clicking inside inputs
+    $(document).on('click', 'input, select', function(e) {
+        e.stopPropagation();
+    });
+    
+    // Support "Enter" key for saving
+    $(document).on('keypress', 'input', function(e) {
+        if (e.which == 13) {
+            $(this).closest('tr').find('.btn-save').click();
+        }
+    });
+});
+</script>
+{% endblock %}

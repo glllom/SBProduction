@@ -10,6 +10,7 @@ urlpatterns = [
     path('', views.OrderListView.as_view(), name='order-list'),
     path('add/', views.OrderCreateView.as_view(), name='order-add'),
     path('<int:pk>/', views.OrderDetailView.as_view(), name='order-detail'),
+    path('<int:pk>/measurements/', views.OrderMeasurementsView.as_view(), name='order-measurements'),
     path('<int:pk>/edit-header/', views.OrderHeaderUpdateView.as_view(), name='order-edit-header'),
     path('<int:pk>/delete/', views.OrderDeleteView.as_view(), name='order-delete'),
     
@@ -20,4 +21,6 @@ urlpatterns = [
     
     # Order Items
     path('items/<int:pk>/edit/', views.OrderItemUpdateView.as_view(), name='order-item-edit'),
+    path('items/<int:pk>/update-measurements/', views.update_item_measurements, name='order-item-update-measurements'),
+    path('items/<int:pk>/duplicate-measurements/', views.duplicate_item_measurements, name='order-item-duplicate-measurements'),
 ]

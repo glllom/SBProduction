@@ -361,14 +361,14 @@ class OrderItem(models.Model):
     )
 
     # --- Dimensions (in mm) ---
-    width = models.PositiveIntegerField(
-        blank=True, null=True, verbose_name='רוחב (מ""מ)'
+    width = models.DecimalField(
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='רוחב (מ""מ)'
     )
-    height = models.PositiveIntegerField(
-        blank=True, null=True, verbose_name='גובה (מ""מ)'
+    height = models.DecimalField(
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='גובה (מ""מ)'
     )
-    wall = models.PositiveIntegerField(
-        blank=True, null=True, verbose_name='עובי קיר / פתח (מ""מ)'
+    wall = models.DecimalField(
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='עובי קיר / פתח (מ""מ)'
     )
 
     # --- Structure and Opening ---
@@ -407,42 +407,42 @@ class OrderItem(models.Model):
     # --- Engineering customizers (milling heights) ---
     custom_lock_height = models.DecimalField(
         max_digits=7,
-        decimal_places=2,
+        decimal_places=1,
         blank=True,
         null=True,
         verbose_name='גובה מנעול מותאם (מ""מ)',
     )
     custom_hinge1 = models.DecimalField(
         max_digits=7,
-        decimal_places=2,
+        decimal_places=1,
         blank=True,
         null=True,
         verbose_name='גובה ציר 1 (מ""מ)',
     )
     custom_hinge2 = models.DecimalField(
         max_digits=7,
-        decimal_places=2,
+        decimal_places=1,
         blank=True,
         null=True,
         verbose_name='גובה ציר 2 (מ""מ)',
     )
     custom_hinge3 = models.DecimalField(
         max_digits=7,
-        decimal_places=2,
+        decimal_places=1,
         blank=True,
         null=True,
         verbose_name='גובה ציר 3 (מ""מ)',
     )
     custom_hinge4 = models.DecimalField(
         max_digits=7,
-        decimal_places=2,
+        decimal_places=1,
         blank=True,
         null=True,
         verbose_name='גובה ציר 4 (מ""מ)',
     )
     custom_hinge5 = models.DecimalField(
         max_digits=7,
-        decimal_places=2,
+        decimal_places=1,
         blank=True,
         null=True,
         verbose_name='גובה ציר 5 (מ""מ)',
@@ -463,3 +463,35 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"פריט #{self.id} (קבוצה מס' {self.group_id})"
+
+    def format_decimal(self, value):
+        if value is None:
+            return ""
+        # Truncate to 1 decimal place (already done in save, but just in case)
+        val_float = float(value)
+        if val_float == int(val_float):
+            return str(int(val_float))
+        return "{:.1f}".format(val_float)
+
+    @property
+    def h_fmt(self): return self.format_decimal(self.height)
+    @property
+    def w_fmt(self): return self.format_decimal(self.width)
+    @property
+    def wall_fmt(self): return self.format_decimal(self.wall)
+
+    def save(self, *args, **kwargs):
+        # Truncate all decimal fields to 1 decimal place
+        import math
+        decimal_fields = [
+            'width', 'height', 'wall', 'custom_lock_height',
+            'custom_hinge1', 'custom_hinge2', 'custom_hinge3',
+            'custom_hinge4', 'custom_hinge5'
+        ]
+        for field in decimal_fields:
+            val = getattr(self, field)
+            if val is not None:
+                f_val = float(val)
+                truncated = math.floor(f_val * 10) / 10.0
+                setattr(self, field, truncated)
+        super().save(*args, **kwargs)
