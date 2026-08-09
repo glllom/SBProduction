@@ -95,6 +95,24 @@ class Handle(models.Model):
         return self.name
 
 
+class Hardware(models.Model):
+    """
+    General hardware components (locks, hinges, etc.)
+    """
+    name = models.CharField('שם', max_length=255)
+    sku = models.CharField('מק""ט', max_length=100, unique=True)
+    price = models.DecimalField('מחיר', max_digits=10, decimal_places=2, default=0)
+    description = models.TextField('תיאור', blank=True)
+    active = models.BooleanField('פעיל', default=True)
+
+    class Meta:
+        verbose_name = 'פרזול'
+        verbose_name_plural = 'פרזול'
+
+    def __str__(self):
+        return f"{self.name} ({self.sku})"
+
+
 # ==========================================
 # 3. MATERIALS & COMPONENTS
 # ==========================================
@@ -159,41 +177,6 @@ class ProductModel(models.Model):
 
     def __str__(self):
         return f"[{self.code}] {self.name} ({self.product_family.name} / {self.series.name})"
-
-
-class ProductMaterial(models.Model):
-    """
-    Bill of Materials (BOM) linking products and raw materials with formulas.
-    """
-    product = models.ForeignKey(
-        ProductModel,
-        on_delete=models.CASCADE,
-        related_name='bom_items',
-        verbose_name='מוצר'
-    )
-    material = models.ForeignKey(
-        Material,
-        on_delete=models.PROTECT,
-        related_name='used_in_products',
-        verbose_name='חומר'
-    )
-
-    quantity_formula = models.CharField(
-        'נוסחת צריכה',
-        max_length=255,
-        default='1',
-        help_text='השתמש במשתנים כמו H (גובה), W (רוחב), D (עומק)'
-    )
-
-    note = models.CharField('הערת חלק / רכיב', max_length=255, blank=True)
-
-    class Meta:
-        verbose_name = 'פריט עץ מוצר'
-        verbose_name_plural = 'פריטי עץ מוצר'
-        unique_together = ('product', 'material', 'note')
-
-    def __str__(self):
-        return f"{self.product.sku} -> {self.material.name} ({self.quantity_formula})"
 
 
 class Customizer(models.Model):

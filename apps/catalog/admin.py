@@ -6,10 +6,10 @@ from .models import (
     Front,
     Material,
     ProductModel,
-    ProductMaterial,
     Handle,
+    Hardware,
 )
-from apps.production.models import ProductTechnicalData
+from apps.production.models import ProductTechnicalData, BOMItem
 
 
 @admin.register(ProductType)
@@ -58,10 +58,17 @@ class MaterialAdmin(admin.ModelAdmin):
     search_fields = ('name', 'sku')
 
 
-class ProductMaterialInline(admin.TabularInline):
+@admin.register(Hardware)
+class HardwareAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'sku', 'price', 'active')
+    search_fields = ('name', 'sku')
+
+
+class BOMItemInline(admin.TabularInline):
     """Allows adding materials/components directly on the Product page."""
-    model = ProductMaterial
+    model = BOMItem
     extra = 1
+    fk_name = 'parent_product'
 
 
 class ProductTechnicalDataInline(admin.StackedInline):
@@ -75,7 +82,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ('id', 'code', 'name', 'product_family', 'series')
     list_filter = ('product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name')
-    inlines = [ProductMaterialInline, ProductTechnicalDataInline]
+    inlines = [BOMItemInline, ProductTechnicalDataInline]
 
 from django.contrib import admin
 from .models import Customizer
