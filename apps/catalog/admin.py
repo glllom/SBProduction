@@ -7,6 +7,7 @@ from .models import (
     Material,
     ProductModel,
     ProductMaterial,
+    Handle,
 )
 from apps.production.models import ProductTechnicalData
 
@@ -41,6 +42,12 @@ class SeriesAdmin(admin.ModelAdmin):
 class FrontAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'code', 'series')
     list_filter = ('series',)
+    search_fields = ('name', 'code')
+
+
+@admin.register(Handle)
+class HandleAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'code', 'active')
     search_fields = ('name', 'code')
 
 

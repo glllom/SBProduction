@@ -6,10 +6,12 @@
 {% block content %}
     <div class="mb-4 align-items-end">
         <div class="d-flex align-items-center mb-2">
+            {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
             <button class="btn btn-sm btn-outline-primary ms-3" data-bs-toggle="modal"
                     data-bs-target="#editHeaderModal">
                 <i class="bi bi-pencil"></i>
             </button>
+            {% endif %}
             <h2 class="h3 mb-0 mx-3 fw-bolder">{{ order.customer }}</h2>
         </div>
         <div class="row">
@@ -20,6 +22,10 @@
             <div class="mb-3 col-2">
                 <label class="text-muted small d-block">חזית / גימור</label>
                 <span class="fw-medium">{{ order.front.name|default:"-" }}</span>
+            </div>
+            <div class="mb-3 col-2">
+                <label class="text-muted small d-block">ידית</label>
+                <span class="fw-medium">{{ order.handle.name|default:"-" }}</span>
             </div>
             <div class="mb-3 col-1">
                 <label class="text-muted small d-block">גוון בכנפיים</label>
@@ -45,11 +51,20 @@
         </div>
     </div>
     <div class="col-auto mb-2 d-flex gap-2">
+        {% if order.status == 'DRAFT' or order.status == 'MEASUREMENT' %}
+        <a href="{% url 'order-transfer-to-production' order.pk %}" class="btn btn-success">
+            <i class="bi bi-send-check ms-2"></i>העבר לייצור
+        </a>
+        {% endif %}
+
+        {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
             <i class="bi bi-plus-lg ms-2"></i>הוספת קבוצת דלתות
         </button>
+        {% endif %}
+        
         <a href="{% url 'order-measurements' order.pk %}" class="btn btn-outline-secondary">
-            <i class="bi bi-rulers ms-2"></i>טופס מידות
+            <i class="bi bi-rulers mx-2"></i>טופס מידות
         </a>
     </div>
     <div class="row">
@@ -65,6 +80,7 @@
                             <h5 class="mb-0 fw-bold text-primary">{{ group.product.name }}</h5>
                             <small class="text-muted">כמות דלתות: {{ group.quantity }}</small>
                         </div>
+                        {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
                         <div class="dropdown">
                             <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
                                 <i class="bi bi-three-dots-vertical"></i>
@@ -88,6 +104,7 @@
                                 </li>
                             </ul>
                         </div>
+                        {% endif %}
                     </div>
 
                     <!-- Modal Edit Group -->
@@ -260,26 +277,26 @@
                                     <table class="table table-sm table-hover mb-0 align-middle">
                                         <thead class="small text-muted bg-white">
                                         <tr>
-                                            <th class="ps-4">סימון</th>
-                                            <th>מידות</th>
-                                            <th>פתיחה</th>
-                                            <th class="text-end pe-4">סטטוס</th>
+                                            <th class="ps-2" style="width: 5%;">#</th>
+                                            <th class="" style="width: 9%;">מיקום</th>
+                                            <th class="" style="width: 12%;">מידות</th>
+                                            <th class="" style="width: 5%;"></th>
                                         </tr>
                                         </thead>
                                         <tbody>
                                             {% for item in group.items.all %}
                                             <tr class="item-row-{{ group.id }} {% if group.items.count > 5 and forloop.counter > 4 %}d-none{% endif %}">
-                                                <td class="ps-4">
+                                                <td class="ps-2">
                                                     <span class="fw-medium text-dark">{{ item.mark }}</span>
                                                 </td>
-                                                <td>
-                                                    {{ item.h_fmt|default:"-" }} × {{ item.w_fmt|default:"-" }}
-                                                    × {{ item.wall_fmt|default:"-" }}
+                                                <td class="ps-2">
+                                                    <span class="">{{ item.place|default:"" }}</span>
                                                 </td>
-                                                <td>{{ item.get_opening_display|default:"לא נבחר" }}</td>
-                                                <td class="text-end pe-4">
-                                                    <span class="small text-muted">{{ item.place|default:"" }}</span>
+                                                <td>{{ item.w_fmt|default:"-" }}×{{ item.h_fmt|default:"-" }}</td>
+                                                <td>{{ item.wall_fmt|default:"" }}{{ item.get_opening_display|default:"" }}
                                                 </td>
+                                                <td></td>
+
                                             </tr>
                                         {% empty %}
                                             <tr>
@@ -350,12 +367,14 @@
                                         </div>
                                     {% endfor %}
                                 </div>
+                                {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
                                 <div class="mt-4 text-end">
                                     <button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn"
                                             data-group-id="{{ group.id }}">
                                         <i class="bi bi-gear me-1"></i> ניהול קסטומייזרים
                                     </button>
                                 </div>
+                                {% endif %}
                             </div>
                             <div id="paint-{{ group.id }}" class="tab-pane fade p-4">
                                 <div class="row">
@@ -430,13 +449,17 @@
                                 <label class="form-label fw-bold">תאריך סיום</label>
                                 {{ header_form.completion_date }}
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label class="form-label fw-bold">סדרה</label>
                                 {{ header_form.series }}
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label class="form-label fw-bold">חזית / גימור</label>
                                 {{ header_form.front }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">ידית</label>
+                                {{ header_form.handle }}
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold">צבע פנלים (כנף)</label>
@@ -654,7 +677,7 @@
                     <div class="modal-body">
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">סימון</label>
+                                <label class="form-label fw-bold">#</label>
                                 <input type="text" name="mark" id="id_item_mark" class="form-control">
                             </div>
                             <div class="col-md-4 field-dims">
@@ -763,6 +786,10 @@
 
 {% block extra_js %}
     <script>
+        /**
+         * Configuration for Product Types.
+         * Used to show/hide fields based on door/frame characteristics.
+         */
         const productTypeConfig = {
             {% for pt in product_types %}
                 "{{ pt.id }}": {
@@ -773,7 +800,9 @@
         };
 
         $(document).ready(function () {
-            // Toggle items logic
+            /**
+             * Toggle visibility of items in a group (Show More/Show Less).
+             */
             $('.btn-toggle-items').on('click', function() {
                 const groupId = $(this).data('group-id');
                 const $hiddenRows = $(`.item-row-${groupId}.d-none`);
@@ -789,7 +818,9 @@
                 }
             });
 
-            // Edit Item Modal Logic
+            /**
+             * Populate and show the Edit Item Modal.
+             */
             $('.btn-edit-item').on('click', function() {
                 const $btn = $(this);
                 const itemId = $btn.data('item-id');
@@ -941,6 +972,10 @@
                 }
             });
 
+            /**
+             * Initialize Group Customizers Management Logic.
+             * Handles dynamic loading of customizers and their parameters.
+             */
             function updateMainListCustomizers(groupId) {
                 fetch(`/orders/api/group-customizers/?group_id=${groupId}`)
                     .then(r => r.json())
@@ -1237,7 +1272,9 @@
                 if (groupId) openCustomizerModal(groupId);
             });
 
-            // Logic for dependent selects in edit modal
+            /**
+             * Logic for dependent selects in modals (e.g., Series -> Front).
+             */
             $(document).on('change', 'select[name="series"]', function () {
                 const $seriesSelect = $(this);
                 const seriesId = $seriesSelect.val();

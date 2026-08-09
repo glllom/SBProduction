@@ -81,6 +81,20 @@ class Front(models.Model):
         return self.name
 
 
+class Handle(models.Model):
+    name = models.CharField('שם', max_length=100, unique=True)
+    code = models.CharField('קוד', max_length=32, unique=True)
+    description = models.TextField('תיאור', blank=True)
+    active = models.BooleanField('פעיל', default=True)
+
+    class Meta:
+        verbose_name = 'ידית'
+        verbose_name_plural = 'ידיות'
+
+    def __str__(self):
+        return self.name
+
+
 # ==========================================
 # 3. MATERIALS & COMPONENTS
 # ==========================================

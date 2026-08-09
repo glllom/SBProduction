@@ -8,11 +8,42 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from rest_framework import viewsets, permissions
 from .serializers import OrderItemsGroupCustomizerSerializer
-from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer
+from django.core.exceptions import PermissionDenied
+from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer, OrderStatus
 from .forms import OrderForm, OrderHeaderForm, OrderItemsGroupForm, OrderItemForm
 from apps.catalog.models import ProductFamily, Series, Front, ProductType
 
-class OrderItemUpdateView(LoginRequiredMixin, UpdateView):
+class OrderEditPermissionMixin:
+    def dispatch(self, request, *args, **kwargs):
+        order = None
+        # Try to get order from the object being edited
+        if hasattr(self, 'get_object'):
+            try:
+                # We need to be careful not to trigger get_object if it's not needed or fails
+                # For CreateView, get_object might not be what we want
+                if not isinstance(self, CreateView):
+                    obj = self.get_object()
+                    if isinstance(obj, Order):
+                        order = obj
+                    elif hasattr(obj, 'order'):
+                        order = obj.order
+                    elif hasattr(obj, 'group'):
+                        order = obj.group.order
+            except:
+                pass
+        
+        # Try to get order from URL kwargs if not found yet
+        if not order:
+            if 'order_pk' in self.kwargs:
+                order = get_object_or_404(Order, pk=self.kwargs.get('order_pk'))
+            elif 'pk' in self.kwargs and isinstance(self, (OrderHeaderUpdateView, OrderDeleteView)):
+                order = get_object_or_404(Order, pk=self.kwargs.get('pk'))
+
+        if order and order.status == OrderStatus.IN_PRODUCTION and not request.user.is_admin_user:
+            raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
+        return super().dispatch(request, *args, **kwargs)
+
+class OrderItemUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, UpdateView):
     model = OrderItem
     form_class = OrderItemForm
 
@@ -77,7 +108,7 @@ class OrderMeasurementsView(LoginRequiredMixin, DetailView):
         return context
 
 
-class OrderHeaderUpdateView(LoginRequiredMixin, UpdateView):
+class OrderHeaderUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, UpdateView):
     model = Order
     form_class = OrderHeaderForm
 
@@ -93,9 +124,9 @@ class OrderHeaderUpdateView(LoginRequiredMixin, UpdateView):
             new_val = getattr(new_instance, field)
             
             # For ForeignKeys, we might want the __str__ or name
-            if field in ['series', 'front'] and old_val:
+            if field in ['series', 'front', 'handle'] and old_val:
                 old_val = str(old_val)
-            if field in ['series', 'front'] and new_val:
+            if field in ['series', 'front', 'handle'] and new_val:
                 new_val = str(new_val)
 
             OrderChangeLog.objects.create(
@@ -111,12 +142,12 @@ class OrderHeaderUpdateView(LoginRequiredMixin, UpdateView):
         return reverse_lazy('order-detail', kwargs={'pk': self.object.pk})
 
 
-class OrderDeleteView(LoginRequiredMixin, DeleteView):
+class OrderDeleteView(LoginRequiredMixin, OrderEditPermissionMixin, DeleteView):
     model = Order
     success_url = reverse_lazy('order-list')
 
 
-class OrderItemsGroupCreateView(LoginRequiredMixin, CreateView):
+class OrderItemsGroupCreateView(LoginRequiredMixin, OrderEditPermissionMixin, CreateView):
     model = OrderItemsGroup
     form_class = OrderItemsGroupForm
     template_name = 'orders/orderitemsgroup_form.html'
@@ -142,7 +173,7 @@ class OrderItemsGroupCreateView(LoginRequiredMixin, CreateView):
         return base_url
 
 
-class OrderItemsGroupUpdateView(LoginRequiredMixin, UpdateView):
+class OrderItemsGroupUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, UpdateView):
     model = OrderItemsGroup
     form_class = OrderItemsGroupForm
     template_name = 'orders/orderitemsgroup_form.html'
@@ -164,7 +195,7 @@ class OrderItemsGroupUpdateView(LoginRequiredMixin, UpdateView):
         return base_url
 
 
-class OrderItemsGroupDeleteView(LoginRequiredMixin, DeleteView):
+class OrderItemsGroupDeleteView(LoginRequiredMixin, OrderEditPermissionMixin, DeleteView):
     model = OrderItemsGroup
 
     def get_success_url(self):
@@ -188,6 +219,8 @@ class OrderItemsGroupCustomizerViewSet(viewsets.ModelViewSet):
 @require_POST
 def update_item_measurements(request, pk):
     item = get_object_or_404(OrderItem, pk=pk)
+    if item.group.order.status == OrderStatus.IN_PRODUCTION and not request.user.is_admin_user:
+        raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
     # Fields that measurer can update
     fields = [
         'height', 'width', 'wall', 'direction', 'opening', 'mark',
@@ -219,6 +252,8 @@ def update_item_measurements(request, pk):
 @require_POST
 def duplicate_item_measurements(request, pk):
     item = get_object_or_404(OrderItem, pk=pk)
+    if item.group.order.status == OrderStatus.IN_PRODUCTION and not request.user.is_admin_user:
+        raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
     group = item.group
     
     # Get all items in the same group that come AFTER the current item (by ID)
@@ -241,3 +276,21 @@ def duplicate_item_measurements(request, pk):
         items_to_update.update(**update_data)
         
     return JsonResponse({'status': 'ok'})
+
+
+@login_required
+def order_transfer_to_production(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+    old_status = order.status
+    if old_status != OrderStatus.IN_PRODUCTION:
+        order.status = OrderStatus.IN_PRODUCTION
+        order.save()
+
+        OrderChangeLog.objects.create(
+            order=order,
+            user=request.user,
+            field_name='status',
+            old_value=old_status,
+            new_value=OrderStatus.IN_PRODUCTION
+        )
+    return redirect('order-detail', pk=pk)

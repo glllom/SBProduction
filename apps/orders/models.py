@@ -75,6 +75,13 @@ class Order(models.Model):
         null=True,
         verbose_name="חזית / גימור"
     )
+    handle = models.ForeignKey(
+        'catalog.Handle',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="ידית"
+    )
     is_frames_to_paint = models.BooleanField(
         default=False,
         verbose_name="לצבוע משקופים?",

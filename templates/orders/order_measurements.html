@@ -23,16 +23,16 @@
                 <h5 class="mb-0 fw-bold text-dark d-inline">{{ group.product.name }}</h5>
                 <span class="text-muted small ms-2">
                     {% for gc in group.customizers.all %}
-                        {{ gc.customizer.name }}{% if not forloop.last %}, {% endif %}
+                        {{ gc.customizer.name }}{% if gc.customizer.par1_value %}: {{ gc.customizer.par1_value}}{% endif %}{% if not forloop.last %}, {% endif %}
                     {% endfor %}
                 </span>
             </div>
             {% if forloop.first %}
             <div class="no-print">
-                <button class="btn btn-sm btn-light border" onclick="exportToExcel()" title="Скачать Excel">
+                <button class="btn btn-sm btn-light border" onclick="exportToExcel()" title="ייצוא לאקסל">
                     <i class="bi bi-download"></i>
                 </button>
-                <button class="btn btn-sm btn-light border" onclick="window.print()" title="Распечатать">
+                <button class="btn btn-sm btn-light border" onclick="window.print()" title="הדפסה">
                     <i class="bi bi-printer"></i>
                 </button>
             </div>
@@ -48,7 +48,7 @@
                         <th style="width: 7%;">גובה</th>
                         <th style="width: 6%;">משקוף</th>
                         <th style="width: 10%;">פתיחה</th>
-                        <th style="width: 6%;">חיתוך</th>
+                        <th style="width: 6%;">רווח נוסף</th>
                         <th>הערה</th>
                         <th class="no-print" style="width: 160px;"></th>
                     </tr>
@@ -90,25 +90,27 @@
                         <td class="field-addition-cut small">{{ item.addition_cut|default:'' }}</td>
                         <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
                         <td class="no-print text-nowrap">
-                            {% if item.sketch %}
+                            {% if order.sketch %}
                                 <a href="{{ item.sketch.url }}" target="_blank" class="btn btn-sm btn-primary py-0" title="צפה בשרטוט">
                                     <i class="bi bi-file-earmark-image"></i>
                                 </a>
                             {% endif %}
-                            <i class="bi bi-pencil-square opacity-50 ms-2"></i>
+                            {% if order.status != 'IN_PRODUCTION' or user.is_admin_user %}
+                                <i class="bi bi-pencil-square opacity-50 ms-2"></i>
+                            {% endif %}
                         </td>
                     </tr>
                     {% if item.custom_lock_height or item.custom_hinge1 or item.custom_hinge2 or item.custom_hinge3 or item.custom_hinge4 or item.custom_hinge5 %}
                     <tr id="display-custom-{{ item.id }}" class="custom-heights-display-row text-muted">
                         <td></td>
                         <td colspan="7" class="text-start">
-                            <span class="ps-4">
-                                {% if item.custom_lock_height %}<span class="custom-label">מנעול:</span><span class="custom-value">{{ item.custom_lock_height }}</span>{% endif %}
-                                {% if item.custom_hinge1 %}<span class="custom-label">ציר 1:</span><span class="custom-value">{{ item.custom_hinge1 }}</span>{% endif %}
-                                {% if item.custom_hinge2 %}<span class="custom-label">ציר 2:</span><span class="custom-value">{{ item.custom_hinge2 }}</span>{% endif %}
-                                {% if item.custom_hinge3 %}<span class="custom-label">ציר 3:</span><span class="custom-value">{{ item.custom_hinge3 }}</span>{% endif %}
-                                {% if item.custom_hinge4 %}<span class="custom-label">ציר 4:</span><span class="custom-value">{{ item.custom_hinge4 }}</span>{% endif %}
-                                {% if item.custom_hinge5 %}<span class="custom-label">ציר 5:</span><span class="custom-value">{{ item.custom_hinge5 }}</span>{% endif %}
+                            <span class="ps-4" dir="rtl">
+                                {% if item.custom_lock_height %}<span class="custom-label">מנעול:</span><span class="custom-value ms-1 me-3">{{ item.custom_lock_height }}</span>{% endif %}
+                                {% if item.custom_hinge1 %}<span class="custom-label" dir="rtl">ציר 1:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge1 }}</span>{% endif %}
+                                {% if item.custom_hinge2 %}<span class="custom-label" dir="rtl">ציר 2:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge2 }}</span>{% endif %}
+                                {% if item.custom_hinge3 %}<span class="custom-label" dir="rtl">ציר 3:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge3 }}</span>{% endif %}
+                                {% if item.custom_hinge4 %}<span class="custom-label" dir="rtl">ציר 4:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge4 }}</span>{% endif %}
+                                {% if item.custom_hinge5 %}<span class="custom-label" dir="rtl">ציר 5:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge5 }}</span>{% endif %}
                             </span>
                         </td>
                         <td class="no-print"></td>
@@ -158,400 +160,16 @@
 
 {% block extra_js %}
 <script>
-function exportToExcel() {
-    let csv = [];
-    csv.push("\uFEFF"); // BOM for Hebrew/UTF-8 support in Excel
-    csv.push("טופס מידות הזמנה: {{ order.order_number }}");
-    csv.push("לקוח: {{ order.customer }}");
-    csv.push("");
-
-    document.querySelectorAll('.card').forEach(card => {
-        const header = card.querySelector('h5');
-        if (!header) return;
-        
-        csv.push(header.innerText.trim());
-        
-        const table = card.querySelector('table');
-        const rows = table.querySelectorAll('tr');
-        
-        rows.forEach(row => {
-            const cols = row.querySelectorAll('th, td');
-            let rowData = [];
-            cols.forEach((col, index) => {
-                // Skip the last column (actions/icon) if it's the edit icon column
-                if (!col.classList.contains('no-print')) {
-                    rowData.push('"' + col.innerText.trim().replace(/"/g, '""') + '"');
-                }
-            });
-            if (rowData.length > 0) {
-                csv.push(rowData.join(","));
-            }
-        });
-        csv.push("");
-    });
-
-    const csvContent = csv.join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", "מידות_הזמנה_{{ order.order_number }}.csv");
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-$(document).ready(function() {
-    const formatNum = (val) => {
-        if (!val && val !== 0) return '';
-        let n = parseFloat(val);
-        if (isNaN(n)) return val;
-        // Truncate to 1 decimal place
-        n = Math.floor(n * 10) / 10;
-        return n % 1 === 0 ? n.toString() : n.toFixed(1);
+    /**
+     * Configuration for Order Measurements script.
+     * Passed from Django context to external JS file.
+     */
+    window.OrderMeasurementsConfig = {
+        orderNumber: "{{ order.order_number|escapejs }}",
+        customer: "{{ order.customer|escapejs }}",
+        csrfToken: "{{ csrf_token }}",
+        canEdit: {% if order.status != 'IN_PRODUCTION' or user.is_admin_user %}true{% else %}false{% endif %}
     };
-
-    $(document).on('input', '.numeric-input', function() {
-        this.value = this.value.replace(/[^0-9.]/g, '');
-        if ((this.value.match(/\./g) || []).length > 1) {
-            this.value = this.value.replace(/\.$/, '');
-        }
-    });
-
-    $('.clickable-row').on('click', function(e) {
-        if ($(this).hasClass('edit-mode')) return;
-        
-        const $row = $(this);
-        const itemId = $row.data('item-id');
-        const data = $row.data();
-        
-        // Save current HTML to restore if canceled
-        $row.data('old-html', $row.html());
-        $row.addClass('edit-mode');
-        $(`#display-custom-${itemId}`).addClass('d-none');
-        
-        const openingOptions = `
-            <option value="">-</option>
-            <option value="LEFT" ${data.opening === 'LEFT' ? 'selected' : ''}>L</option>
-            <option value="RIGHT" ${data.opening === 'RIGHT' ? 'selected' : ''}>R</option>
-        `;
-        
-        const directionOptions = `
-            <option value="">-</option>
-            <option value="IN" ${data.direction === 'IN' ? 'selected' : ''}>פנימה</option>
-            <option value="OUT" ${data.direction === 'OUT' ? 'selected' : ''}>החוצה</option>
-        `;
-        
-        const sketchBtnClass = data.sketchUrl ? 'btn-primary' : 'btn-outline-primary';
-
-        let html = `
-            <td class="fw-bold bg-light">${data.mark}</td>
-            <td><input type="text" class="form-control form-control-sm" name="place" value="${data.place || ''}"></td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="width" value="${data.width}"></td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="height" value="${data.height}"></td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="wall" value="${data.wall}" ${data.hasFrame ? '' : 'disabled'}></td>
-            <td>
-                <div class="d-flex gap-1">
-                    <select class="form-select form-select-sm" name="opening" ${data.hasDoor ? '' : 'disabled'}>${openingOptions}</select>
-                    <select class="form-select form-select-sm" name="direction" ${data.hasDoor ? '' : 'disabled'}>${directionOptions}</select>
-                </div>
-            </td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="addition_cut" value="${data.additionCut || ''}"></td>
-            <td><input type="text" class="form-control form-control-sm" name="comment" value="${data.comment || ''}" style="width: 100%; min-width: 100px;"></td>
-            <td class="text-nowrap">
-                <button class="btn btn-sm btn-success btn-save" title="שמור"><i class="bi bi-check-lg"></i></button>
-                <button class="btn btn-sm btn-outline-primary btn-duplicate" title="שכפל לשאר הקבוצה"><i class="bi bi-files"></i></button>
-                <button class="btn btn-sm btn-outline-info btn-toggle-custom" title="שינוי גבהי צירים ומנעול"><i class="bi bi-sliders"></i></button>
-                
-                <div class="d-inline-block position-relative">
-                    <button class="btn btn-sm ${sketchBtnClass} btn-sketch-upload" title="העלאת שרטוט">
-                        <i class="bi bi-file-earmark-image"></i>
-                    </button>
-                    ${data.sketchUrl ? '<button type="button" class="btn btn-sm btn-danger py-0 px-1 position-absolute top-0 start-0 translate-middle rounded-circle btn-sketch-delete" style="font-size: 8px; z-index: 5;" title="מחק שרטוט"><i class="bi bi-x"></i></button>' : ''}
-                    <input type="file" class="d-none sketch-file-input" accept="image/*,application/pdf">
-                    <input type="hidden" name="delete_sketch" value="false" class="delete-sketch-input">
-                </div>
-
-                <button class="btn btn-sm btn-outline-secondary btn-cancel" title="ביטול"><i class="bi bi-x-lg"></i></button>
-            </td>
-        `;
-        
-        $row.html(html);
-
-        // Add custom heights row
-        let customHtml = `
-            <tr id="custom-row-${itemId}" class="edit-mode custom-heights-row d-none">
-                <td class="bg-light fw-bold small text-center">גובה מותאם</td>
-                <td colspan="7">
-                    <div class="d-flex gap-2 p-1 align-items-center">
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">מנעול</span>
-                            <input type="text" class="form-control numeric-input" name="custom_lock_height" value="${data.customLockHeight || ''}">
-                        </div>
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">ציר 1</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge1" value="${data.customHinge1 || ''}">
-                        </div>
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">ציר 2</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge2" value="${data.customHinge2 || ''}">
-                        </div>
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">ציר 3</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge3" value="${data.customHinge3 || ''}">
-                        </div>
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">ציר 4</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge4" value="${data.customHinge4 || ''}">
-                        </div>
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">ציר 5</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge5" value="${data.customHinge5 || ''}">
-                        </div>
-                    </div>
-                </td>
-                <td class="no-print"></td>
-            </tr>
-        `;
-        $row.after(customHtml);
-
-        $row.find('input[name="place"]').focus();
-    });
-
-    $(document).on('click', '.btn-toggle-custom', function(e) {
-        e.stopPropagation();
-        const $row = $(this).closest('tr');
-        const itemId = $row.data('item-id');
-        $(`#custom-row-${itemId}`).toggleClass('d-none');
-    });
-
-    $(document).on('click', '.btn-sketch-upload', function(e) {
-        e.stopPropagation();
-        $(this).closest('div').find('.sketch-file-input').click();
-    });
-
-    $(document).on('click', '.btn-sketch-delete', function(e) {
-        e.stopPropagation();
-        const $container = $(this).closest('div');
-        $container.find('.delete-sketch-input').val('true');
-        $container.find('.btn-sketch-upload').removeClass('btn-primary').addClass('btn-outline-primary');
-        $(this).remove();
-    });
-
-    $(document).on('change', '.sketch-file-input', function(e) {
-        const file = this.files[0];
-        const $btn = $(this).prev('.btn-sketch-upload');
-        if (file) {
-            $btn.removeClass('btn-outline-primary').addClass('btn-primary');
-        }
-    });
-
-    $(document).on('click', '.btn-cancel', function(e) {
-        e.stopPropagation();
-        const $row = $(this).closest('tr');
-        const itemId = $row.data('item-id');
-        const oldHtml = $row.data('old-html');
-        
-        $row.html(oldHtml).removeClass('edit-mode');
-        $(`#custom-row-${itemId}`).remove();
-        $(`#display-custom-${itemId}`).removeClass('d-none');
-    });
-
-    $(document).on('click', '.btn-save', function(e) {
-        e.stopPropagation();
-        const $row = $(this).closest('tr');
-        const itemId = $row.data('item-id');
-        const $customRow = $(`#custom-row-${itemId}`);
-        const formData = new FormData();
-        
-        $row.find('input, select').each(function() {
-            if (this.type === 'file') {
-                if (this.files[0]) {
-                    formData.append('sketch', this.files[0]);
-                }
-            } else if (this.className.includes('delete-sketch-input')) {
-                formData.append('delete_sketch', $(this).val());
-            } else {
-                formData.append($(this).attr('name'), $(this).val());
-            }
-        });
-
-        if ($customRow.length) {
-            $customRow.find('input').each(function() {
-                formData.append($(this).attr('name'), $(this).val());
-            });
-        }
-
-        const $btnSave = $(this);
-        $btnSave.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
-
-        $.ajax({
-            url: `/orders/items/${itemId}/update-measurements/`,
-            method: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            headers: {'X-CSRFToken': '{{ csrf_token }}'},
-            success: function(response) {
-                if (response.status === 'ok') {
-                    const formattedH = formatNum(formData.get('height'));
-                    const formattedW = formatNum(formData.get('width'));
-                    const formattedWall = formatNum(formData.get('wall'));
-                    const formattedCut = formatNum(formData.get('addition_cut'));
-
-                    // Update data attributes
-                    $row.data('width', formattedW);
-                    $row.data('height', formattedH);
-                    $row.data('wall', formattedWall);
-                    $row.data('opening', formData.get('opening'));
-                    $row.data('direction', formData.get('direction'));
-                    $row.data('place', formData.get('place'));
-                    $row.data('addition-cut', formattedCut);
-                    $row.data('comment', formData.get('comment'));
-                    $row.data('sketch-url', response.sketch_url);
-                    
-                    // Custom heights
-                    $row.data('custom-lock-height', formatNum(formData.get('custom_lock_height')));
-                    $row.data('custom-hinge1', formatNum(formData.get('custom_hinge1')));
-                    $row.data('custom-hinge2', formatNum(formData.get('custom_hinge2')));
-                    $row.data('custom-hinge3', formatNum(formData.get('custom_hinge3')));
-                    $row.data('custom-hinge4', formatNum(formData.get('custom_hinge4')));
-                    $row.data('custom-hinge5', formatNum(formData.get('custom_hinge5')));
-                    
-                    // Rebuild static row content
-                    const openingText = (formData.get('opening') === 'LEFT' ? 'L' : (formData.get('opening') === 'RIGHT' ? 'R' : ''));
-                    const directionText = (formData.get('direction') === 'IN' ? 'פנימה' : (formData.get('direction') === 'OUT' ? 'החוצה' : ''));
-                    let combinedText = '-';
-                    if (openingText || directionText) {
-                        combinedText = `${openingText} / ${directionText}`;
-                    }
-
-                    let staticHtml = `
-                        <td class="fw-bold bg-light">${$row.data('mark')}</td>
-                        <td class="field-place small text-start">${formData.get('place') || ''}</td>
-                        <td class="field-width">${formattedW}</td>
-                        <td class="field-height">${formattedH}</td>
-                        <td class="field-wall">${formattedWall}</td>
-                        <td class="field-opening small">${combinedText}</td>
-                        <td class="field-addition-cut small">${formattedCut}</td>
-                        <td class="field-comment small text-start">${formData.get('comment') || ''}</td>
-                        <td class="no-print text-nowrap">
-                            ${response.sketch_url ? `
-                                <a href="${response.sketch_url}" target="_blank" class="btn btn-sm btn-primary py-0" title="צפה בשרטוט">
-                                    <i class="bi bi-file-earmark-image"></i>
-                                </a>
-                            ` : ''}
-                            <i class="bi bi-pencil-square opacity-50 ms-2"></i>
-                        </td>
-                    `;
-                    $row.html(staticHtml).removeClass('edit-mode');
-                    $customRow.remove();
-                    $(`#display-custom-${itemId}`).remove();
-
-                    // Create new display row for custom heights if any exist
-                    const cLock = formatNum(formData.get('custom_lock_height'));
-                    const cH1 = formatNum(formData.get('custom_hinge1'));
-                    const cH2 = formatNum(formData.get('custom_hinge2'));
-                    const cH3 = formatNum(formData.get('custom_hinge3'));
-                    const cH4 = formatNum(formData.get('custom_hinge4'));
-                    const cH5 = formatNum(formData.get('custom_hinge5'));
-
-                    if (cLock || cH1 || cH2 || cH3 || cH4 || cH5) {
-                        let customDisplayHtml = `
-                            <tr id="display-custom-${itemId}" class="custom-heights-display-row text-muted">
-                                <td></td>
-                                <td colspan="7" class="text-start">
-                                    <span class="ps-4">
-                                        ${cLock ? `<span class="custom-label">מנעול:</span><span class="custom-value">${cLock}</span>` : ''}
-                                        ${cH1 ? `<span class="custom-label">ציר 1:</span><span class="custom-value">${cH1}</span>` : ''}
-                                        ${cH2 ? `<span class="custom-label">ציר 2:</span><span class="custom-value">${cH2}</span>` : ''}
-                                        ${cH3 ? `<span class="custom-label">ציר 3:</span><span class="custom-value">${cH3}</span>` : ''}
-                                        ${cH4 ? `<span class="custom-label">ציר 4:</span><span class="custom-value">${cH4}</span>` : ''}
-                                        ${cH5 ? `<span class="custom-label">ציר 5:</span><span class="custom-value">${cH5}</span>` : ''}
-                                    </span>
-                                </td>
-                                <td class="no-print"></td>
-                            </tr>
-                        `;
-                        $row.after(customDisplayHtml);
-                    }
-
-                    // Move to next row
-                    const $allRows = $('.clickable-row');
-                    const currentIndex = $allRows.index($row);
-                    if (currentIndex < $allRows.length - 1) {
-                        $allRows.eq(currentIndex + 1).click();
-                    }
-                } else {
-                    alert('שגיאה בשמירה');
-                    $btnSave.prop('disabled', false).html('<i class="bi bi-check-lg"></i>');
-                }
-            },
-            error: function() {
-                alert('שגיאה בתקשורת עם השרת');
-                $btnSave.prop('disabled', false).html('<i class="bi bi-check-lg"></i>');
-            }
-        });
-    });
-
-    $(document).on('click', '.btn-duplicate', function(e) {
-        e.stopPropagation();
-        const $row = $(this).closest('tr');
-        const itemId = $row.data('item-id');
-        const formData = {};
-        
-        $row.find('input, select').each(function() {
-            if (this.name && this.type !== 'file') {
-                formData[$(this).attr('name')] = $(this).val();
-            }
-        });
-
-        if (!confirm('האם להעתיק את הנתונים לכל שאר השורות בקבוצה זו?')) return;
-
-        const $btnDup = $(this);
-        $btnDup.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
-
-        $.ajax({
-            url: `/orders/items/${itemId}/duplicate-measurements/`,
-            method: 'POST',
-            data: formData,
-            headers: {'X-CSRFToken': '{{ csrf_token }}'},
-            success: function(response) {
-                if (response.status === 'ok') {
-                    // Update all following rows in the same tbody
-                    const $tbody = $row.closest('tbody');
-                    const $followingRows = $row.nextAll('tr');
-                    
-                    // Also update the current row as if it was saved
-                    $row.find('.btn-save').click();
-                    
-                    // For following rows, we can just reload the page or update them via JS
-                    // Reload is safer to ensure all labels and data attributes are correct
-                    location.reload();
-                } else {
-                    alert('שגיאה בשכפול');
-                    $btnDup.prop('disabled', false).html('<i class="bi bi-files"></i>');
-                }
-            },
-            error: function() {
-                alert('שגיאה בתקשורת עם השרת');
-                $btnDup.prop('disabled', false).html('<i class="bi bi-files"></i>');
-            }
-        });
-    });
-    
-    // Prevent event bubbling when clicking inside inputs
-    $(document).on('click', 'input, select', function(e) {
-        e.stopPropagation();
-    });
-    
-    // Support "Enter" key for saving
-    $(document).on('keypress', 'input', function(e) {
-        if (e.which == 13) {
-            $(this).closest('tr').find('.btn-save').click();
-        }
-    });
-});
 </script>
+<script src="/static/js/order_measurements.js"></script>
 {% endblock %}

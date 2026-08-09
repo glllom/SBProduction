@@ -1,6 +1,6 @@
 from django import forms
 from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer, OrderItem
-from apps.catalog.models import Series, Front, ProductModel, ProductType, ProductFamily
+from apps.catalog.models import Series, Front, ProductModel, ProductType, ProductFamily, Handle
 
 class OrderItemForm(forms.ModelForm):
     class Meta:
@@ -81,6 +81,7 @@ class OrderForm(forms.ModelForm):
             'completion_date', 
             'series', 
             'front', 
+            'handle',
             'color_panels', 
             'is_frames_to_paint',
             'color_frames', 
@@ -93,6 +94,7 @@ class OrderForm(forms.ModelForm):
             'customer': forms.TextInput(attrs={'class': 'form-control'}),
             'series': forms.Select(attrs={'class': 'form-select'}),
             'front': forms.Select(attrs={'class': 'form-select'}),
+            'handle': forms.Select(attrs={'class': 'form-select'}),
             'color_panels': forms.TextInput(attrs={'class': 'form-control'}),
             'is_frames_to_paint': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'color_frames': forms.TextInput(attrs={'class': 'form-control'}),
@@ -124,6 +126,7 @@ class OrderHeaderForm(forms.ModelForm):
             'completion_date',
             'series',
             'front',
+            'handle',
             'color_panels',
             'is_frames_to_paint',
             'color_frames',
@@ -135,6 +138,7 @@ class OrderHeaderForm(forms.ModelForm):
             'completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'series': forms.Select(attrs={'class': 'form-select'}),
             'front': forms.Select(attrs={'class': 'form-select'}),
+            'handle': forms.Select(attrs={'class': 'form-select'}),
             'color_panels': forms.TextInput(attrs={'class': 'form-control'}),
             'is_frames_to_paint': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'color_frames': forms.TextInput(attrs={'class': 'form-control'}),
