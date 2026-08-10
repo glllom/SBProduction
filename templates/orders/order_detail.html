@@ -40,6 +40,12 @@
                 <label class="text-muted small d-block">ירידה לייצור</label>
                 <span class="fw-normal">{{ order.created_at|date:"d/m/Y" }}</span>
             </div>
+            {% if order.phase1_completion_date %}
+            <div class="mb-3 col-1 ">
+                <label class="text-muted small d-block">סיום שלב א</label>
+                <span class="fw-normal">{{ order.phase1_completion_date|date:"d/m/Y" }}</span>
+            </div>
+            {% endif %}
             <div class="mb-3 col-1 ">
                 <label class="text-muted small d-block">סיום ייצור</label>
                 <span class="fw-normal">{{ order.completion_date|date:"d/m/Y" }}</span>
@@ -52,8 +58,26 @@
     </div>
     <div class="col-auto mb-2 d-flex gap-2">
         {% if order.status == 'DRAFT' or order.status == 'MEASUREMENT' %}
+        <a href="{% url 'order-transfer-to-phase1' order.pk %}" class="btn btn-warning">
+            <i class="bi bi-hammer ms-2"></i>התחל שלב א'
+        </a>
         <a href="{% url 'order-transfer-to-production' order.pk %}" class="btn btn-success">
             <i class="bi bi-send-check ms-2"></i>העבר לייצור
+        </a>
+        {% endif %}
+
+        {% if order.status == 'PHASE1_PRODUCTION' or order.status == 'IN_PRODUCTION' or order.status == 'PHASE1_READY' %}
+        <a href="{% url 'order-production-data' order.pk %}" class="btn btn-info text-white">
+            <i class="bi bi-file-earmark-zip ms-2"></i>קבצים לייצור (ZIP)
+        </a>
+        <a href="{% url 'order-production-report' order.pk %}" target="_blank" class="btn btn-outline-info">
+            <i class="bi bi-printer ms-2"></i>דו''ח לייצור (PDF/Печать)
+        </a>
+        {% endif %}
+
+        {% if order.status == 'PHASE1_READY' %}
+        <a href="{% url 'order-transfer-to-production' order.pk %}" class="btn btn-primary">
+            <i class="bi bi-play-fill ms-2"></i>התחל שלב ב' (ייצור מלא)
         </a>
         {% endif %}
 
@@ -77,7 +101,12 @@
                      data-group-details="{{ group.product.product_family.name }} / {{ group.series.name }}">
                     <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
                         <div>
-                            <h5 class="mb-0 fw-bold text-primary">{{ group.product.name }}</h5>
+                            <h5 class="mb-0 fw-bold text-primary">
+                                {{ group.product.name }}
+                                {% if group.is_split_installation %}
+                                    <span class="badge bg-info-subtle text-info ms-2" style="font-size: 0.7rem;">התקנה מפוצלת (שלב א)</span>
+                                {% endif %}
+                            </h5>
                             <small class="text-muted">כמות דלתות: {{ group.quantity }}</small>
                         </div>
                         {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}

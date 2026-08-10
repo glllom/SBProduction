@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>דו''ח לייצור - הזמנה {{ order.order_number }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f0f0f0; }
+        .page {
+            background: white;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm;
+            margin: 10mm auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #000; padding: 8px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        .header { margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+        .phase-mark { color: red; font-weight: bold; font-size: 1.2em; }
+        .no-print {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .btn {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin: 0 5px;
+        }
+        .btn-secondary { background-color: #6c757d; }
+        
+        @media print {
+            body { background-color: white; margin: 0; }
+            .page { margin: 0; box-shadow: none; width: 100%; padding: 10mm; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button onclick="window.print()" class="btn">הדפס דו''ח (Print)</button>
+        <button onclick="window.close()" class="btn btn-secondary">סגור (Close)</button>
+    </div>
+
+    <div class="page">
+        <div class="header">
+            <h1>דו''ח לייצור - מחלקת אלומיניום</h1>
+            <div style="display: flex; justify-content: space-between;">
+                <div>
+                    <p><strong>מספר הזמנה:</strong> {{ order.order_number }}</p>
+                    <p><strong>לקוח:</strong> {{ order.customer }}</p>
+                </div>
+                <div>
+                    <p><strong>תאריך:</strong> {{ now|date:"d/m/Y H:i" }}</p>
+                    {% if is_phase_a %}
+                        <p class="phase-mark">שלב א' - משקופים בלבד</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>מיקום</th>
+                <th>סדרה</th>
+                <th>חזית</th>
+                <th>מידות (גxרxק)</th>
+                <th>צבע פנל</th>
+                <th>צבע משקוף</th>
+                <th>מנעול (גובה)</th>
+                <th>צירים (גבהים)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for data in items_data %}
+            <tr>
+                <td>{{ data.item.mark }}</td>
+                <td>{{ data.item.place|default:"" }}</td>
+                <td>{{ data.group.series.name|default:order.series.name }}</td>
+                <td>{{ data.group.front.name|default:order.front.name }}</td>
+                <td>{{ data.item.height }} x {{ data.item.width }} x {{ data.item.wall }}</td>
+                <td>{{ data.panel_color|default:"" }}</td>
+                <td>{{ data.frame_color|default:"" }}</td>
+                <td>{{ data.lock_height|default:"-" }}</td>
+                <td>
+                    {% for h in data.hinge_heights %}
+                        {{ h }}{% if not forloop.last %}, {% endif %}
+                    {% empty %}
+                        -
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</body>
+</html>

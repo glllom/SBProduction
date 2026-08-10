@@ -9,6 +9,8 @@ class OrderStatus(models.TextChoices):
     DRAFT = 'DRAFT', 'טיוטה'
     MEASUREMENT = 'MEASUREMENT', 'ממתין למדידה'
     IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
+    PHASE1_PRODUCTION = 'PHASE1_PRODUCTION', 'ייצור שלב א (משקופים)'
+    PHASE1_READY = 'PHASE1_READY', 'שלב א מוכן (ממתין להמשך)'
     READY = 'READY', 'מוכן למשלוח'
     COMPLETED = 'COMPLETED', 'הושלם'
     CANCELED = 'CANCELED', 'בוטל'
@@ -55,6 +57,9 @@ class Order(models.Model):
     # --- Stage dates ---
     painting_date = models.DateField(
         null=True, blank=True, verbose_name="תאריך צביעה"
+    )
+    phase1_completion_date = models.DateField(
+        null=True, blank=True, verbose_name="תאריך סיום שלב א"
     )
     completion_date = models.DateField(
         null=True, blank=True, verbose_name="תאריך סיום"
@@ -133,6 +138,99 @@ class Order(models.Model):
 
         if items_to_update:
             OrderItem.objects.bulk_update(items_to_update, ['mark'])
+
+    def validate_for_production(self):
+        """
+        Validates if the order is ready for production.
+        If any group has is_split_installation = True, validation is partial.
+        Returns (is_valid, errors)
+        """
+        errors = []
+        has_split = self.groups.filter(is_split_installation=True).exists()
+        
+        # Base order validation
+        if not self.order_number:
+            errors.append("מספר הזמנה חסר")
+        if not self.customer:
+            errors.append("שם לקוח חסר")
+
+        for group in self.groups.all():
+            # Check basic item data
+            items = group.items.all()
+            if not items.exists():
+                errors.append(f"קבוצה {group.id} ריקה")
+            
+            for item in items:
+                if not item.height or not item.width:
+                    errors.append(f"מידות חסרות בפריט {item.mark}")
+                
+            if group.is_split_installation:
+                # Partial validation: series and frames should be defined, panels and handles can wait
+                if not group.series and not self.series:
+                    errors.append(f"סדרה חסרה בקבוצה {group.id} (שלב א)")
+            else:
+                # Full validation
+                if not group.series and not self.series:
+                    errors.append(f"סדרה חסרה בקבוצה {group.id}")
+                if not group.front and not self.front:
+                    errors.append(f"חזית/גימור חסרה בקבוצה {group.id}")
+                if not self.handle:
+                    errors.append("ידית לא נבחרה")
+
+        return len(errors) == 0, errors
+
+    def start_production(self, user=None):
+        """
+        Transitions order to production. Handles split installation phases.
+        """
+        old_status = self.status
+        has_split = self.groups.filter(is_split_installation=True).exists()
+
+        with transaction.atomic():
+            if self.status == OrderStatus.PHASE1_READY:
+                # Moving from Phase 1 Ready to full In Production
+                self.status = OrderStatus.IN_PRODUCTION
+            elif has_split:
+                self.status = OrderStatus.PHASE1_PRODUCTION
+                # Create sub-orders for split groups
+                for group in self.groups.filter(is_split_installation=True):
+                    SubOrder.objects.get_or_create(
+                        order=self,
+                        group=group,
+                        phase=SubOrder.Phase.PHASE1,
+                        defaults={
+                            'status': OrderStatus.IN_PRODUCTION,
+                            'completion_date': self.phase1_completion_date
+                        }
+                    )
+            else:
+                self.status = OrderStatus.IN_PRODUCTION
+
+            self.save()
+
+            OrderChangeLog.objects.create(
+                order=self,
+                user=user,
+                field_name='status',
+                old_value=old_status,
+                new_value=self.status
+            )
+
+    def start_phase1(self, user=None):
+        """
+        Explicitly starts Phase A (frames production).
+        """
+        old_status = self.status
+        with transaction.atomic():
+            self.status = OrderStatus.PHASE1_PRODUCTION
+            self.save()
+            OrderChangeLog.objects.create(
+                order=self,
+                user=user,
+                field_name='status',
+                old_value=old_status,
+                new_value=self.status
+            )
 
 
 class OrderChangeLog(models.Model):
@@ -310,6 +408,70 @@ class OrderItemsGroup(models.Model):
         super().delete(*args, **kwargs)
         # After deleting the group, recalculate marks for the remaining items in the order
         order.recalculate_item_marks()
+
+
+class SubOrder(models.Model):
+    """
+    Represents a specific phase of production for an Order or a Group.
+    Used for split installations where frames are produced first.
+    """
+    class Phase(models.TextChoices):
+        PHASE1 = 'PHASE1', 'שלב א (משקופים)'
+        PHASE2 = 'PHASE2', 'שלב ב (כנפיים והשאר)'
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="sub_orders",
+        verbose_name="הזמנה",
+    )
+    group = models.ForeignKey(
+        OrderItemsGroup,
+        on_delete=models.CASCADE,
+        related_name="sub_orders",
+        null=True, blank=True,
+        verbose_name="קבוצה",
+    )
+    phase = models.CharField(
+        max_length=20,
+        choices=Phase.choices,
+        default=Phase.PHASE1,
+        verbose_name="שלב",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=OrderStatus.choices,
+        default=OrderStatus.IN_PRODUCTION,
+        verbose_name="סטטוס",
+    )
+    completion_date = models.DateField(
+        null=True, blank=True, verbose_name="תאריך סיום צפוי"
+    )
+    actual_completion_date = models.DateTimeField(
+        null=True, blank=True, verbose_name="תאריך סיום בפועל"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        
+        if not is_new and self.status == OrderStatus.COMPLETED and self.phase == self.Phase.PHASE1:
+            # When phase 1 suborder is completed, update the main order status
+            order = self.order
+            if order.status == OrderStatus.PHASE1_PRODUCTION:
+                # Check if all other phase 1 suborders are completed
+                if not order.sub_orders.filter(phase=self.Phase.PHASE1).exclude(status=OrderStatus.COMPLETED).exists():
+                    order.status = OrderStatus.PHASE1_READY
+                    order.save()
+
+    class Meta:
+        db_table = "sub_orders"
+        verbose_name = "תת-הזמנה (שלב)"
+        verbose_name_plural = "תת-הזמנות (שלבים)"
+
+    def __str__(self):
+        return f"{self.order.order_number} - {self.get_phase_display()}"
 
 
 class OrderItemsGroupCustomizer(models.Model):

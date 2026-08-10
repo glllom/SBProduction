@@ -123,6 +123,7 @@ class OrderHeaderForm(forms.ModelForm):
         fields = [
             'customer',
             'painting_date',
+            'phase1_completion_date',
             'completion_date',
             'series',
             'front',
@@ -135,6 +136,7 @@ class OrderHeaderForm(forms.ModelForm):
         widgets = {
             'customer': forms.TextInput(attrs={'class': 'form-control'}),
             'painting_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'phase1_completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'series': forms.Select(attrs={'class': 'form-select'}),
             'front': forms.Select(attrs={'class': 'form-select'}),

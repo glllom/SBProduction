@@ -10,7 +10,7 @@ class ProductTechnicalDataAdmin(admin.ModelAdmin):
 
 @admin.register(BOMItem)
 class BOMItemAdmin(admin.ModelAdmin):
-    list_display = ('id', 'parent_product', 'material', 'hardware', 'child_product', 'quantity_formula')
-    list_filter = ('parent_product',)
-    search_fields = ('parent_product__name', 'material__name', 'hardware__name', 'child_product__name')
+    list_display = ('id', 'parent_product', 'material', 'hardware', 'child_product', 'tag', 'quantity_formula')
+    list_filter = ('parent_product', 'tag')
+    search_fields = ('parent_product__name', 'material__name', 'hardware__name', 'child_product__name', 'tag')
     raw_id_fields = ('parent_product', 'material', 'hardware', 'child_product')

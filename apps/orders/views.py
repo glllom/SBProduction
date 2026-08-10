@@ -3,7 +3,7 @@ from django.views.generic import ListView, CreateView, UpdateView, DetailView, T
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from rest_framework import viewsets, permissions
@@ -281,16 +281,55 @@ def duplicate_item_measurements(request, pk):
 @login_required
 def order_transfer_to_production(request, pk):
     order = get_object_or_404(Order, pk=pk)
-    old_status = order.status
-    if old_status != OrderStatus.IN_PRODUCTION:
-        order.status = OrderStatus.IN_PRODUCTION
-        order.save()
+    
+    is_valid, errors = order.validate_for_production()
+    if not is_valid:
+        # We could use messages framework here
+        from django.contrib import messages
+        for error in errors:
+            messages.error(request, error)
+        return redirect('order-detail', pk=pk)
 
-        OrderChangeLog.objects.create(
-            order=order,
-            user=request.user,
-            field_name='status',
-            old_value=old_status,
-            new_value=OrderStatus.IN_PRODUCTION
-        )
+    order.start_production(user=request.user)
+    
     return redirect('order-detail', pk=pk)
+
+
+@login_required
+def order_transfer_to_phase1(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+    
+    # We use the same validation as for production, 
+    # but validate_for_production already handles split installation logic.
+    is_valid, errors = order.validate_for_production()
+    if not is_valid:
+        from django.contrib import messages
+        for error in errors:
+            messages.error(request, error)
+        return redirect('order-detail', pk=pk)
+
+    order.start_phase1(user=request.user)
+    
+    return redirect('order-detail', pk=pk)
+
+
+@login_required
+def order_production_data(request, pk):
+    from apps.production.services import ProductionDataService
+    order = get_object_or_404(Order, pk=pk)
+    
+    service = ProductionDataService(order)
+    zip_buffer = service.generate_production_zip()
+    
+    response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
+    response['Content-Disposition'] = f'attachment; filename="production_data_{order.order_number}.zip"'
+    return response
+
+
+@login_required
+def order_production_report(request, pk):
+    from apps.production.services import ProductionDataService
+    order = get_object_or_404(Order, pk=pk)
+    service = ProductionDataService(order)
+    report_html = service.generate_report_html()
+    return HttpResponse(report_html)

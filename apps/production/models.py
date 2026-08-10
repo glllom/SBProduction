@@ -89,6 +89,13 @@ class BOMItem(models.Model):
         help_text='תנאי להכללת הפריט ב-BOM (למשל: has_frame == True)'
     )
     
+    tag = models.CharField(
+        'תג',
+        max_length=50,
+        blank=True,
+        help_text='תג לזיהוי פריט (למשл: Lock, hinge)'
+    )
+    
     note = models.CharField('הערה', max_length=255, blank=True)
 
     class Meta:
