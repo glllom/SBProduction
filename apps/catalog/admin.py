@@ -9,7 +9,7 @@ from .models import (
     Handle,
     Hardware,
 )
-from apps.production.models import ProductTechnicalData, BOMItem
+from apps.production.models import ProductTechnicalData, BOM
 
 
 @admin.register(ProductType)
@@ -64,11 +64,42 @@ class HardwareAdmin(admin.ModelAdmin):
     search_fields = ('name', 'sku')
 
 
-class BOMItemInline(admin.TabularInline):
-    """Allows adding materials/components directly on the Product page."""
-    model = BOMItem
-    extra = 1
-    fk_name = 'parent_product'
+class BOMInline(admin.StackedInline):
+    """Allows editing the BOM directly on the Product page."""
+    model = BOM
+    can_delete = False
+    verbose_name_plural = 'עץ מוצר (BOM)'
+    fk_name = 'product'
+    filter_horizontal = ('lock', 'hinges', 'additional', 'nested_boms')
+    fieldsets = (
+        ('Materials (חומרים)', {
+            'fields': (
+                ('covering', 'covering_consumption'),
+                ('base', 'base_consumption'),
+                ('filling', 'filling_consumption'),
+                ('casing', 'casing_consumption'),
+                ('frame', 'frame_consumption'),
+            )
+        }),
+        ('Profiles & Others (פרופילים ואחרים)', {
+            'fields': (
+                ('profile1', 'profile1_consumption'),
+                ('profile2', 'profile2_consumption'),
+                ('profile3', 'profile3_consumption'),
+                ('other1', 'other1_consumption'),
+                ('other2', 'other2_consumption'),
+                ('other3', 'other3_consumption'),
+                ('other4', 'other4_consumption'),
+                ('other5', 'other5_consumption'),
+            )
+        }),
+        ('Hardware (פרזול)', {
+            'fields': ('lock', 'hinges', 'additional')
+        }),
+        ('Nested BOMs (עצי מוצר מוטמעים)', {
+            'fields': ('nested_boms',)
+        }),
+    )
 
 
 class ProductTechnicalDataInline(admin.StackedInline):
@@ -82,7 +113,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ('id', 'code', 'name', 'product_family', 'series')
     list_filter = ('product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name')
-    inlines = [BOMItemInline, ProductTechnicalDataInline]
+    inlines = [BOMInline, ProductTechnicalDataInline]
 
 from django.contrib import admin
 from .models import Customizer

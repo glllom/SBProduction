@@ -183,6 +183,21 @@ class Order(models.Model):
         """
         Transitions order to production. Handles split installation phases.
         """
+        from apps.production.services import TechnicalSpecService
+        
+        # 1. Validation before production
+        all_errors = []
+        for group in self.groups.all():
+            for item in group.items.all():
+                errors = TechnicalSpecService.validate(item)
+                all_errors.extend(errors)
+        
+        if all_errors:
+            # We could raise an exception here or handle it as requested.
+            # The issue says "я хочу, чтобы после запуска заказа в работу, была валидация данных"
+            # It might mean we should prevent transition if validation fails.
+            raise ValueError(f"Validation failed for production: {', '.join(all_errors)}")
+
         old_status = self.status
         has_split = self.groups.filter(is_split_installation=True).exists()
 
@@ -207,6 +222,15 @@ class Order(models.Model):
                 self.status = OrderStatus.IN_PRODUCTION
 
             self.save()
+            
+            # 2. Generate Technical Specs (Example of call, they could be cached or passed somewhere)
+            # The user says "эта информация (собранная в экземпляр класса) будет передаваться в различные отчеты"
+            # So we don't necessarily need to store them in DB, but we ensure they CAN be built.
+            for group in self.groups.all():
+                for item in group.items.all():
+                    spec = TechnicalSpecService.build_spec(item)
+                    # Currently we just build it to ensure it works.
+                    # In real usage, this will be called when generating reports.
 
             OrderChangeLog.objects.create(
                 order=self,
