@@ -2,7 +2,71 @@ from django import forms
 from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer, OrderItem
 from apps.catalog.models import Series, Front, ProductModel, ProductType, ProductFamily, Handle
 
-class OrderItemForm(forms.ModelForm):
+
+class TooltipSelect(forms.Select):
+    """
+    Select widget that extracts description/help_text from Model instances
+    and adds 'title' and 'data-description' attributes to each <option>.
+    """
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        instance = getattr(value, 'instance', None)
+        if instance:
+            desc = (
+                getattr(instance, 'description', None) or 
+                getattr(instance, 'help_text', None) or 
+                getattr(instance, 'par1_hint', None)
+            )
+            if desc:
+                desc_str = str(desc).strip()
+                if desc_str:
+                    option['attrs']['data-description'] = desc_str
+                    option['attrs']['title'] = desc_str
+        return option
+
+
+class TooltipRadioSelect(forms.RadioSelect):
+    """
+    RadioSelect widget that attaches descriptions to choices.
+    """
+    CHOICE_HELP = {
+        'NO_PAINT': 'ללא צביעה במפעל (אספקה במצב גלם / סטנדרטי)',
+        'MAIN_COLOR': 'צביעה לפי הגוון הראשי שנבחר בהזמנה',
+        'SPECIAL_COLOR': 'הזנת קוד צבע מותאם אישית עבור פריטים אלו',
+        'IN': 'פתיחת הדלת פנימה לתוך החדר',
+        'OUT': 'פתיחת הדלת החוצה מהחדר',
+        'LEFT': 'יד שמאל (L) - צירים בצד שמאל במבט מכיוון הפתיחה',
+        'RIGHT': 'יד ימין (R) - צירים בצד ימין במבט מכיוון הפתיחה',
+    }
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        val_str = str(value)
+        if val_str in self.CHOICE_HELP:
+            desc = self.CHOICE_HELP[val_str]
+            option['attrs']['data-description'] = desc
+            option['attrs']['title'] = desc
+        return option
+
+
+class TooltipFormMixin:
+    """
+    Mixin that configures tooltip data attributes on fields with help_text or descriptions.
+    """
+    def apply_tooltips(self):
+        for field_name, field in self.fields.items():
+            if field.help_text:
+                ht = str(field.help_text).strip()
+                if ht:
+                    field.widget.attrs.setdefault('title', ht)
+                    # For standard text inputs/textareas, data-bs-toggle tooltip works cleanly on hover
+                    if not isinstance(field.widget, (forms.Select, forms.RadioSelect, forms.CheckboxInput)):
+                        field.widget.attrs.setdefault('data-bs-toggle', 'tooltip')
+                        field.widget.attrs.setdefault('data-bs-title', ht)
+                        field.widget.attrs.setdefault('data-bs-placement', 'top')
+
+
+class OrderItemForm(TooltipFormMixin, forms.ModelForm):
     class Meta:
         model = OrderItem
         fields = [
@@ -12,24 +76,46 @@ class OrderItemForm(forms.ModelForm):
             'custom_hinge3', 'custom_hinge4', 'custom_hinge5',
             'sketch'
         ]
+        help_texts = {
+            'mark': 'סימון פריט ייחודי בהזמנה (למשל 1, 2, 3)',
+            'place': 'מיקום התקנה (חדר, קומה, דירה)',
+            'width': 'רוחב פתח אור / כנף במילימטרים',
+            'height': 'גובה פתח אור / כנף במילימטרים',
+            'wall': 'עובי קיר עבור המשקוף במילימטרים',
+            'direction': 'כיוון פתיחת הדלת (פנימה / החוצה)',
+            'opening': 'יד פתיחה (L = שמאל, R = ימין)',
+            'addition_cut': 'חיתוך תחתון נוסף במילימטרים (עבור ריצוף או שטיח)',
+            'comment': 'הערה ספציפית לפריט זה',
+            'custom_lock_height': 'גובה מרכז מנעול חריג מהרצפה במילימטרים',
+            'custom_hinge1': 'גובה ציר 1 חריג מהרצפה במילימטרים',
+            'custom_hinge2': 'גובה ציר 2 חריג מהרצפה במילימטרים',
+            'custom_hinge3': 'גובה ציר 3 חריג מהרצפה במילימטרים',
+            'custom_hinge4': 'גובה ציר 4 חריג מהרצפה במילימטרים',
+            'custom_hinge5': 'גובה ציר 5 חריג מהרצפה במילימטרים',
+            'sketch': 'קובץ שרטוט לפרט זה (PDF, JPEG, PNG)',
+        }
         widgets = {
-            'mark': forms.TextInput(attrs={'class': 'form-control'}),
-            'width': forms.TextInput(attrs={'class': 'form-control'}),
-            'height': forms.TextInput(attrs={'class': 'form-control'}),
-            'wall': forms.TextInput(attrs={'class': 'form-control'}),
-            'direction': forms.Select(attrs={'class': 'form-select'}),
-            'opening': forms.Select(attrs={'class': 'form-select'}),
-            'addition_cut': forms.TextInput(attrs={'class': 'form-control'}),
-            'place': forms.TextInput(attrs={'class': 'form-control'}),
-            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-            'custom_lock_height': forms.TextInput(attrs={'class': 'form-control'}),
-            'custom_hinge1': forms.TextInput(attrs={'class': 'form-control'}),
-            'custom_hinge2': forms.TextInput(attrs={'class': 'form-control'}),
-            'custom_hinge3': forms.TextInput(attrs={'class': 'form-control'}),
-            'custom_hinge4': forms.TextInput(attrs={'class': 'form-control'}),
-            'custom_hinge5': forms.TextInput(attrs={'class': 'form-control'}),
+            'mark': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'סימון'}),
+            'width': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'רוחב'}),
+            'height': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'גובה'}),
+            'wall': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'עובי קיר'}),
+            'direction': TooltipSelect(attrs={'class': 'form-select'}),
+            'opening': TooltipSelect(attrs={'class': 'form-select'}),
+            'addition_cut': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'רווח נוסף'}),
+            'place': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'מיקום'}),
+            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'הערה'}),
+            'custom_lock_height': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'גובה מנעול'}),
+            'custom_hinge1': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ציר 1'}),
+            'custom_hinge2': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ציר 2'}),
+            'custom_hinge3': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ציר 3'}),
+            'custom_hinge4': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ציר 4'}),
+            'custom_hinge5': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ציר 5'}),
             'sketch': forms.FileInput(attrs={'class': 'form-control'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.apply_tooltips()
 
     def clean(self):
         cleaned_data = super().clean()
@@ -71,7 +157,7 @@ class OrderItemForm(forms.ModelForm):
             
         return cleaned_data
 
-class OrderForm(forms.ModelForm):
+class OrderForm(TooltipFormMixin, forms.ModelForm):
     class Meta:
         model = Order
         fields = [
@@ -87,18 +173,31 @@ class OrderForm(forms.ModelForm):
             'color_frames', 
             'comments'
         ]
+        help_texts = {
+            'order_number': 'מספר הזמנה ייחודי במערכת (למשל ORD-2026-001)',
+            'customer': 'שם הלקוח או הפרויקט',
+            'painting_date': 'תאריך מתוכנן לצביעת הפריטים',
+            'completion_date': 'תאריך יעד סופי לאספקת ההזמנה (דלתות)',
+            'series': 'סדרת הדלתות (פרופיל / מבנה)',
+            'front': 'חזית או גימור הכנף',
+            'handle': 'דגם ידית נבחר',
+            'color_panels': 'גוון צבע עבור כנפי הדלתות',
+            'is_frames_to_paint': 'האם לצבוע את המשקופים בצבע ייעודי',
+            'color_frames': 'גוון צבע עבור המשקופים',
+            'comments': 'הערות והנחיות מיוחדות להזמנה',
+        }
         widgets = {
             'painting_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'order_number': forms.TextInput(attrs={'class': 'form-control'}),
-            'customer': forms.TextInput(attrs={'class': 'form-control'}),
-            'series': forms.Select(attrs={'class': 'form-select'}),
-            'front': forms.Select(attrs={'class': 'form-select'}),
-            'handle': forms.Select(attrs={'class': 'form-select'}),
-            'color_panels': forms.TextInput(attrs={'class': 'form-control'}),
+            'order_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'מספר הזמנה'}),
+            'customer': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'שם הלקוח'}),
+            'series': TooltipSelect(attrs={'class': 'form-select'}),
+            'front': TooltipSelect(attrs={'class': 'form-select'}),
+            'handle': TooltipSelect(attrs={'class': 'form-select'}),
+            'color_panels': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע פנלים (כנף)'}),
             'is_frames_to_paint': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'color_frames': forms.TextInput(attrs={'class': 'form-control'}),
-            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'color_frames': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע משקופים'}),
+            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'הערות להזמנה'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -116,8 +215,10 @@ class OrderForm(forms.ModelForm):
         else:
             self.fields['front'].queryset = Front.objects.none()
 
+        self.apply_tooltips()
 
-class OrderHeaderForm(forms.ModelForm):
+
+class OrderHeaderForm(TooltipFormMixin, forms.ModelForm):
     class Meta:
         model = Order
         fields = [
@@ -133,18 +234,31 @@ class OrderHeaderForm(forms.ModelForm):
             'color_frames',
             'comments'
         ]
+        help_texts = {
+            'customer': 'שם הלקוח או הפרויקט',
+            'painting_date': 'תאריך מתוכנן לצביעת הפריטים',
+            'phase1_completion_date': 'תאריך מוכנות שלב א (משקופים)',
+            'completion_date': 'תאריך יעד סופי לאספקת ההזמנה (דלתות)',
+            'series': 'סדרת הדלתות (פרופיל / מבנה)',
+            'front': 'חזית או גימור הכנף',
+            'handle': 'דגם ידית נבחר',
+            'color_panels': 'גוון צבע עבור כנפי הדלתות',
+            'is_frames_to_paint': 'האם לצבוע את המשקופים בצבע ייעודי',
+            'color_frames': 'גוון צבע עבור המשקופים',
+            'comments': 'הערות והנחיות מיוחדות להזמנה',
+        }
         widgets = {
-            'customer': forms.TextInput(attrs={'class': 'form-control'}),
+            'customer': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'שם הלקוח'}),
             'painting_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'phase1_completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'series': forms.Select(attrs={'class': 'form-select'}),
-            'front': forms.Select(attrs={'class': 'form-select'}),
-            'handle': forms.Select(attrs={'class': 'form-select'}),
-            'color_panels': forms.TextInput(attrs={'class': 'form-control'}),
+            'series': TooltipSelect(attrs={'class': 'form-select'}),
+            'front': TooltipSelect(attrs={'class': 'form-select'}),
+            'handle': TooltipSelect(attrs={'class': 'form-select'}),
+            'color_panels': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע פנלים (כנף)'}),
             'is_frames_to_paint': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'color_frames': forms.TextInput(attrs={'class': 'form-control'}),
-            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'color_frames': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע משקופים'}),
+            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'הערות להזמנה'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -160,19 +274,23 @@ class OrderHeaderForm(forms.ModelForm):
         else:
             self.fields['front'].queryset = Front.objects.none()
 
+        self.apply_tooltips()
 
-class OrderItemsGroupForm(forms.ModelForm):
+
+class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
     product_type = forms.ModelChoiceField(
         queryset=ProductType.objects.filter(active=True),
         label='סוג מוצר',
+        help_text='סוג המוצר (דלתות פנים, דלתות כניסה וכו\')',
         required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=TooltipSelect(attrs={'class': 'form-select'})
     )
     product_family = forms.ModelChoiceField(
         queryset=ProductFamily.objects.all(),
         label='משפחת מוצרים',
+        help_text='משפחת מוצרים לפי סוג המוצר',
         required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=TooltipSelect(attrs={'class': 'form-select'})
     )
 
     class Meta:
@@ -191,17 +309,29 @@ class OrderItemsGroupForm(forms.ModelForm):
             'is_split_installation',
             'comments'
         ]
+        help_texts = {
+            'quantity': 'כמות פריטים זהים (דלתות) בקבוצה זו',
+            'product': 'דגם מוצר ספציפי מתוך המשפחה והסדרה',
+            'series': 'סדרה ספציפית לקבוצה זו (אם ריק - יימשך מההזמנה)',
+            'front': 'חזית ספציפית לקבוצה זו (אם ריק - יימשך מההזמנה)',
+            'panel_paint_option': 'בחירת אופן צביעת כנפי הדלתות',
+            'color_panels': 'גוון צבע עבור כנפי הדלתות בקבוצה זו',
+            'frame_paint_option': 'בחירת אופן צביעת המשקופים',
+            'color_frames': 'גוון צבע עבור המשקופים בקבוצה זו',
+            'is_split_installation': 'התקנה מפוצלת: ייצור ואספקת משקופים בשלב א, ודלתות בשלב ב',
+            'comments': 'הערות והנחיות מיוחדות לקבוצה זו',
+        }
         widgets = {
-            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
-            'product': forms.Select(attrs={'class': 'form-select'}),
-            'series': forms.Select(attrs={'class': 'form-select'}),
-            'front': forms.Select(attrs={'class': 'form-select'}),
-            'panel_paint_option': forms.RadioSelect(attrs={'class': 'form-check-input'}),
-            'color_panels': forms.TextInput(attrs={'class': 'form-control'}),
-            'frame_paint_option': forms.RadioSelect(attrs={'class': 'form-check-input'}),
-            'color_frames': forms.TextInput(attrs={'class': 'form-control'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'placeholder': 'כמות'}),
+            'product': TooltipSelect(attrs={'class': 'form-select'}),
+            'series': TooltipSelect(attrs={'class': 'form-select'}),
+            'front': TooltipSelect(attrs={'class': 'form-select'}),
+            'panel_paint_option': TooltipRadioSelect(attrs={'class': 'form-check-input'}),
+            'color_panels': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע פנלים'}),
+            'frame_paint_option': TooltipRadioSelect(attrs={'class': 'form-check-input'}),
+            'color_frames': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע משקופים'}),
             'is_split_installation': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'הערות'}),
+            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'הערות לקבוצה'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -251,15 +381,28 @@ class OrderItemsGroupForm(forms.ModelForm):
                 product_type=self.instance.product.product_family.product_type
             ).order_by('name')
 
+        self.apply_tooltips()
 
-class OrderItemsGroupCustomizerForm(forms.ModelForm):
+
+class OrderItemsGroupCustomizerForm(TooltipFormMixin, forms.ModelForm):
     class Meta:
         model = OrderItemsGroupCustomizer
         fields = ['customizer', 'par1', 'par2', 'par3', 'par4']
-        widgets = {
-            'customizer': forms.Select(attrs={'class': 'form-select'}),
-            'par1': forms.TextInput(attrs={'class': 'form-control'}),
-            'par2': forms.TextInput(attrs={'class': 'form-control'}),
-            'par3': forms.TextInput(attrs={'class': 'form-control'}),
-            'par4': forms.TextInput(attrs={'class': 'form-control'}),
+        help_texts = {
+            'customizer': 'בחירת קסטומייזר מהקטלוג',
+            'par1': 'ערך פרמטר 1',
+            'par2': 'ערך פרמטר 2',
+            'par3': 'ערך פרמטר 3',
+            'par4': 'ערך פרמטר 4',
         }
+        widgets = {
+            'customizer': TooltipSelect(attrs={'class': 'form-select'}),
+            'par1': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'פרמטר 1'}),
+            'par2': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'פרמטר 2'}),
+            'par3': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'פרמטר 3'}),
+            'par4': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'פרמטר 4'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.apply_tooltips()

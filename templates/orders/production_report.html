@@ -55,7 +55,7 @@
     </div>
     <div class="page">
         <div class="header">
-            <h5 class="my-2">דו''ח לייצור - מחלקת אלומיניום</h5>
+            <h5 class="my-2">דו''ח לייצור - {{ report_label }}</h5>
             <div style="display: flex; justify-content: space-between;">
                 <div>
                     <p class="fs-5">הזמנה:<span class="fw-bold">{{ order.order_number }}</span></p>
@@ -63,9 +63,6 @@
                 </div>
                 <div>
                     <p><strong>תאריך:</strong> {{ now|date:"d/m/Y" }}</p>
-                    {% if is_phase_a %}
-                        <p class="phase-mark">שלב א' - משקופים בלבד</p>
-                    {% endif %}
                 </div>
             </div>
         </div>
@@ -73,7 +70,7 @@
         {% for g_data in groups_data %}
             <div class="group-section mb-4">
                 <div class="group-header bg-light p-2 border">
-                    <h6>קבוצה: {{ g_data.group_spec.product_name }} | חזית: {{ g_data.group_spec.front_name }}</h6>
+                    <h6>דגם: {{ g_data.group_spec.product_name }} | חזית: {{ g_data.group_spec.front_name }}</h6>
                     <div class="row small">
                         <div class="col-md-3"><strong>צבע משקוף:</strong> {{ g_data.group_spec.color_frames }}</div>
                         <div class="col-md-3"><strong>צבע פנל:</strong> {{ g_data.group_spec.color_panels }}</div>
@@ -81,6 +78,10 @@
                         <div class="col-md-3">
                             <strong>צירים:</strong> {{ g_data.group_spec.hinge_name }} 
                             ({% for h in g_data.group_spec.common_hinge_heights %}{{ h }}{% if not forloop.last %}, {% endif %}{% endfor %})
+                        </div>
+                        <div class="col-md-3">
+                            <strong>פרופיל:</strong> 
+                            {% for p in g_data.group_spec.profiles %}{{ p }}{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}
                         </div>
                     </div>
                 </div>
@@ -118,6 +119,11 @@
                         {% endfor %}
                     </tbody>
                 </table>
+            </div>
+        {% empty %}
+            <div class="alert alert-info text-center mt-5">
+                <h4>אין נתונים להצגה בדוח זה</h4>
+                <p>הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
             </div>
         {% endfor %}
     </div>

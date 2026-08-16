@@ -121,6 +121,10 @@ class Order(models.Model):
     def __str__(self):
         return f"הזמנה מס' {self.order_number} ({self.customer or 'ללא לקוח'})"
 
+    @property
+    def has_split_installation(self):
+        return self.groups.filter(is_split_installation=True).exists()
+
     def recalculate_item_marks(self):
         """
         Recalculates sequential numbers (mark) for all OrderItems in this order.
@@ -183,7 +187,7 @@ class Order(models.Model):
         """
         Transitions order to production. Handles split installation phases.
         """
-        from apps.production.services import TechnicalSpecService
+        from apps.production.services import TechnicalSpecService, ProductionDataService
         
         # 1. Validation before production
         all_errors = []
@@ -223,9 +227,11 @@ class Order(models.Model):
 
             self.save()
             
-            # 2. Generate Technical Specs (Example of call, they could be cached or passed somewhere)
-            # The user says "эта информация (собранная в экземпляр класса) будет передаваться в различные отчеты"
-            # So we don't necessarily need to store them in DB, but we ensure they CAN be built.
+            # Generate CNC files
+            service = ProductionDataService(self)
+            service.generate_cnc_files()
+            
+            # 2. Generate Technical Specs
             for group in self.groups.all():
                 for item in group.items.all():
                     spec = TechnicalSpecService.build_spec(item)
@@ -244,10 +250,16 @@ class Order(models.Model):
         """
         Explicitly starts Phase A (frames production).
         """
+        from apps.production.services import ProductionDataService
         old_status = self.status
         with transaction.atomic():
             self.status = OrderStatus.PHASE1_PRODUCTION
             self.save()
+
+            # Generate CNC files
+            service = ProductionDataService(self)
+            service.generate_cnc_files()
+
             OrderChangeLog.objects.create(
                 order=self,
                 user=user,

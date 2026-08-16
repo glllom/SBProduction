@@ -3,7 +3,7 @@
 {% block page_title %}טופס מידות: {{ order.order_number }}{% endblock %}
 {% block navbar_extra %}
     <span class=" mx-3 fw-bold">{{ order.customer }}</span>
-    <a href="{% url 'order-detail' order.pk %}" class="btn btn-sm btn-outline-primary ms-3 no-print">
+    <a href="{% url 'order-detail' order.pk %}" class="btn btn-sm btn-outline-primary ms-3 no-print" data-bs-toggle="tooltip" title="חזרה לדף ניהול ההזמנה">
         <i class="bi bi-arrow-right me-1"></i> חזרה להזמנה
     </a>
 {% endblock %}
@@ -20,19 +20,21 @@
     <div class="card mb-4 border-excel shadow-none">
         <div class="card-header bg-light border-bottom py-2 d-flex justify-content-between align-items-center">
             <div>
-                <h5 class="mb-0 fw-bold text-dark d-inline">{{ group.product.name }}</h5>
+                <h5 class="mb-0 fw-bold text-dark d-inline" data-bs-toggle="tooltip" title="{{ group.product.description|default:group.product.name }}">{{ group.product.name }}</h5>
                 <span class="text-muted small ms-2">
                     {% for gc in group.customizers.all %}
-                        {{ gc.customizer.name }}{% if gc.customizer.par1_value %}: {{ gc.customizer.par1_value}}{% endif %}{% if not forloop.last %}, {% endif %}
+                        <span class="badge bg-white text-dark border me-1" data-bs-toggle="tooltip" title="{{ gc.customizer.description|default:gc.customizer.name }}">
+                            {{ gc.customizer.name }}{% if gc.customizer.par1_value %}: {{ gc.customizer.par1_value}}{% endif %}
+                        </span>
                     {% endfor %}
                 </span>
             </div>
             {% if forloop.first %}
             <div class="no-print">
-                <button class="btn btn-sm btn-light border" onclick="exportToExcel()" title="ייצוא לאקסל">
+                <button class="btn btn-sm btn-light border" onclick="exportToExcel()" data-bs-toggle="tooltip" title="ייצוא כל טבלאות המידות לקובץ Excel / CSV">
                     <i class="bi bi-download"></i>
                 </button>
-                <button class="btn btn-sm btn-light border" onclick="window.print()" title="הדפסה">
+                <button class="btn btn-sm btn-light border" onclick="window.print()" data-bs-toggle="tooltip" title="הדפסת טופס מידות">
                     <i class="bi bi-printer"></i>
                 </button>
             </div>
@@ -42,15 +44,15 @@
             <table class="table table-bordered mb-0 align-middle text-center excel-table">
                 <thead class="table-secondary small">
                     <tr>
-                        <th style="width: 40px;">#</th>
-                        <th style="width: 8%;">מיקום</th>
-                        <th style="width: 6%;">רוחב</th>
-                        <th style="width: 7%;">גובה</th>
-                        <th style="width: 6%;">משקוף</th>
-                        <th style="width: 10%;">פתיחה</th>
-                        <th style="width: 6%;">רווח נוסף</th>
-                        <th>הערה</th>
-                        <th class="no-print" style="width: 160px;"></th>
+                        <th style="width: 40px;" data-bs-toggle="tooltip" title="מספר סידורי של הפריט (Mark)">#</th>
+                        <th style="width: 8%;" data-bs-toggle="tooltip" title="מיקום ההתקנה (חדר, קומה, דירה)">מיקום</th>
+                        <th style="width: 6%;" data-bs-toggle="tooltip" title="רוחב פתח אור / כנף במילימטרים">רוחב</th>
+                        <th style="width: 7%;" data-bs-toggle="tooltip" title="גובה פתח אור / כנף במילימטרים">גובה</th>
+                        <th style="width: 6%;" data-bs-toggle="tooltip" title="עובי קיר עבור המשקוף במילימטרים">משקוף</th>
+                        <th style="width: 10%;" data-bs-toggle="tooltip" title="יד פתיחה וכיוון (L/R פנימה/החוצה)">פתיחה</th>
+                        <th style="width: 6%;" data-bs-toggle="tooltip" title="חיתוך תחתון נוסף במילימטרים">רווח נוסף</th>
+                        <th data-bs-toggle="tooltip" title="הערות מיוחדות לפריט">הערה</th>
+                        <th class="no-print" style="width: 160px;" data-bs-toggle="tooltip" title="פעולות ועריכה">פעולות</th>
                     </tr>
                 </thead>
                 <tbody id="group-body-{{ group.id }}">
@@ -73,7 +75,8 @@
                         data-custom-hinge5="{{ item.custom_hinge5|default:'' }}"
                         data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
                         data-has-door="{{ group.product.product_family.product_type.has_door|yesno:'true,false' }}"
-                        data-has-frame="{{ group.product.product_family.product_type.has_frame|yesno:'true,false' }}">
+                        data-has-frame="{{ group.product.product_family.product_type.has_frame|yesno:'true,false' }}"
+                        title="לחץ לעריכת מידות פריט {{ item.mark }}">
                         
                         <td class="fw-bold bg-light">{{ item.mark }}</td>
                         <td class="field-place small text-start">{{ item.place|default:'' }}</td>
@@ -90,13 +93,13 @@
                         <td class="field-addition-cut small">{{ item.addition_cut|default:'' }}</td>
                         <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
                         <td class="no-print text-nowrap">
-                            {% if order.sketch %}
-                                <a href="{{ item.sketch.url }}" target="_blank" class="btn btn-sm btn-primary py-0" title="צפה בשרטוט">
+                            {% if order.sketch or item.sketch %}
+                                <a href="{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}" target="_blank" class="btn btn-sm btn-primary py-0" data-bs-toggle="tooltip" title="צפה בשרטוט עבור פריט זה">
                                     <i class="bi bi-file-earmark-image"></i>
                                 </a>
                             {% endif %}
                             {% if order.status != 'IN_PRODUCTION' or user.is_admin_user %}
-                                <i class="bi bi-pencil-square opacity-50 ms-2"></i>
+                                <i class="bi bi-pencil-square opacity-50 ms-2" data-bs-toggle="tooltip" title="עריכת פריט"></i>
                             {% endif %}
                         </td>
                     </tr>

@@ -1,56 +1,56 @@
 {% extends "base.html" %}
 
 {% block page_title %}הזמנה: {{ order.order_number }}
-    <span class="badge bg-primary">   {{ order.get_status_display }}</span>{% endblock %}
+    <span class="badge bg-primary" data-bs-toggle="tooltip" title="סטטוס נוכחי של ההזמנה: {{ order.get_status_display }}">{{ order.get_status_display }}</span>{% endblock %}
 
 {% block content %}
     <div class="mb-4 align-items-end">
         <div class="d-flex align-items-center mb-2">
             {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
             <button class="btn btn-sm btn-outline-primary ms-3" data-bs-toggle="modal"
-                    data-bs-target="#editHeaderModal">
+                    data-bs-target="#editHeaderModal" title="עריכת פרטי הזמנה">
                 <i class="bi bi-pencil"></i>
             </button>
             {% endif %}
             <h2 class="h3 mb-0 mx-3 fw-bolder">{{ order.customer }}</h2>
         </div>
         <div class="row">
-            <div class="mb-3 col-1">
+            <div class="mb-3 col-1" data-bs-toggle="tooltip" title="סדרת הדלתות הראשית בהזמנה">
                 <label class="text-muted small d-block">סדרה</label>
                 <span class="fw-medium">{{ order.series.name|default:"-" }}</span>
             </div>
-            <div class="mb-3 col-2">
+            <div class="mb-3 col-2" data-bs-toggle="tooltip" title="חזית או גימור ראשי שנבחר עבור ההזמנה">
                 <label class="text-muted small d-block">חזית / גימור</label>
                 <span class="fw-medium">{{ order.front.name|default:"-" }}</span>
             </div>
-            <div class="mb-3 col-2">
+            <div class="mb-3 col-2" data-bs-toggle="tooltip" title="דגם ידית נבחר עבור ההזמנה">
                 <label class="text-muted small d-block">ידית</label>
                 <span class="fw-medium">{{ order.handle.name|default:"-" }}</span>
             </div>
-            <div class="mb-3 col-1">
+            <div class="mb-3 col-1" data-bs-toggle="tooltip" title="גוון צבע ראשי עבור כנפי הדלתות">
                 <label class="text-muted small d-block">גוון בכנפיים</label>
                 <span class="fw-medium">{{ order.color_panels|default:"-" }}</span>
             </div>
-            <div class="mb-3 col-2">
+            <div class="mb-3 col-2" data-bs-toggle="tooltip" title="גוון צבע ראשי עבור המשקופים">
                 <label class="text-muted small d-block">גוון במשקופים</label>
                 <span class="fw-medium">{{ order.color_frames|default:"-" }}</span>
             </div>
             <div class="mb-3 col-3"></div>
-            <div class="mb-3 col-1 ">
+            <div class="mb-3 col-1" data-bs-toggle="tooltip" title="תאריך יצירת ההזמנה במערכת">
                 <label class="text-muted small d-block">ירידה לייצור</label>
                 <span class="fw-normal">{{ order.created_at|date:"d/m/Y" }}</span>
             </div>
             {% if order.phase1_completion_date %}
-            <div class="mb-3 col-1 ">
+            <div class="mb-3 col-1" data-bs-toggle="tooltip" title="תאריך יעד לסיום ייצור משקופים (שלב א)">
                 <label class="text-muted small d-block">סיום שלב א</label>
                 <span class="fw-normal">{{ order.phase1_completion_date|date:"d/m/Y" }}</span>
             </div>
             {% endif %}
-            <div class="mb-3 col-1 ">
+            <div class="mb-3 col-1" data-bs-toggle="tooltip" title="תאריך יעד סופי לאספקת ההזמנה (דלתות)">
                 <label class="text-muted small d-block">סיום ייצור</label>
                 <span class="fw-normal">{{ order.completion_date|date:"d/m/Y" }}</span>
             </div>
-            <div class="mb-3 col-1 ">
+            <div class="mb-3 col-1" data-bs-toggle="tooltip" title="תאריך מתוכנן לצביעת הפריטים">
                 <label class="text-muted small d-block">סיום צבע</label>
                 <span class="fw-normal">{{ order.painting_date|date:"d/m/Y" }}</span>
             </div>
@@ -58,36 +58,65 @@
     </div>
     <div class="col-auto mb-2 d-flex gap-2">
         {% if order.status == 'DRAFT' or order.status == 'MEASUREMENT' %}
-        <a href="{% url 'order-transfer-to-phase1' order.pk %}" class="btn btn-warning">
-            <i class="bi bi-hammer ms-2"></i>התחל שלב א'
-        </a>
-        <a href="{% url 'order-transfer-to-production' order.pk %}" class="btn btn-success">
-            <i class="bi bi-send-check ms-2"></i>העבר לייצור
-        </a>
+            {% if order.has_split_installation %}
+                <a href="{% url 'order-transfer-to-phase1' order.pk %}" class="btn btn-warning" data-bs-toggle="tooltip" title="העברת משקופים לייצור שלב א'">
+                    <i class="bi bi-hammer ms-2"></i>התחל שלב א' (משקופים)
+                </a>
+            {% else %}
+                <a href="{% url 'order-transfer-to-production' order.pk %}" class="btn btn-success" data-bs-toggle="tooltip" title="העברת ההזמנה לתהליך ייצור מלא">
+                    <i class="bi bi-send-check ms-2"></i>העבר לייצור
+                </a>
+            {% endif %}
+        {% endif %}
+
+        {% if order.status == 'PHASE1_PRODUCTION' or order.status == 'PHASE1_READY' %}
+            <a href="{% url 'order-production-report' order.pk %}?type=PHASE1_FRAMES" target="_blank" class="btn btn-outline-info" data-bs-toggle="tooltip" title="הפקת דו''ח ייצור משקופים לשלב א">
+                <i class="bi bi-printer ms-2"></i>דו"ח משקופים שלב א
+            </a>
+            {% if order.status == 'PHASE1_READY' %}
+                <a href="{% url 'order-transfer-to-production' order.pk %}" class="btn btn-primary" data-bs-toggle="tooltip" title="התחלת שלב ב' לייצור דלתות">
+                    <i class="bi bi-play-fill ms-2"></i>התחל שלב ב'
+                </a>
+            {% endif %}
+        {% endif %}
+
+        {% if order.status == 'IN_PRODUCTION' %}
+            {% if order.has_split_installation %}
+                <a href="{% url 'order-production-report' order.pk %}?type=PHASE2_DOORS" target="_blank" class="btn btn-outline-info" data-bs-toggle="tooltip" title="דו''ח ייצור דלתות שלב ב'">
+                    <i class="bi bi-printer ms-2"></i>דלתות שלב ב
+                </a>
+                <a href="{% url 'order-production-report' order.pk %}?type=PHASE2_PRESS" target="_blank" class="btn btn-outline-info" data-bs-toggle="tooltip" title="דו''ח עמדת פרס">
+                    <i class="bi bi-printer ms-2"></i>פרס
+                </a>
+                <a href="{% url 'order-production-report' order.pk %}?type=PHASE2_FRAMES" target="_blank" class="btn btn-outline-info" data-bs-toggle="tooltip" title="דו''ח משקופים">
+                    <i class="bi bi-printer ms-2"></i>משקופים
+                </a>
+            {% else %}
+                <a href="{% url 'order-production-report' order.pk %}?type=PHASE2_DOORS" target="_blank" class="btn btn-outline-info" data-bs-toggle="tooltip" title="דו''ח ייצור דלתות">
+                    <i class="bi bi-printer ms-2"></i>דלתות
+                </a>
+                <a href="{% url 'order-production-report' order.pk %}?type=PHASE2_PRESS" target="_blank" class="btn btn-outline-info" data-bs-toggle="tooltip" title="דו''ח עמדת פרס">
+                    <i class="bi bi-printer ms-2"></i>פרס
+                </a>
+                <a href="{% url 'order-production-report' order.pk %}?type=PHASE2_FRAMES" target="_blank" class="btn btn-outline-info" data-bs-toggle="tooltip" title="דו''ח משקופים">
+                    <i class="bi bi-printer ms-2"></i>משקופים
+                </a>
+            {% endif %}
         {% endif %}
 
         {% if order.status == 'PHASE1_PRODUCTION' or order.status == 'IN_PRODUCTION' or order.status == 'PHASE1_READY' %}
-        <a href="{% url 'order-production-data' order.pk %}" class="btn btn-info text-white">
+        <a href="{% url 'order-production-data' order.pk %}" class="btn btn-info text-white" data-bs-toggle="tooltip" title="הורדת קובצי CNC לייצור בארכיון ZIP">
             <i class="bi bi-file-earmark-zip ms-2"></i>קבצים לייצור (ZIP)
-        </a>
-        <a href="{% url 'order-production-report' order.pk %}" target="_blank" class="btn btn-outline-info">
-            <i class="bi bi-printer ms-2"></i>דו''ח לייצור (PDF/Печать)
-        </a>
-        {% endif %}
-
-        {% if order.status == 'PHASE1_READY' %}
-        <a href="{% url 'order-transfer-to-production' order.pk %}" class="btn btn-primary">
-            <i class="bi bi-play-fill ms-2"></i>התחל שלב ב' (ייצור מלא)
         </a>
         {% endif %}
 
         {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal" title="הוספת קבוצת דלתות חדשה להזמנה">
             <i class="bi bi-plus-lg ms-2"></i>הוספת קבוצת דלתות
         </button>
         {% endif %}
         
-        <a href="{% url 'order-measurements' order.pk %}" class="btn btn-outline-secondary">
+        <a href="{% url 'order-measurements' order.pk %}" class="btn btn-outline-secondary" data-bs-toggle="tooltip" title="טופס הזנת ועריכת מידות מלא">
             <i class="bi bi-rulers mx-2"></i>טופס מידות
         </a>
     </div>
@@ -152,47 +181,57 @@
                                         <div class="row g-3">
                                             <!-- Row 1: Series & Front -->
                                             <div class="col-md-6">
-                                                <label class="form-label fw-bold">סדרה</label>
+                                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="סדרה ספציפית לקבוצה זו (אם ריק - יימשך מההזמנה)">
+                                                    סדרה <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
                                                 <select name="series" class="form-select">
                                                     <option value="">---------</option>
                                                     {% for s in series %}
-                                                        <option value="{{ s.id }}" {% if s.id == group.series_id %}selected{% endif %}>{{ s.name }}</option>
+                                                        <option value="{{ s.id }}" {% if s.id == group.series_id %}selected{% endif %} data-description="{{ s.description|default:'' }}" title="{{ s.description|default:'' }}">{{ s.name }}</option>
                                                     {% endfor %}
                                                 </select>
                                             </div>
                                             <div class="col-md-6">
-                                                <label class="form-label fw-bold">חזית / גימור</label>
+                                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="חזית או גימור ספציפי לקבוצה זו (אם ריק - יימשך מההזמנה)">
+                                                    חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
                                                 <select name="front" class="form-select">
                                                     <option value="">---------</option>
                                                     {% for f in group.series.fronts.all %}
-                                                        <option value="{{ f.id }}" {% if f.id == group.front_id %}selected{% endif %}>{{ f.name }}</option>
+                                                        <option value="{{ f.id }}" {% if f.id == group.front_id %}selected{% endif %} data-description="{{ f.description|default:'' }}" title="{{ f.description|default:'' }}">{{ f.name }}</option>
                                                     {% endfor %}
                                                 </select>
                                             </div>
 
                                             <!-- Row 2: Product Type & Product Family -->
                                             <div class="col-md-6">
-                                                <label class="form-label fw-bold">סוג מוצר</label>
+                                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="סוג המוצר (דלתות פנים, דלתות כניסה וכו')">
+                                                    סוג מוצר <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
                                                 <select name="product_type" class="form-select">
                                                     <option value="">---------</option>
                                                     {% for pt in product_types %}
-                                                        <option value="{{ pt.id }}" {% if pt.id == group.product.product_family.product_type_id %}selected{% endif %}>{{ pt.name }}</option>
+                                                        <option value="{{ pt.id }}" {% if pt.id == group.product.product_family.product_type_id %}selected{% endif %} data-description="{{ pt.description|default:'' }}" title="{{ pt.description|default:'' }}">{{ pt.name }}</option>
                                                     {% endfor %}
                                                 </select>
                                             </div>
                                             <div class="col-md-6">
-                                                <label class="form-label fw-bold">משפחת מוצרים</label>
+                                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="משפחת מוצרים לפי סוג המוצר">
+                                                    משפחת מוצרים <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
                                                 <select name="product_family" class="form-select">
                                                     <option value="">---------</option>
                                                     {% for pf in group.product.product_family.product_type.families.all %}
-                                                        <option value="{{ pf.id }}" {% if pf.id == group.product.product_family_id %}selected{% endif %}>{{ pf.name }}</option>
+                                                        <option value="{{ pf.id }}" {% if pf.id == group.product.product_family_id %}selected{% endif %} data-description="{{ pf.description|default:'' }}" title="{{ pf.description|default:'' }}">{{ pf.name }}</option>
                                                     {% endfor %}
                                                 </select>
                                             </div>
 
                                             <!-- Row 3: Info & Quantity -->
                                             <div class="col-md-8">
-                                                <label class="form-label fw-bold">מוצר שנמצא</label>
+                                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="דגם המוצר שנבחר מתוך המשפחה והסדרה">
+                                                    מוצר שנמצא <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
                                                 <div class="product-info-display alert alert-info py-2 mb-0" style="min-height: 38px;">
                                                     <strong class="text-success"><i class="bi bi-check-circle-fill me-1"></i> {{ group.product.name }} ({{ group.product.code }})</strong>
                                                 </div>
@@ -203,74 +242,84 @@
                                                 </div>
                                             </div>
                                             <div class="col-md-4">
-                                                <label class="form-label fw-bold">כמות</label>
-                                                <input type="number" name="quantity" value="{{ group.quantity }}" class="form-control" min="1">
+                                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="מספר פריטים זהים (דלתות) בקבוצה זו">
+                                                    כמות <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
+                                                <input type="number" name="quantity" value="{{ group.quantity }}" class="form-control" min="1" data-bs-toggle="tooltip" title="כמות פריטים זהים בקבוצה זו">
                                             </div>
 
                                             <hr class="my-3">
 
                                             <!-- Painting Options: Panel & Frame side-by-side -->
                                             <div class="col-md-6 border-end">
-                                                <label class="form-label fw-bold d-block">אופציית צביעת פנל (דלת)</label>
+                                                <label class="form-label fw-bold d-block" data-bs-toggle="tooltip" title="בחירת אופן צביעת כנפי הדלתות">
+                                                    אופציית צביעת פנל (דלת) <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
                                                 <div class="d-flex gap-4 mb-2">
-                                                    <div class="form-check">
+                                                    <div class="form-check" data-bs-toggle="tooltip" title="ללא צביעה במפעל">
                                                         <input type="radio" name="panel_paint_option" value="NO_PAINT" id="p_no_{{ group.id }}" class="form-check-input" {% if group.panel_paint_option == 'NO_PAINT' %}checked{% endif %}>
                                                         <label class="form-check-label" for="p_no_{{ group.id }}">לא לצבוע</label>
                                                     </div>
-                                                    <div class="form-check">
+                                                    <div class="form-check" data-bs-toggle="tooltip" title="צביעה לפי הגוון הראשי שנבחר בהזמנה">
                                                         <input type="radio" name="panel_paint_option" value="MAIN_COLOR" id="p_main_{{ group.id }}" class="form-check-input" {% if group.panel_paint_option == 'MAIN_COLOR' %}checked{% endif %}>
                                                         <label class="form-check-label" for="p_main_{{ group.id }}">גוון ראשי</label>
                                                     </div>
-                                                    <div class="form-check">
+                                                    <div class="form-check" data-bs-toggle="tooltip" title="הזנת קוד צבע מותאם אישית עבור קבוצה זו">
                                                         <input type="radio" name="panel_paint_option" value="SPECIAL_COLOR" id="p_spec_{{ group.id }}" class="form-check-input" {% if group.panel_paint_option == 'SPECIAL_COLOR' %}checked{% endif %}>
                                                         <label class="form-check-label" for="p_spec_{{ group.id }}">גוון מיוחד</label>
                                                     </div>
                                                 </div>
                                                 <div class="mb-3">
-                                                    <label class="form-label fw-bold">צבע פנלים (גוון מיוחד)</label>
-                                                    <input type="text" name="color_panels" value="{{ group.color_panels|default:'' }}" class="form-control">
+                                                    <label class="form-label fw-bold" data-bs-toggle="tooltip" title="קוד או שם הגוון המיוחד לכנפיים">
+                                                        צבע פנלים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
+                                                    </label>
+                                                    <input type="text" name="color_panels" value="{{ group.color_panels|default:'' }}" class="form-control" placeholder="צבע פנלים" data-bs-toggle="tooltip" title="גוון צבע מיוחד לכנפיים בקבוצה זו">
                                                 </div>
                                             </div>
 
                                             <div class="col-md-6 ps-md-4">
-                                                <label class="form-label fw-bold d-block">אופציית צביעת משקוף</label>
+                                                <label class="form-label fw-bold d-block" data-bs-toggle="tooltip" title="בחירת אופן צביעת המשקופים">
+                                                    אופציית צביעת משקוף <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
                                                 <div class="d-flex gap-4 mb-2">
-                                                    <div class="form-check">
+                                                    <div class="form-check" data-bs-toggle="tooltip" title="ללא צביעה במפעל">
                                                         <input type="radio" name="frame_paint_option" value="NO_PAINT" id="f_no_{{ group.id }}" class="form-check-input" {% if group.frame_paint_option == 'NO_PAINT' %}checked{% endif %}>
                                                         <label class="form-check-label" for="f_no_{{ group.id }}">לא לצבוע</label>
                                                     </div>
-                                                    <div class="form-check">
+                                                    <div class="form-check" data-bs-toggle="tooltip" title="צביעה לפי הגוון הראשי שנבחר בהזמנה">
                                                         <input type="radio" name="frame_paint_option" value="MAIN_COLOR" id="f_main_{{ group.id }}" class="form-check-input" {% if group.frame_paint_option == 'MAIN_COLOR' %}checked{% endif %}>
                                                         <label class="form-check-label" for="f_main_{{ group.id }}">גוון ראשי</label>
                                                     </div>
-                                                    <div class="form-check">
+                                                    <div class="form-check" data-bs-toggle="tooltip" title="הזנת קוד צבע מותאם אישית עבור משקופי קבוצה זו">
                                                         <input type="radio" name="frame_paint_option" value="SPECIAL_COLOR" id="f_spec_{{ group.id }}" class="form-check-input" {% if group.frame_paint_option == 'SPECIAL_COLOR' %}checked{% endif %}>
                                                         <label class="form-check-label" for="f_spec_{{ group.id }}">גוון מיוחד</label>
                                                     </div>
                                                 </div>
                                                 <div class="mb-3">
-                                                    <label class="form-label fw-bold">צבע משקופים (גוון מיוחד)</label>
-                                                    <input type="text" name="color_frames" value="{{ group.color_frames|default:'' }}" class="form-control">
+                                                    <label class="form-label fw-bold" data-bs-toggle="tooltip" title="קוד או שם הגוון המיוחד למשקופים">
+                                                        צבע משקופים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
+                                                    </label>
+                                                    <input type="text" name="color_frames" value="{{ group.color_frames|default:'' }}" class="form-control" placeholder="צבע משקופים" data-bs-toggle="tooltip" title="גוון צבע מיוחד למשקופים בקבוצה זו">
                                                 </div>
                                             </div>
                                             
                                             <div class="col-md-6">
-                                                <div class="form-check pt-2">
+                                                <div class="form-check pt-2" data-bs-toggle="tooltip" title="התקנה מפוצלת: ייצור ואספקת משקופים בשלב א, ודלתות בשלב ב">
                                                     <input type="checkbox" name="is_split_installation" id="split_{{ group.id }}" class="form-check-input" {% if group.is_split_installation %}checked{% endif %}>
                                                     <label class="form-check-label fw-bold" for="split_{{ group.id }}">
-                                                        התקנה מפוצלת
+                                                        התקנה מפוצלת <i class="bi bi-info-circle help-hint-icon"></i>
                                                     </label>
                                                 </div>
                                             </div>
-                                            <div class="col-md-6">
-                                                <textarea name="comments" class="form-control" rows="3" placeholder="הערות">{{ group.comments|default:'' }}</textarea>
+                                            <div class="col-md-6" data-bs-toggle="tooltip" title="הערות והנחיות מיוחדות לקבוצה זו">
+                                                <textarea name="comments" class="form-control" rows="3" placeholder="הערות לקבוצה">{{ group.comments|default:'' }}</textarea>
                                             </div>
                                         </div>
                                     </div>
                                     <div class="modal-footer">
-                                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
-                                        <button type="submit" name="action" value="customize" class="btn btn-outline-primary px-4">שינוי\שדרוג</button>
-                                        <button type="submit" class="btn btn-primary px-4">שמור שינויים</button>
+                                        <button type="button" class="btn btn-light" data-bs-dismiss="modal" data-bs-toggle="tooltip" title="סגירה ללא שמירה">ביטול</button>
+                                        <button type="submit" name="action" value="customize" class="btn btn-outline-primary px-4" data-bs-toggle="tooltip" title="שמירה ומעבר לניהול שינויים ושדרוגים">שינוי\שדרוג</button>
+                                        <button type="submit" class="btn btn-primary px-4" data-bs-toggle="tooltip" title="שמירת שינויים בקבוצה">שמור שינויים</button>
                                     </div>
                                 </form>
                             </div>
@@ -279,19 +328,19 @@
                     <div class="card-body p-0">
                         <!-- Nav tabs -->
                         <ul class="nav nav-tabs nav-fill border-0 bg-light" role="tablist">
-                            <li class="nav-item">
-                                <a class="nav-link  active py-3 border-0 rounded-0" data-bs-toggle="tab"
+                            <li class="nav-item" data-bs-toggle="tooltip" title="צפייה ברשימת הדלתות והמידות בקבוצה">
+                                <a class="nav-link active py-3 border-0 rounded-0" data-bs-toggle="tab"
                                    href="#doors-{{ group.id }}">
                                     <i class="bi bi-door-closed me-2"></i>פירוט מוצרים
                                 </a>
                             </li>
-                            <li class="nav-item">
-                                <a class="nav-link  py-3 border-0 rounded-0" data-bs-toggle="tab"
+                            <li class="nav-item" data-bs-toggle="tooltip" title="צפייה וניהול קסטומייזרים ושדרוגים לקבוצה">
+                                <a class="nav-link py-3 border-0 rounded-0" data-bs-toggle="tab"
                                    href="#custom-{{ group.id }}">
-                                    <i class="bi bi-sliders me-2"></i>קסטומייזרים
+                                    <i class="bi bi-sliders me-2"></i>מאפיינים
                                 </a>
                             </li>
-                            <li class="nav-item">
+                            <li class="nav-item" data-bs-toggle="tooltip" title="הגדרות צבע וגוון לכנפיים ולמשקופים">
                                 <a class="nav-link py-3 border-0 rounded-0" data-bs-toggle="tab"
                                    href="#paint-{{ group.id }}">
                                     <i class="bi bi-palette me-2"></i>צביעה
@@ -306,9 +355,9 @@
                                     <table class="table table-sm table-hover mb-0 align-middle">
                                         <thead class="small text-muted bg-white">
                                         <tr>
-                                            <th class="ps-2" style="width: 5%;">#</th>
-                                            <th class="" style="width: 9%;">מיקום</th>
-                                            <th class="" style="width: 12%;">מידות</th>
+                                            <th class="ps-2" style="width: 5%;" data-bs-toggle="tooltip" title="סימון פריט">#</th>
+                                            <th class="" style="width: 9%;" data-bs-toggle="tooltip" title="מיקום ההתקנה">מיקום</th>
+                                            <th class="" style="width: 12%;" data-bs-toggle="tooltip" title="מידות רוחב × גובה (מ''מ)">מידות</th>
                                             <th class="" style="width: 5%;"></th>
                                         </tr>
                                         </thead>
@@ -335,7 +384,7 @@
                                         {% if group.items.count > 5 %}
                                             <tr id="toggle-row-{{ group.id }}">
                                                 <td colspan="4" class="text-center py-1 bg-light">
-                                                    <button class="btn btn-sm btn-link text-decoration-none btn-toggle-items" data-group-id="{{ group.id }}">
+                                                    <button class="btn btn-sm btn-link text-decoration-none btn-toggle-items" data-group-id="{{ group.id }}" data-bs-toggle="tooltip" title="הצגת כל הפריטים בקבוצה">
                                                         הצג עוד... ({{ group.items.count|add:"-4" }})
                                                     </button>
                                                 </td>
@@ -349,7 +398,7 @@
                                 <div class="row row-cols-1 row-cols-md-2 g-3">
                                     {% for cust in group.customizers.all %}
                                         <div class="col">
-                                            <div class="p-2 border rounded bg-white shadow-sm h-100">
+                                            <div class="p-2 border rounded bg-white shadow-sm h-100" data-bs-toggle="tooltip" title="{{ cust.customizer.description|default:cust.customizer.name }}">
                                                 <div class="d-flex align-items-center mb-2">
                                                     <div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">
                                                         <i class="bi bi-check2-circle"></i>
@@ -363,25 +412,25 @@
                                                 <div class="ps-5">
                                                     <div class="row g-1">
                                                         {% if cust.customizer.par1_label %}
-                                                            <div class="col-6 extra-small">
+                                                            <div class="col-6 extra-small" {% if cust.customizer.par1_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par1_hint }}"{% endif %}>
                                                                 <span class="text-muted">{{ cust.customizer.par1_label }}:</span>
                                                                 <span class="fw-medium">{{ cust.par1|default:"-" }}</span>
                                                             </div>
                                                         {% endif %}
                                                         {% if cust.customizer.par2_label %}
-                                                            <div class="col-6 extra-small">
+                                                            <div class="col-6 extra-small" {% if cust.customizer.par2_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par2_hint }}"{% endif %}>
                                                                 <span class="text-muted">{{ cust.customizer.par2_label }}:</span>
                                                                 <span class="fw-medium">{{ cust.par2|default:"-" }}</span>
                                                             </div>
                                                         {% endif %}
                                                         {% if cust.customizer.par3_label %}
-                                                            <div class="col-6 extra-small">
+                                                            <div class="col-6 extra-small" {% if cust.customizer.par3_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par3_hint }}"{% endif %}>
                                                                 <span class="text-muted">{{ cust.customizer.par3_label }}:</span>
                                                                 <span class="fw-medium">{{ cust.par3|default:"-" }}</span>
                                                             </div>
                                                         {% endif %}
                                                         {% if cust.customizer.par4_label %}
-                                                            <div class="col-6 extra-small">
+                                                            <div class="col-6 extra-small" {% if cust.customizer.par4_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par4_hint }}"{% endif %}>
                                                                 <span class="text-muted">{{ cust.customizer.par4_label }}:</span>
                                                                 <span class="fw-medium">{{ cust.par4|default:"-" }}</span>
                                                             </div>
@@ -399,7 +448,7 @@
                                 {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
                                 <div class="mt-4 text-end">
                                     <button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn"
-                                            data-group-id="{{ group.id }}">
+                                            data-group-id="{{ group.id }}" data-bs-toggle="tooltip" title="ניהול והגדרת שינויים ושדרוגים לקבוצה זו">
                                         <i class="bi bi-gear me-1"></i> ניהול קסטומייזרים
                                     </button>
                                 </div>
@@ -409,22 +458,22 @@
                                 <div class="row">
                                     <div class="col-md-6 border-end">
                                         <h6 class="fw-bold text-primary mb-3">צביעת פנל (דלת)</h6>
-                                        <div class="mb-2">
+                                        <div class="mb-2" data-bs-toggle="tooltip" title="אופציית צביעת כנף הדלת">
                                             <span class="text-muted small">אופציית צביעה:</span>
                                             <span class="fw-medium">{{ group.get_panel_paint_option_display }}</span>
                                         </div>
-                                        <div>
+                                        <div data-bs-toggle="tooltip" title="קוד או שם הגוון לכנפיים">
                                             <span class="text-muted small">גוון:</span>
                                             <span class="fw-bold">{{ group.color_panels|default:"ללא / ירושה" }}</span>
                                         </div>
                                     </div>
                                     <div class="col-md-6 ps-md-4">
                                         <h6 class="fw-bold text-primary mb-3">צביעת משקוף</h6>
-                                        <div class="mb-2">
+                                        <div class="mb-2" data-bs-toggle="tooltip" title="אופציית צביעת המשקוף">
                                             <span class="text-muted small">אופציית צביעה:</span>
                                             <span class="fw-medium">{{ group.get_frame_paint_option_display }}</span>
                                         </div>
-                                        <div>
+                                        <div data-bs-toggle="tooltip" title="קוד או שם הגוון למשקופים">
                                             <span class="text-muted small">גוון:</span>
                                             <span class="fw-bold">{{ group.color_frames|default:"ללא / ירושה" }}</span>
                                         </div>
@@ -467,59 +516,77 @@
                     <div class="modal-body">
                         <div class="row g-3">
                             <div class="col-md-12">
-                                <label class="form-label fw-bold">לקוח</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.customer.help_text|default:'שם הלקוח או הפרויקט' }}">
+                                    לקוח <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ header_form.customer }}
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">תאריך צביעה</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.painting_date.help_text|default:'תאריך מתוכנן לצביעת הפריטים' }}">
+                                    תאריך צביעה <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ header_form.painting_date }}
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">תאריך סיום</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.completion_date.help_text|default:'תאריך יעד סופי לאספקת ההזמנה' }}">
+                                    תאריך סיום <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ header_form.completion_date }}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">סדרה</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.series.help_text|default:'סדרת הדלתות (פרופיל / מבנה)' }}">
+                                    סדרה <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ header_form.series }}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">חזית / גימור</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.front.help_text|default:'חזית או גימור הכנף' }}">
+                                    חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ header_form.front }}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">ידית</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.handle.help_text|default:'דגם ידית נבחר' }}">
+                                    ידית <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ header_form.handle }}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">צבע פנלים (כנף)</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.color_panels.help_text|default:'גוון צבע עבור כנפי הדלתות' }}">
+                                    צבע פנלים (כנף) <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ header_form.color_panels }}
                             </div>
                             <div class="col-md-4 d-flex align-items-center pt-4">
-                                <div class="form-check">
+                                <div class="form-check" data-bs-toggle="tooltip" title="{{ header_form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים בצבע ייעודי' }}">
                                     {{ header_form.is_frames_to_paint }}
                                     <label class="form-check-label fw-bold" for="{{ header_form.is_frames_to_paint.id_for_label }}">
-                                        לצבוע משקופים?
+                                        לצבוע משקופים? <i class="bi bi-info-circle help-hint-icon"></i>
                                     </label>
                                 </div>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">צבע משקופים</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.color_frames.help_text|default:'גוון צבע עבור המשקופים' }}">
+                                    צבע משקופים <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ header_form.color_frames }}
                             </div>
                             <div class="col-md-12">
-                                <label class="form-label fw-bold">הערות</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.comments.help_text|default:'הערות והנחיות מיוחדות להזמנה' }}">
+                                    הערות <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ header_form.comments }}
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer">
                         <div class="d-flex justify-content-between w-100">
-                            <button type="submit" form="deleteOrderForm" class="btn btn-outline-danger">
+                            <button type="submit" form="deleteOrderForm" class="btn btn-outline-danger" data-bs-toggle="tooltip" title="מחיקת ההזמנה לצמיתות">
                                 <i class="bi bi-trash me-1"></i>מחק
                             </button>
                             <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
-                                <button type="submit" class="btn btn-primary px-4">שמור שינויים</button>
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal" data-bs-toggle="tooltip" title="סגירה ללא שמירה">ביטול</button>
+                                <button type="submit" class="btn btn-primary px-4" data-bs-toggle="tooltip" title="שמירת שינויים בפרטי ההזמנה">שמור שינויים</button>
                             </div>
                         </div>
                     </div>
@@ -542,27 +609,37 @@
                         <div class="row g-3">
                             <!-- Row 1: Series & Front -->
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">סדרה</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ group_form.series.help_text|default:'סדרת הדלתות לקבוצה זו' }}">
+                                    סדרה <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ group_form.series }}
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">חזית / גימור</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ group_form.front.help_text|default:'חזית או גימור הכנף' }}">
+                                    חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ group_form.front }}
                             </div>
 
                             <!-- Row 2: Product Type & Product Family -->
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">סוג מוצר</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ group_form.product_type.help_text|default:'סוג המוצר' }}">
+                                    סוג מוצר <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ group_form.product_type }}
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">משפחת מוצרים</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ group_form.product_family.help_text|default:'משפחת המוצרים' }}">
+                                    משפחת מוצרים <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ group_form.product_family }}
                             </div>
 
                             <!-- Row 3: Info & Quantity -->
                             <div class="col-md-10">
-                                <label class="form-label fw-bold">מוצר שנמצא</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="דגם המוצר שנמצא במערכת לפי הסדרה והמשפחה">
+                                    מוצר שנמצא <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 <div class="product-info-display alert alert-info py-2 mb-0" style="min-height: 38px;">
                                     <small class="text-secondry">בחר סדרה ומשפחה לחיפוש מוצר...</small>
                                 </div>
@@ -571,7 +648,9 @@
                                 </div>
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label fw-bold">כמות</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ group_form.quantity.help_text|default:'כמות פריטים זהים בקבוצה' }}">
+                                    כמות <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 {{ group_form.quantity }}
                             </div>
 
@@ -579,10 +658,12 @@
 
                             <!-- Painting Options: Panel & Frame side-by-side -->
                             <div class="col-md-6 border-end">
-                                <label class="form-label fw-bold d-block">אופציית צביעת פנל (דלת)</label>
+                                <label class="form-label fw-bold d-block" data-bs-toggle="tooltip" title="בחירת אופן צביעת כנפי הדלתות">
+                                    אופציית צביעת פנל (דלת) <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 <div class="d-flex gap-4 mb-2">
                                     {% for radio in group_form.panel_paint_option %}
-                                        <div class="form-check">
+                                        <div class="form-check" data-bs-toggle="tooltip" title="{{ radio.choice_label }}">
                                             {{ radio.tag }}
                                             <label class="form-check-label" for="{{ radio.id_for_label }}">
                                                 {{ radio.choice_label }}
@@ -591,16 +672,20 @@
                                     {% endfor %}
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold">צבע פנלים (גוון מיוחד)</label>
+                                    <label class="form-label fw-bold" data-bs-toggle="tooltip" title="קוד או שם הגוון המיוחד לכנפיים">
+                                        צבע פנלים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
+                                    </label>
                                     {{ group_form.color_panels }}
                                 </div>
                             </div>
 
                             <div class="col-md-6 ps-md-4">
-                                <label class="form-label fw-bold d-block">אופציית צביעת משקוף</label>
+                                <label class="form-label fw-bold d-block" data-bs-toggle="tooltip" title="בחירת אופן צביעת המשקופים">
+                                    אופציית צביעת משקוף <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 <div class="d-flex gap-4 mb-2">
                                     {% for radio in group_form.frame_paint_option %}
-                                        <div class="form-check">
+                                        <div class="form-check" data-bs-toggle="tooltip" title="{{ radio.choice_label }}">
                                             {{ radio.tag }}
                                             <label class="form-check-label" for="{{ radio.id_for_label }}">
                                                 {{ radio.choice_label }}
@@ -609,7 +694,9 @@
                                     {% endfor %}
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold">צבע משקופים (גוון מיוחד)</label>
+                                    <label class="form-label fw-bold" data-bs-toggle="tooltip" title="קוד או שם הגוון המיוחד למשקופים">
+                                        צבע משקופים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
+                                    </label>
                                     {{ group_form.color_frames }}
                                 </div>
                             </div>
@@ -617,22 +704,22 @@
                             <hr class="my-3">
                             
                             <div class="col-md-6">
-                                <div class="form-check pt-2">
+                                <div class="form-check pt-2" data-bs-toggle="tooltip" title="{{ group_form.is_split_installation.help_text|default:'התקנה מפוצלת: שלב א משקופים, שלב ב דלתות' }}">
                                     {{ group_form.is_split_installation }}
                                     <label class="form-check-label fw-bold" for="{{ group_form.is_split_installation.id_for_label }}">
-                                        התקנה מפוצלת
+                                        התקנה מפוצלת <i class="bi bi-info-circle help-hint-icon"></i>
                                     </label>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-6" data-bs-toggle="tooltip" title="הערות והנחיות מיוחדות לקבוצה">
                                 {{ group_form.comments }}
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
-                        <button type="submit" name="action" value="customize" class="btn btn-outline-primary px-4">שינוי\שדרוג</button>
-                        <button type="submit" class="btn btn-primary px-4">הוסף קבוצה</button>
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal" data-bs-toggle="tooltip" title="סגירה ללא הוספה">ביטול</button>
+                        <button type="submit" name="action" value="customize" class="btn btn-outline-primary px-4" data-bs-toggle="tooltip" title="הוספה ומעבר ישיר להגדרת שינויים ושדרוגים">שינוי\שדרוג</button>
+                        <button type="submit" class="btn btn-primary px-4" data-bs-toggle="tooltip" title="הוספת הקבוצה להזמנה">הוסף קבוצה</button>
                     </div>
                 </form>
             </div>
@@ -662,10 +749,12 @@
                     </div>
 
                     <div class="mb-4 position-relative">
-                        <label class="form-label fw-bold">הוספת שינוי / שדרוג</label>
+                        <label class="form-label fw-bold" data-bs-toggle="tooltip" title="הקלד שם או קוד קסטומייזר לחיפוש מהיר והוספה לקבוצה">
+                            הוספת שינוי / שדרוג <i class="bi bi-info-circle help-hint-icon"></i>
+                        </label>
                         <div class="input-group">
                             <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
-                            <input type="text" id="customizerSearch" class="form-control border-start-0 ps-0" placeholder="חפש לפי שם או קוד...">
+                            <input type="text" id="customizerSearch" class="form-control border-start-0 ps-0" placeholder="חפש לפי שם או קוד..." data-bs-toggle="tooltip" title="חיפוש קסטומייזר לפי שם או קוד מקוצר">
                         </div>
                         <div id="customizerSearchResults" class="list-group mt-1 shadow-sm d-none" style="max-height: 300px; overflow-y: auto; position: absolute; z-index: 1060; width: 100%;">
                             <!-- Results will appear here -->
@@ -676,8 +765,8 @@
                         <table class="table table-hover align-middle" id="groupCustomizersTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th>שינוי / שדרוג</th>
-                                    <th>פרמטרים</th>
+                                    <th data-bs-toggle="tooltip" title="שם וקוד השינוי / השדרוג">שינוי / שדרוג</th>
+                                    <th data-bs-toggle="tooltip" title="פרמטרים מותאמים אישית לשדרוג">פרמטרים</th>
                                     <th style="width: 50px;"></th>
                                 </tr>
                             </thead>
@@ -688,7 +777,7 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">סיום</button>
+                    <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal" data-bs-toggle="tooltip" title="סיום ושמירת שינויים">סיום</button>
                 </div>
             </div>
         </div>
@@ -706,100 +795,122 @@
                     <div class="modal-body">
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">#</label>
-                                <input type="text" name="mark" id="id_item_mark" class="form-control">
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="סימון פריט ייחודי בהזמנה">
+                                    # <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                <input type="text" name="mark" id="id_item_mark" class="form-control" placeholder="סימון" data-bs-toggle="tooltip" title="סימון פריט בהזמנה">
                             </div>
                             <div class="col-md-4 field-dims">
-                                <label class="form-label fw-bold">רוחב (מ"מ)</label>
-                                <input type="number" name="width" id="id_item_width" class="form-control">
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="רוחב פתח אור / כנף במילימטרים">
+                                    רוחב (מ"מ) <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                <input type="number" name="width" id="id_item_width" class="form-control" placeholder="רוחב (מ''מ)" data-bs-toggle="tooltip" title="רוחב פתח אור / כנף במילימטרים">
                             </div>
                             <div class="col-md-4 field-dims">
-                                <label class="form-label fw-bold">גובה (מ"מ)</label>
-                                <input type="number" name="height" id="id_item_height" class="form-control">
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="גובה פתח אור / כנף במילימטרים">
+                                    גובה (מ"מ) <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                <input type="number" name="height" id="id_item_height" class="form-control" placeholder="גובה (מ''מ)" data-bs-toggle="tooltip" title="גובה פתח אור / כנף במילימטרים">
                             </div>
                             
                             <div class="col-md-4 field-wall">
-                                <label class="form-label fw-bold">עובי קיר (מ"מ)</label>
-                                <input type="number" name="wall" id="id_item_wall" class="form-control">
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="עובי קיר עבור המשקוף במילימטרים">
+                                    עובי קיר (מ"מ) <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                <input type="number" name="wall" id="id_item_wall" class="form-control" placeholder="עובי קיר (מ''מ)" data-bs-toggle="tooltip" title="עובי קיר עבור המשקוף במילימטרים">
                             </div>
                             
                             <div class="col-md-4 field-door">
-                                <label class="form-label fw-bold">כיוון פתיחה</label>
-                                <select name="direction" id="id_item_direction" class="form-select">
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="כיוון פתיחת הדלת (פנימה או החוצה מהחדר)">
+                                    כיוון פתיחה <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                <select name="direction" id="id_item_direction" class="form-select" data-bs-toggle="tooltip" title="כיוון פתיחת הדלת">
                                     <option value="">---------</option>
-                                    <option value="IN">פנימה</option>
-                                    <option value="OUT">החוצה</option>
+                                    <option value="IN" data-description="פתיחה פנימה לחדר">פנימה</option>
+                                    <option value="OUT" data-description="פתיחה החוצה מהחדר">החוצה</option>
                                 </select>
                             </div>
                             
                             <div class="col-md-4 field-door">
-                                <label class="form-label fw-bold">צד פתיחה</label>
-                                <select name="opening" id="id_item_opening" class="form-select">
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="יד פתיחת הדלת (שמאל או ימין במבט מצד הפתיחה)">
+                                    צד פתיחה <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                <select name="opening" id="id_item_opening" class="form-select" data-bs-toggle="tooltip" title="יד פתיחה">
                                     <option value="">---------</option>
-                                    <option value="LEFT">שמאל (L)</option>
-                                    <option value="RIGHT">ימין (R)</option>
+                                    <option value="LEFT" data-description="צירים בצד שמאל במבט מצד הפתיחה">שמאל (L)</option>
+                                    <option value="RIGHT" data-description="צירים בצד ימין במבט מצד הפתיחה">ימין (R)</option>
                                 </select>
                             </div>
 
                             <div class="col-md-4 field-door">
-                                <label class="form-label fw-bold">חיתוך / קיצור נוסף</label>
-                                <input type="text" name="addition_cut" id="id_item_addition_cut" class="form-control">
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="חיתוך תחתון נוסף במילימטרים עבור ריצוף או שטיח">
+                                    חיתוך / קיצור נוסף <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                <input type="text" name="addition_cut" id="id_item_addition_cut" class="form-control" placeholder="רווח נוסף" data-bs-toggle="tooltip" title="חיתוך תחתון נוסף (מ''מ)">
                             </div>
 
                             <div class="col-md-4 field-place">
-                                <label class="form-label fw-bold">מיקום</label>
-                                <input type="text" name="place" id="id_item_place" class="form-control">
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="מיקום ההתקנה (חדר, קומה, דירה)">
+                                    מיקום <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                <input type="text" name="place" id="id_item_place" class="form-control" placeholder="מיקום" data-bs-toggle="tooltip" title="מיקום ההתקנה (חדר, קומה)">
                             </div>
                             
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">הערה</label>
-                                <textarea name="comment" id="id_item_comment" class="form-control" rows="1"></textarea>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="הערות והנחיות מיוחדות לפריט זה">
+                                    הערה <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                <textarea name="comment" id="id_item_comment" class="form-control" rows="1" placeholder="הערה" data-bs-toggle="tooltip" title="הערה ספציפית לפריט"></textarea>
                             </div>
 
                             <div class="col-12 border-top pt-3 field-door">
-                                <h6 class="fw-bold text-primary">פרמטרים הנדסיים (גובה עיבודים)</h6>
+                                <h6 class="fw-bold text-primary" data-bs-toggle="tooltip" title="הגדרת גבהים חריגים של מנעול וצירים במילימטרים">
+                                    פרמטרים הנדסיים (גובה עיבודים) <i class="bi bi-info-circle help-hint-icon"></i>
+                                </h6>
                                 <div class="row g-3">
                                     <div class="col-md-4">
-                                        <label class="form-label extra-small">גובה מנעול</label>
-                                        <input type="number" step="0.01" name="custom_lock_height" id="id_item_lock" class="form-control form-control-sm">
+                                        <label class="form-label extra-small" data-bs-toggle="tooltip" title="גובה מרכז מנעול חריג מהרצפה (מ''מ)">גובה מנעול</label>
+                                        <input type="number" step="0.01" name="custom_lock_height" id="id_item_lock" class="form-control form-control-sm" placeholder="מנעול" data-bs-toggle="tooltip" title="גובה מרכז מנעול חריג (מ''מ)">
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label extra-small">ציר 1</label>
-                                        <input type="number" step="0.01" name="custom_hinge1" id="id_item_h1" class="form-control form-control-sm">
+                                        <label class="form-label extra-small" data-bs-toggle="tooltip" title="גובה ציר 1 חריג מהרצפה (מ''מ)">ציר 1</label>
+                                        <input type="number" step="0.01" name="custom_hinge1" id="id_item_h1" class="form-control form-control-sm" placeholder="ציר 1" data-bs-toggle="tooltip" title="גובה ציר 1 חריג (מ''מ)">
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label extra-small">ציר 2</label>
-                                        <input type="number" step="0.01" name="custom_hinge2" id="id_item_h2" class="form-control form-control-sm">
+                                        <label class="form-label extra-small" data-bs-toggle="tooltip" title="גובה ציר 2 חריג מהרצפה (מ''מ)">ציר 2</label>
+                                        <input type="number" step="0.01" name="custom_hinge2" id="id_item_h2" class="form-control form-control-sm" placeholder="ציר 2" data-bs-toggle="tooltip" title="גובה ציר 2 חריג (מ''מ)">
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label extra-small">ציר 3</label>
-                                        <input type="number" step="0.01" name="custom_hinge3" id="id_item_h3" class="form-control form-control-sm">
+                                        <label class="form-label extra-small" data-bs-toggle="tooltip" title="גובה ציר 3 חריג מהרצפה (מ''מ)">ציר 3</label>
+                                        <input type="number" step="0.01" name="custom_hinge3" id="id_item_h3" class="form-control form-control-sm" placeholder="ציר 3" data-bs-toggle="tooltip" title="גובה ציר 3 חריג (מ''מ)">
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label extra-small">ציר 4</label>
-                                        <input type="number" step="0.01" name="custom_hinge4" id="id_item_h4" class="form-control form-control-sm">
+                                        <label class="form-label extra-small" data-bs-toggle="tooltip" title="גובה ציר 4 חריג מהרצפה (מ''מ)">ציר 4</label>
+                                        <input type="number" step="0.01" name="custom_hinge4" id="id_item_h4" class="form-control form-control-sm" placeholder="ציר 4" data-bs-toggle="tooltip" title="גובה ציר 4 חריג (מ''מ)">
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label extra-small">ציר 5</label>
-                                        <input type="number" step="0.01" name="custom_hinge5" id="id_item_h5" class="form-control form-control-sm">
+                                        <label class="form-label extra-small" data-bs-toggle="tooltip" title="גובה ציר 5 חריג מהרצפה (מ''מ)">ציר 5</label>
+                                        <input type="number" step="0.01" name="custom_hinge5" id="id_item_h5" class="form-control form-control-sm" placeholder="ציר 5" data-bs-toggle="tooltip" title="גובה ציר 5 חריג (מ''מ)">
                                     </div>
                                 </div>
                             </div>
 
                             <div class="col-12 border-top pt-3">
-                                <label class="form-label fw-bold">שרטוט ידני / קובץ</label>
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="העלאת שרטוט הנדסי (PDF / תמונה) עבור פריט זה">
+                                    שרטוט ידני / קובץ <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
                                 <div id="currentSketchDisplay" class="mb-2 d-none">
                                     <span class="badge bg-info text-dark me-2">קובץ קיים</span>
-                                    <a href="#" target="_blank" id="sketchLink" class="small">צפה בקובץ</a>
+                                    <a href="#" target="_blank" id="sketchLink" class="small" data-bs-toggle="tooltip" title="צפייה בקובץ שרטוט">צפה בקובץ</a>
                                 </div>
-                                <input type="file" name="sketch" id="id_item_sketch" class="form-control">
+                                <input type="file" name="sketch" id="id_item_sketch" class="form-control" data-bs-toggle="tooltip" title="בחירת קובץ שרטוט (PDF, JPEG, PNG)">
                                 <small class="text-muted">ניתן להעלות PDF, JPEG, PNG וכדומה</small>
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
-                        <button type="submit" class="btn btn-primary px-4">שמור שינויים</button>
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal" data-bs-toggle="tooltip" title="ביטול ללא שמירה">ביטול</button>
+                        <button type="submit" class="btn btn-primary px-4" data-bs-toggle="tooltip" title="שמירת שינויים בפריט">שמור שינויים</button>
                     </div>
                 </form>
             </div>
@@ -1048,10 +1159,11 @@
                             let paramsHtml = '';
                             for (let i = 1; i <= 4; i++) {
                                 const label = cust[`par${i}_label`];
+                                const hint = cust[`par${i}_hint`] || '';
                                 const val = cust[`par${i}`];
                                 if (label) {
                                     paramsHtml += `
-                                        <div class="col-6 extra-small">
+                                        <div class="col-6 extra-small" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>
                                             <span class="text-muted">${label}:</span>
                                             <span class="fw-medium">${val || '-'}</span>
                                         </div>`;
@@ -1060,7 +1172,7 @@
 
                             html += `
                                 <div class="col">
-                                    <div class="p-2 border rounded bg-white shadow-sm h-100">
+                                    <div class="p-2 border rounded bg-white shadow-sm h-100" data-bs-toggle="tooltip" title="${cust.customizer_description || cust.customizer_name}">
                                         <div class="d-flex align-items-center mb-2">
                                             <div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">
                                                 <i class="bi bi-check2-circle"></i>
@@ -1082,6 +1194,7 @@
                         
                         // Remove empty message if exists
                         $tab.find('.text-center.text-muted.py-4').remove();
+                        if (window.initTooltips) window.initTooltips($tab[0]);
                     });
             }
 
@@ -1125,6 +1238,7 @@
                             html = '<tr><td colspan="3" class="text-center py-4 text-muted">לא נוספו קסטומייזרים לקבוצה זו</td></tr>';
                         }
                         $custTableBody.html(html);
+                        if (window.initTooltips) window.initTooltips($custTableBody[0]);
                     })
                     .catch(err => {
                         $custTableBody.html('<tr><td colspan="3" class="text-center text-danger py-4">שגיאה בטעינת נתונים</td></tr>');
@@ -1136,13 +1250,17 @@
                 let hasParams = false;
                 for (let i = 1; i <= 4; i++) {
                     const label = item[`par${i}_label`];
+                    const hint = item[`par${i}_hint`] || '';
                     if (label) {
                         hasParams = true;
                         paramsHtml += `
                             <div class="col-md-6">
-                                <label class="extra-small text-muted mb-0 d-block">${label}</label>
+                                <label class="extra-small text-muted mb-0 d-block" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>
+                                    ${label} ${hint ? '<i class="bi bi-info-circle help-hint-icon"></i>' : ''}
+                                </label>
                                 <input type="text" class="form-control form-control-sm cust-param-input" 
-                                       data-id="${item.id}" data-param="par${i}" value="${item[`par${i}`] || ''}">
+                                       data-id="${item.id}" data-param="par${i}" value="${item[`par${i}`] || ''}"
+                                       placeholder="${hint}" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>
                             </div>`;
                     }
                 }
@@ -1152,12 +1270,12 @@
                 return `
                     <tr data-item-id="${item.id}">
                         <td>
-                            <div class="fw-bold text-primary">${item.customizer_name}</div>
+                            <div class="fw-bold text-primary" data-bs-toggle="tooltip" title="${item.customizer_description || item.customizer_name}">${item.customizer_name}</div>
                             <div class="extra-small text-muted">${item.customizer_code}</div>
                         </td>
                         <td>${paramsHtml}</td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-danger remove-cust-btn" data-id="${item.id}">
+                            <button class="btn btn-sm btn-outline-danger remove-cust-btn" data-id="${item.id}" data-bs-toggle="tooltip" title="הסר קסטומייזר זה מהקבוצה">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </td>
@@ -1182,12 +1300,14 @@
                             const results = Array.isArray(data) ? data : (data.results || []);
                             let html = '';
                             results.forEach(c => {
+                                const desc = c.description || '';
                                 html += `
-                                    <a href="#" class="list-group-item list-group-item-action add-customizer-item" data-id="${c.id}">
+                                    <a href="#" class="list-group-item list-group-item-action add-customizer-item" data-id="${c.id}" data-bs-toggle="tooltip" title="${desc || c.name}">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div>
                                                 <div class="fw-bold">${c.name}</div>
                                                 <small class="text-muted">${c.code}</small>
+                                                ${desc ? `<div class="extra-small text-secondary mt-1">${desc}</div>` : ''}
                                             </div>
                                             <i class="bi bi-plus-circle text-primary"></i>
                                         </div>
@@ -1197,6 +1317,7 @@
                                 html = '<div class="list-group-item text-muted">לא נמצאו תוצאות</div>';
                             }
                             $custResults.html(html).removeClass('d-none');
+                            if (window.initTooltips) window.initTooltips($custResults[0]);
                         });
                 }, 300);
             });
@@ -1325,7 +1446,8 @@
                         let options = '<option value="">---------</option>';
                         const fronts = (Array.isArray(data) ? data : data.results) || [];
                         fronts.forEach(front => {
-                            options += `<option value="${front.id}">${front.name}</option>`;
+                            const desc = front.description || '';
+                            options += `<option value="${front.id}" data-description="${desc}" title="${desc}">${front.name}</option>`;
                         });
                         $frontSelect.html(options).trigger('change');
                     })
@@ -1350,7 +1472,8 @@
                         let options = '<option value="">---------</option>';
                         const families = (Array.isArray(data) ? data : data.results) || [];
                         families.forEach(family => {
-                            options += `<option value="${family.id}">${family.name}</option>`;
+                            const desc = family.description || '';
+                            options += `<option value="${family.id}" data-description="${desc}" title="${desc}">${family.name}</option>`;
                         });
                         $familySelect.html(options).trigger('change');
                     })
@@ -1379,12 +1502,14 @@
                         const models = (Array.isArray(data) ? data : data.results) || [];
                         if (models.length > 0) {
                             const model = models[0];
+                            const desc = model.description || '';
                             if ($display.length) {
-                                $display.html(`<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ${model.name} (${model.code})</strong>`);
+                                $display.html(`<strong class="text-success-emphasis" data-bs-toggle="tooltip" title="${desc || model.name}"><i class="bi bi-check-circle-fill me-1"></i> ${model.name} (${model.code})</strong>`);
+                                if (window.initTooltips) window.initTooltips($display[0]);
                             }
                             // Add the option if it doesn't exist so .val() works correctly
                             if ($productSelect.find(`option[value="${model.id}"]`).length === 0) {
-                                $productSelect.append(`<option value="${model.id}">${model.name}</option>`);
+                                $productSelect.append(`<option value="${model.id}" data-description="${desc}" title="${desc}">${model.name}</option>`);
                             }
                             $productSelect.val(model.id).trigger('change');
                             $container.closest('form').find('button[type="submit"]').prop('disabled', false);

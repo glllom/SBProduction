@@ -16,12 +16,16 @@
                 <form method="post">
                     {% csrf_token %}
                     <div class="mb-3">
-                        <label for="id_username" class="form-label">שם משתמש</label>
-                        <input type="text" name="username" autofocus maxlength="150" required id="id_username" class="form-control">
+                        <label for="id_username" class="form-label" data-bs-toggle="tooltip" title="הזן את שם המשתמש שלך">
+                            שם משתמש <i class="bi bi-info-circle help-hint-icon"></i>
+                        </label>
+                        <input type="text" name="username" autofocus maxlength="150" required id="id_username" class="form-control" placeholder="שם משתמש" data-bs-toggle="tooltip" title="שם המשתמש במערכת">
                     </div>
                     <div class="mb-4">
-                        <label for="id_password" class="form-label">סיסמה</label>
-                        <input type="password" name="password" required id="id_password" class="form-control">
+                        <label for="id_password" class="form-label" data-bs-toggle="tooltip" title="הזן את סיסמת הכניסה שלך">
+                            סיסמה <i class="bi bi-info-circle help-hint-icon"></i>
+                        </label>
+                        <input type="password" name="password" required id="id_password" class="form-control" placeholder="סיסמה" data-bs-toggle="tooltip" title="סיסמת כניסה למערכת">
                     </div>
                     
                     {% if form.errors %}
@@ -30,7 +34,7 @@
                     </div>
                     {% endif %}
                     
-                    <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">כניסה</button>
+                    <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold" data-bs-toggle="tooltip" title="כניסה למערכת SB Production">כניסה</button>
                 </form>
             </div>
         </div>

@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="h4 mb-0">קסטומייזרים</h2>
-    <button class="btn btn-primary btn-sm">
+    <button class="btn btn-primary btn-sm" data-bs-toggle="tooltip" title="הוספת קסטומייזר חדש לקטלוג">
         <i class="bi bi-plus-lg ms-2"></i>הוסף קסטומייזר
     </button>
 </div>
@@ -16,20 +16,28 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="bg-light text-muted small text-uppercase">
                     <tr>
-                        <th class="ps-4">שם</th>
-                        <th>קוד</th>
-                        <th>תיאור</th>
-                        <th class="text-end pe-4">פעולות</th>
+                        <th class="ps-4" data-bs-toggle="tooltip" title="שם הקסטומייזר">שם</th>
+                        <th data-bs-toggle="tooltip" title="קוד מקוצר ייחודי">קוד</th>
+                        <th data-bs-toggle="tooltip" title="תיאור מפורט של הקסטומייזר והשפעתו על המוצר">תיאור</th>
+                        <th class="text-end pe-4" data-bs-toggle="tooltip" title="פעולות אפשריות">פעולות</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for cust in customizers %}
                     <tr>
-                        <td class="ps-4 fw-medium">{{ cust.name }}</td>
-                        <td><code>{{ cust.code|default:"-" }}</code></td>
-                        <td class="small">{{ cust.description|truncatechars:50 }}</td>
+                        <td class="ps-4 fw-medium" data-bs-toggle="tooltip" title="{{ cust.description|default:cust.name }}">
+                            {{ cust.name }}
+                        </td>
+                        <td>
+                            <code data-bs-toggle="tooltip" title="קוד קסטומייזר: {{ cust.code|default:'ללא קוד' }}">{{ cust.code|default:"-" }}</code>
+                        </td>
+                        <td class="small" data-bs-toggle="tooltip" title="{{ cust.description|default:'אין תיאור' }}">
+                            {{ cust.description|truncatechars:50|default:"-" }}
+                        </td>
                         <td class="text-end pe-4">
-                            <button class="btn btn-link btn-sm text-dark"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-link btn-sm text-dark" data-bs-toggle="tooltip" title="עריכת קסטומייזר: {{ cust.name }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
                         </td>
                     </tr>
                     {% empty %}

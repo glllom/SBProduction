@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="h4 mb-0">סדרות מוצרים</h2>
-    <button class="btn btn-primary btn-sm">
+    <button class="btn btn-primary btn-sm" data-bs-toggle="tooltip" title="הוספת סדרת מוצרים חדשה">
         <i class="bi bi-plus-lg ms-2"></i>הוסף סדרה
     </button>
 </div>
@@ -16,18 +16,24 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="bg-light text-muted small text-uppercase">
                     <tr>
-                        <th class="ps-4">שם</th>
-                        <th>קוד</th>
-                        <th class="text-end pe-4">פעולות</th>
+                        <th class="ps-4" data-bs-toggle="tooltip" title="שם סדרת המוצרים">שם</th>
+                        <th data-bs-toggle="tooltip" title="קוד מקוצר">קוד</th>
+                        <th class="text-end pe-4" data-bs-toggle="tooltip" title="פעולות אפשריות">פעולות</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for s in series %}
                     <tr>
-                        <td class="ps-4 fw-medium">{{ s.name }}</td>
-                        <td><code>{{ s.code|default:"-" }}</code></td>
+                        <td class="ps-4 fw-medium" data-bs-toggle="tooltip" title="{{ s.description|default:s.name }}">
+                            {{ s.name }}
+                        </td>
+                        <td>
+                            <code data-bs-toggle="tooltip" title="קוד סדרה: {{ s.code|default:'ללא קוד' }}">{{ s.code|default:"-" }}</code>
+                        </td>
                         <td class="text-end pe-4">
-                            <button class="btn btn-link btn-sm text-dark"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-link btn-sm text-dark" data-bs-toggle="tooltip" title="עריכת סדרה: {{ s.name }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
                         </td>
                     </tr>
                     {% empty %}

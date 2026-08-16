@@ -143,3 +143,73 @@ body {
     font-weight: 600;
 }
 
+/* Tooltips & Help Hints */
+.tooltip,
+.tooltip * {
+    pointer-events: none !important;
+}
+
+.tooltip {
+    font-size: 0.8125rem;
+    z-index: 1090;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.tooltip-inner {
+    max-width: 320px;
+    padding: 6px 12px;
+    background-color: #1e293b;
+    color: #f8fafc;
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    text-align: right;
+    line-height: 1.45;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tooltip.bs-tooltip-top .tooltip-arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="top"] .tooltip-arrow::before {
+    border-top-color: #1e293b;
+}
+
+.tooltip.bs-tooltip-bottom .tooltip-arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="bottom"] .tooltip-arrow::before {
+    border-bottom-color: #1e293b;
+}
+
+.tooltip.bs-tooltip-start .tooltip-arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="left"] .tooltip-arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="right"] .tooltip-arrow::before {
+    border-inline-start-color: #1e293b;
+}
+
+.help-hint-icon {
+    cursor: help;
+    color: #64748b;
+    font-size: 0.85rem;
+    transition: color 0.15s ease-in-out, transform 0.15s ease-in-out;
+    display: inline-flex;
+    align-items: center;
+    margin-inline-start: 4px;
+}
+
+.help-hint-icon:hover {
+    color: var(--primary-color);
+    transform: scale(1.15);
+}
+
+.cursor-help {
+    cursor: help !important;
+}
+
+/* Select2 Descriptions */
+.select2-option-desc {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.select2-results__option--highlighted .select2-option-desc {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+

@@ -139,44 +139,109 @@
                 });
             }
         });
-        
+
+        /**
+         * Global Tooltip Initializer
+         * Configures tooltips with a slight, professional delay (show: 300ms, hide: 100ms)
+         */
+        function initTooltips(container) {
+            const root = container || document;
+            // Select elements with tooltip attributes, excluding options and internal select2 elements
+            const elements = root.querySelectorAll('[data-bs-toggle="tooltip"], [data-tooltip]');
+            
+            elements.forEach(function (el) {
+                // Do not initialize tooltips on <option> or internal Select2 elements
+                if (el.tagName === 'OPTION' || el.closest('.select2') || el.closest('.select2-container')) return;
+                
+                // If element is a hidden select managed by Select2, skip it
+                if (el.tagName === 'SELECT' && el.classList.contains('select2-hidden-accessible')) return;
+
+                const titleText = el.getAttribute('data-bs-title') || el.getAttribute('title') || el.getAttribute('data-tooltip') || el.getAttribute('data-description');
+                if (!titleText || !titleText.trim()) return;
+
+                // Move native title to data-bs-title to avoid native tooltip overlapping
+                if (el.hasAttribute('title')) {
+                    el.setAttribute('data-bs-title', el.getAttribute('title'));
+                    el.removeAttribute('title');
+                }
+
+                let instance = bootstrap.Tooltip.getInstance(el);
+                if (instance) {
+                    instance.setContent({ '.tooltip-inner': titleText });
+                } else {
+                    new bootstrap.Tooltip(el, {
+                        delay: { show: 300, hide: 100 },
+                        container: 'body',
+                        trigger: 'hover',
+                        html: true
+                    });
+                }
+            });
+        }
+        window.initTooltips = initTooltips;
+
+        /**
+         * Select2 Custom Formatting with Hints & Descriptions
+         */
+        function formatSelectOption(state) {
+            if (!state.id) return state.text;
+            const $element = $(state.element);
+            const desc = $element.data('description') || $element.attr('data-description') || $element.data('hint');
+            if (desc) {
+                const $container = $('<div>').addClass('select2-result-item d-flex flex-column');
+                $('<span>').addClass('fw-semibold').text(state.text).appendTo($container);
+                $('<small>').addClass('select2-option-desc text-truncate').css({'max-width': '380px'}).text(desc).appendTo($container);
+                return $container;
+            }
+            return state.text;
+        }
+
+        function formatSelectSelection(state) {
+            return state.text;
+        }
+
         // Initialize Select2 globally
         $(document).ready(function() {
             function initSelect2(container) {
-                $(container).find('select').each(function() {
-                    if (!$(this).hasClass('select2-hidden-accessible')) {
+                const root = container ? $(container) : $(document);
+                root.find('select').each(function() {
+                    if (!$(this).hasClass('select2-hidden-accessible') && !$(this).hasClass('no-select2')) {
                         let options = {
                             theme: 'bootstrap-5',
                             width: '100%',
                             dir: 'rtl',
-                            placeholder: $(this).attr('placeholder') || 'בחר אפשרות'
+                            placeholder: $(this).attr('placeholder') || 'בחר אפשרות',
+                            templateResult: formatSelectOption,
+                            templateSelection: formatSelectSelection
                         };
                         
                         // Fix for Select2 in Bootstrap Modals
                         const modal = $(this).closest('.modal');
                         if (modal.length) {
                             options.dropdownParent = modal;
-                        } else {
-                            // Ensure dropdown is attached to the body for correct orientation 
-                            // detection in standard forms
-                            options.dropdownParent = $(document.body);
                         }
 
                         $(this).select2(options);
                     }
                 });
             }
+            window.initSelect2 = initSelect2;
 
             initSelect2(document);
+            initTooltips(document);
 
             // Re-initialize for Bootstrap Modals
             $('.modal').on('shown.bs.modal', function() {
                 initSelect2(this);
+                initTooltips(this);
             });
-            
-            // Re-initialize when Select2 is destroyed or content is added dynamically
-            $(document).on('select2:destroy', 'select', function() {
-                setTimeout(() => initSelect2(this.parentElement), 1);
+
+            // Automatically hide tooltip when the trigger element is clicked
+            $(document).on('click', '[data-bs-toggle="tooltip"]', function() {
+                const inst = bootstrap.Tooltip.getInstance(this);
+                if (inst) {
+                    inst.hide();
+                }
             });
         });
     </script>

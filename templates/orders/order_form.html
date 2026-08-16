@@ -14,14 +14,18 @@
                     {% csrf_token %}
                     <div class="row g-3 mb-4">
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">מספר הזמנה</label>
+                            <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ form.order_number.help_text|default:'מספר הזמנה ייחודי במערכת' }}">
+                                מספר הזמנה <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
                             {{ form.order_number }}
                             {% if form.order_number.errors %}
                                 <div class="text-danger small">{{ form.order_number.errors }}</div>
                             {% endif %}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">שם הלקוח</label>
+                            <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ form.customer.help_text|default:'שם הלקוח או הפרויקט' }}">
+                                שם הלקוח <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
                             {{ form.customer }}
                             {% if form.customer.errors %}
                                 <div class="text-danger small">{{ form.customer.errors }}</div>
@@ -31,14 +35,18 @@
 
                     <div class="row g-3 mb-4">
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">תאריך צביעה</label>
+                            <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ form.painting_date.help_text|default:'תאריך מתוכנן לצביעת הפריטים' }}">
+                                תאריך צביעה <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
                             {{ form.painting_date }}
                             {% if form.painting_date.errors %}
                                 <div class="text-danger small">{{ form.painting_date.errors }}</div>
                             {% endif %}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">תאריך סיום</label>
+                            <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ form.completion_date.help_text|default:'תאריך יעד סופי לאספקת ההזמנה' }}">
+                                תאריך סיום <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
                             {{ form.completion_date }}
                             {% if form.completion_date.errors %}
                                 <div class="text-danger small">{{ form.completion_date.errors }}</div>
@@ -48,48 +56,58 @@
 
                     <div class="row g-3 mb-4">
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">סדרה</label>
+                            <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ form.series.help_text|default:'סדרת הדלתות (פרופיל / מבנה)' }}">
+                                סדרה <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
                             {{ form.series }}
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">חזית / גימור</label>
+                            <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ form.front.help_text|default:'חזית או גימור הכנף' }}">
+                                חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
                             {{ form.front }}
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">ידית</label>
+                            <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ form.handle.help_text|default:'דגם ידית נבחר' }}">
+                                ידית <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
                             {{ form.handle }}
                         </div>
                     </div>
 
                     <div class="row g-3 mb-4">
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">צבע פנלים (כנף)</label>
+                            <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ form.color_panels.help_text|default:'גוון צבע עבור כנפי הדלתות' }}">
+                                צבע פנלים (כנף) <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
                             {{ form.color_panels }}
                         </div>
                         <div class="col-md-4 d-flex align-items-center pt-4">
-                            <div class="form-check">
+                            <div class="form-check" data-bs-toggle="tooltip" title="{{ form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים בצבע ייעודי' }}">
                                 {{ form.is_frames_to_paint }}
                                 <label class="form-check-label fw-bold" for="{{ form.is_frames_to_paint.id_for_label }}">
-                                    לצבוע משקופים?
+                                    לצבוע משקופים? <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
                             </div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">צבע משקופים</label>
+                            <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ form.color_frames.help_text|default:'גוון צבע עבור המשקופים' }}">
+                                צבע משקופים <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
                             {{ form.color_frames }}
                         </div>
                     </div>
 
                     <h6 class="text-primary mb-3"><i class="bi bi-chat-left-text ms-2"></i>הערות</h6>
                     <div class="row g-3">
-                        <div class="col-12">
+                        <div class="col-12" data-bs-toggle="tooltip" title="{{ form.comments.help_text|default:'הערות והנחיות מיוחדות להזמנה' }}">
                             {{ form.comments }}
                         </div>
                     </div>
 
                     <div class="mt-4 pt-3 border-top d-flex justify-content-end gap-2">
-                        <a href="{% url 'order-list' %}" class="btn btn-light">ביטול</a>
-                        <button type="submit" class="btn btn-primary px-4">צור הזמנה</button>
+                        <a href="{% url 'order-list' %}" class="btn btn-light" data-bs-toggle="tooltip" title="ביטול וחזרה לרשימת ההזמנות">ביטול</a>
+                        <button type="submit" class="btn btn-primary px-4" data-bs-toggle="tooltip" title="שמירת ההזמנה ומעבר לדף הפירוט">צור הזמנה</button>
                     </div>
                 </form>
             </div>
@@ -130,7 +148,8 @@
                     let options = '<option value="">---------</option>';
                     const fronts = (Array.isArray(data) ? data : data.results) || [];
                     fronts.forEach(front => {
-                        options += `<option value="${front.id}">${front.name}</option>`;
+                        const desc = front.description || '';
+                        options += `<option value="${front.id}" data-description="${desc}" title="${desc}">${front.name}</option>`;
                     });
                     $frontSelect.html(options).trigger('change');
                 })

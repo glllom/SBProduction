@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="h4 mb-0">דגמי מוצרים</h2>
-    <button class="btn btn-primary btn-sm">
+    <button class="btn btn-primary btn-sm" data-bs-toggle="tooltip" title="הוספת דגם מוצר חדש">
         <i class="bi bi-plus-lg ms-2"></i>הוסף דגם
     </button>
 </div>
@@ -16,20 +16,28 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="bg-light text-muted small text-uppercase">
                     <tr>
-                        <th class="ps-4">שם</th>
-                        <th>משפחה × סדרה</th>
-                        <th>קוד</th>
-                        <th class="text-end pe-4">פעולות</th>
+                        <th class="ps-4" data-bs-toggle="tooltip" title="שם דגם המוצר">שם</th>
+                        <th data-bs-toggle="tooltip" title="שילוב של משפחת המוצרים וסדרת הפרופיל">משפחה × סדרה</th>
+                        <th data-bs-toggle="tooltip" title="קוד מקוצר / מק''ט">קוד</th>
+                        <th class="text-end pe-4" data-bs-toggle="tooltip" title="פעולות אפשריות">פעולות</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for model in models %}
                     <tr>
-                        <td class="ps-4 fw-medium">{{ model.name }}</td>
-                        <td>{{ model.product_family.name }} × {{ model.series.name }}</td>
-                        <td><code>{{ model.code|default:"-" }}</code></td>
+                        <td class="ps-4 fw-medium" data-bs-toggle="tooltip" title="{{ model.description|default:model.name }}">
+                            {{ model.name }}
+                        </td>
+                        <td data-bs-toggle="tooltip" title="משפחה: {{ model.product_family.description|default:model.product_family.name }} | סדרה: {{ model.series.description|default:model.series.name }}">
+                            {{ model.product_family.name }} × {{ model.series.name }}
+                        </td>
+                        <td>
+                            <code data-bs-toggle="tooltip" title="קוד דגם: {{ model.code|default:'ללא קוד' }}">{{ model.code|default:"-" }}</code>
+                        </td>
                         <td class="text-end pe-4">
-                            <button class="btn btn-link btn-sm text-dark"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-link btn-sm text-dark" data-bs-toggle="tooltip" title="עריכת דגם: {{ model.name }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
                         </td>
                     </tr>
                     {% empty %}

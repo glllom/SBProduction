@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="h4 mb-0">משפחות מוצרים</h2>
-    <button class="btn btn-primary btn-sm">
+    <button class="btn btn-primary btn-sm" data-bs-toggle="tooltip" title="הוספת משפחת מוצרים חדשה">
         <i class="bi bi-plus-lg ms-2"></i>הוסף משפחה
     </button>
 </div>
@@ -16,20 +16,28 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="bg-light text-muted small text-uppercase">
                     <tr>
-                        <th class="ps-4">שם</th>
-                        <th>קוד</th>
-                        <th>סוג מוצר</th>
-                        <th class="text-end pe-4">פעולות</th>
+                        <th class="ps-4" data-bs-toggle="tooltip" title="שם משפחת המוצרים">שם</th>
+                        <th data-bs-toggle="tooltip" title="קוד מקוצר">קוד</th>
+                        <th data-bs-toggle="tooltip" title="סוג המוצר המשויך למשפחה זו">סוג מוצר</th>
+                        <th class="text-end pe-4" data-bs-toggle="tooltip" title="פעולות אפשריות">פעולות</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for family in families %}
                     <tr>
-                        <td class="ps-4 fw-medium">{{ family.name }}</td>
-                        <td><code>{{ family.code|default:"-" }}</code></td>
-                        <td>{{ family.product_type.name }}</td>
+                        <td class="ps-4 fw-medium" data-bs-toggle="tooltip" title="{{ family.description|default:family.name }}">
+                            {{ family.name }}
+                        </td>
+                        <td>
+                            <code data-bs-toggle="tooltip" title="קוד משפחה: {{ family.code|default:'ללא קוד' }}">{{ family.code|default:"-" }}</code>
+                        </td>
+                        <td data-bs-toggle="tooltip" title="{{ family.product_type.description|default:family.product_type.name }}">
+                            {{ family.product_type.name }}
+                        </td>
                         <td class="text-end pe-4">
-                            <button class="btn btn-link btn-sm text-dark"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-link btn-sm text-dark" data-bs-toggle="tooltip" title="עריכת משפחת מוצרים: {{ family.name }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
                         </td>
                     </tr>
                     {% empty %}

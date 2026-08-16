@@ -47,11 +47,11 @@ function renderStaticRowContent(data) {
         <td class="field-comment small text-start">${data.comment || ''}</td>
         <td class="no-print text-nowrap">
             ${data.sketchUrl ? `
-                <a href="${data.sketchUrl}" target="_blank" class="btn btn-sm btn-primary py-0" title="צפה בשרטוט">
+                <a href="${data.sketchUrl}" target="_blank" class="btn btn-sm btn-primary py-0" data-bs-toggle="tooltip" title="צפה בשרטוט עבור פריט זה">
                     <i class="bi bi-file-earmark-image"></i>
                 </a>
             ` : ''}
-            ${config.canEdit ? '<i class="bi bi-pencil-square opacity-50 ms-2"></i>' : ''}
+            ${config.canEdit ? '<i class="bi bi-pencil-square opacity-50 ms-2" data-bs-toggle="tooltip" title="עריכת פריט"></i>' : ''}
         </td>
     `;
 }
@@ -160,9 +160,11 @@ $(document).ready(function() {
      * Enters edit mode when clicking a row.
      * Replaces static cells with input fields.
      */
-    $('.clickable-row').on('click', function() {
+    $('.clickable-row').on('click', function(e) {
         if (!config.canEdit) return;
         if ($(this).hasClass('edit-mode')) return;
+        // Do not enter edit mode if click was on a link, button, or file input
+        if ($(e.target).closest('a, button, input, select').length) return;
         
         const $row = $(this);
         const itemId = $row.data('item-id');
@@ -190,33 +192,33 @@ $(document).ready(function() {
 
         let html = `
             <td class="fw-bold bg-light">${data.mark}</td>
-            <td><input type="text" class="form-control form-control-sm" name="place" value="${data.place || ''}"></td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="width" value="${data.width}"></td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="height" value="${data.height}"></td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="wall" value="${data.wall}" ${data.hasFrame ? '' : 'disabled'}></td>
+            <td><input type="text" class="form-control form-control-sm" name="place" value="${data.place || ''}" placeholder="מיקום" data-bs-toggle="tooltip" title="מיקום ההתקנה (חדר, קומה, דירה)"></td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="width" value="${data.width}" placeholder="רוחב" data-bs-toggle="tooltip" title="רוחב פתח אור / כנף במילימטרים"></td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="height" value="${data.height}" placeholder="גובה" data-bs-toggle="tooltip" title="גובה פתח אור / כנף במילימטרים"></td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="wall" value="${data.wall}" ${data.hasFrame ? '' : 'disabled'} placeholder="משקוף" data-bs-toggle="tooltip" title="עובי קיר עבור המשקוף במילימטרים"></td>
             <td>
                 <div class="d-flex gap-1">
                     <select class="form-select form-select-sm" name="opening" ${data.hasDoor ? '' : 'disabled'}>${openingOptions}</select>
                     <select class="form-select form-select-sm" name="direction" ${data.hasDoor ? '' : 'disabled'}>${directionOptions}</select>
                 </div>
             </td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="addition_cut" value="${data.additionCut || ''}"></td>
-            <td><input type="text" class="form-control form-control-sm" name="comment" value="${data.comment || ''}" style="width: 100%; min-width: 100px;"></td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="addition_cut" value="${data.additionCut || ''}" placeholder="רווח נוסף" data-bs-toggle="tooltip" title="חיתוך תחתון נוסף במילימטרים (לריצוף או שטיח)"></td>
+            <td><input type="text" class="form-control form-control-sm" name="comment" value="${data.comment || ''}" placeholder="הערה" style="width: 100%; min-width: 100px;" data-bs-toggle="tooltip" title="הערה ספציפית לפריט זה"></td>
             <td class="text-nowrap">
-                <button class="btn btn-sm btn-success btn-save" title="שמור"><i class="bi bi-check-lg"></i></button>
-                <button class="btn btn-sm btn-outline-primary btn-duplicate" title="שכפל לשאר הקבוצה"><i class="bi bi-files"></i></button>
-                <button class="btn btn-sm btn-outline-info btn-toggle-custom" title="שינוי גבהי צירים ומנעול"><i class="bi bi-sliders"></i></button>
+                <button class="btn btn-sm btn-success btn-save" data-bs-toggle="tooltip" title="שמור שינויים בפריט"><i class="bi bi-check-lg"></i></button>
+                <button class="btn btn-sm btn-outline-primary btn-duplicate" data-bs-toggle="tooltip" title="שכפל מידות לשאר הפריטים בקבוצה"><i class="bi bi-files"></i></button>
+                <button class="btn btn-sm btn-outline-info btn-toggle-custom" data-bs-toggle="tooltip" title="שינוי גבהי צירים ומנעול חריגים"><i class="bi bi-sliders"></i></button>
                 
                 <div class="d-inline-block position-relative">
-                    <button class="btn btn-sm ${sketchBtnClass} btn-sketch-upload" title="העלאת שרטוט">
+                    <button class="btn btn-sm ${sketchBtnClass} btn-sketch-upload" data-bs-toggle="tooltip" title="העלאת קובץ שרטוט">
                         <i class="bi bi-file-earmark-image"></i>
                     </button>
-                    ${data.sketchUrl ? '<button type="button" class="btn btn-sm btn-danger py-0 px-1 position-absolute top-0 start-0 translate-middle rounded-circle btn-sketch-delete" style="font-size: 8px; z-index: 5;" title="מחק שרטוט"><i class="bi bi-x"></i></button>' : ''}
+                    ${data.sketchUrl ? '<button type="button" class="btn btn-sm btn-danger py-0 px-1 position-absolute top-0 start-0 translate-middle rounded-circle btn-sketch-delete" style="font-size: 8px; z-index: 5;" data-bs-toggle="tooltip" title="מחק שרטוט קיים"><i class="bi bi-x"></i></button>' : ''}
                     <input type="file" class="d-none sketch-file-input" accept="image/*,application/pdf">
                     <input type="hidden" name="delete_sketch" value="false" class="delete-sketch-input">
                 </div>
 
-                <button class="btn btn-sm btn-outline-secondary btn-cancel" title="ביטול"><i class="bi bi-x-lg"></i></button>
+                <button class="btn btn-sm btn-outline-secondary btn-cancel" data-bs-toggle="tooltip" title="ביטול שינויים"><i class="bi bi-x-lg"></i></button>
             </td>
         `;
         
@@ -225,32 +227,32 @@ $(document).ready(function() {
         // Add custom heights row for engineering adjustments
         let customHtml = `
             <tr id="custom-row-${itemId}" class="edit-mode custom-heights-row d-none">
-                <td class="bg-light fw-bold small text-center">גובה מותאם</td>
+                <td class="bg-light fw-bold small text-center" data-bs-toggle="tooltip" title="הגדרת גבהים חריגים של מנעול וצירים">גובה מותאם</td>
                 <td colspan="7">
                     <div class="d-flex gap-2 p-1 align-items-center">
-                        <div class="input-group input-group-sm">
+                        <div class="input-group input-group-sm" data-bs-toggle="tooltip" title="גובה מרכז מנעול חריג מהרצפה (מ''מ)">
                             <span class="input-group-text">מנעול</span>
-                            <input type="text" class="form-control numeric-input" name="custom_lock_height" value="${data.customLockHeight || ''}">
+                            <input type="text" class="form-control numeric-input" name="custom_lock_height" value="${data.customLockHeight || ''}" placeholder="מנעול (מ''מ)">
                         </div>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group input-group-sm" data-bs-toggle="tooltip" title="גובה ציר 1 חריג מהרצפה (מ''מ)">
                             <span class="input-group-text">ציר 1</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge1" value="${data.customHinge1 || ''}">
+                            <input type="text" class="form-control numeric-input" name="custom_hinge1" value="${data.customHinge1 || ''}" placeholder="ציר 1">
                         </div>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group input-group-sm" data-bs-toggle="tooltip" title="גובה ציר 2 חריג מהרצפה (מ''מ)">
                             <span class="input-group-text">ציר 2</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge2" value="${data.customHinge2 || ''}">
+                            <input type="text" class="form-control numeric-input" name="custom_hinge2" value="${data.customHinge2 || ''}" placeholder="ציר 2">
                         </div>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group input-group-sm" data-bs-toggle="tooltip" title="גובה ציר 3 חריג מהרצפה (מ''מ)">
                             <span class="input-group-text">ציר 3</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge3" value="${data.customHinge3 || ''}">
+                            <input type="text" class="form-control numeric-input" name="custom_hinge3" value="${data.customHinge3 || ''}" placeholder="ציר 3">
                         </div>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group input-group-sm" data-bs-toggle="tooltip" title="גובה ציר 4 חריג מהרצפה (מ''מ)">
                             <span class="input-group-text">ציר 4</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge4" value="${data.customHinge4 || ''}">
+                            <input type="text" class="form-control numeric-input" name="custom_hinge4" value="${data.customHinge4 || ''}" placeholder="ציר 4">
                         </div>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group input-group-sm" data-bs-toggle="tooltip" title="גובה ציר 5 חריג מהרצפה (מ''מ)">
                             <span class="input-group-text">ציר 5</span>
-                            <input type="text" class="form-control numeric-input" name="custom_hinge5" value="${data.customHinge5 || ''}">
+                            <input type="text" class="form-control numeric-input" name="custom_hinge5" value="${data.customHinge5 || ''}" placeholder="ציר 5">
                         </div>
                     </div>
                 </td>
@@ -258,6 +260,11 @@ $(document).ready(function() {
             </tr>
         `;
         $row.after(customHtml);
+        
+        if (window.initTooltips) {
+            window.initTooltips($row[0]);
+            window.initTooltips($(`#custom-row-${itemId}`)[0]);
+        }
         
         // Auto-focus the first field for faster entry
         $row.find('input[name="place"]').focus();
@@ -309,9 +316,21 @@ $(document).ready(function() {
         e.stopPropagation();
         const $row = $(this).closest('tr');
         const itemId = $row.data('item-id');
+        
+        // Dispose active tooltips before replacing HTML
+        $row.find('[data-bs-toggle="tooltip"]').each(function() {
+            const inst = bootstrap.Tooltip.getInstance(this);
+            if (inst) inst.dispose();
+        });
+        $(`#custom-row-${itemId}`).find('[data-bs-toggle="tooltip"]').each(function() {
+            const inst = bootstrap.Tooltip.getInstance(this);
+            if (inst) inst.dispose();
+        });
+
         $row.html($row.data('old-html')).removeClass('edit-mode');
         $(`#custom-row-${itemId}`).remove();
         $(`#display-custom-${itemId}`).removeClass('d-none');
+        if (window.initTooltips) window.initTooltips($row[0]);
     });
 
     /**
@@ -355,6 +374,16 @@ $(document).ready(function() {
             headers: {'X-CSRFToken': config.csrfToken},
             success: function(response) {
                 if (response.status === 'ok') {
+                    // Dispose tooltips before replacing HTML
+                    $row.find('[data-bs-toggle="tooltip"]').each(function() {
+                        const inst = bootstrap.Tooltip.getInstance(this);
+                        if (inst) inst.dispose();
+                    });
+                    $customRow.find('[data-bs-toggle="tooltip"]').each(function() {
+                        const inst = bootstrap.Tooltip.getInstance(this);
+                        if (inst) inst.dispose();
+                    });
+
                     // Update all data attributes for future edits
                     $row.data('width', formatNum(formData.get('width')));
                     $row.data('height', formatNum(formData.get('height')));
@@ -380,6 +409,7 @@ $(document).ready(function() {
                     // Render custom heights summary row if any values are set
                     const customHtml = renderCustomDisplayRow(itemId, updatedData);
                     if (customHtml) $row.after(customHtml);
+                    if (window.initTooltips) window.initTooltips($row[0]);
 
                     // Auto-advance: Click the next row to enter edit mode immediately
                     const $allRows = $('.clickable-row');
@@ -388,12 +418,12 @@ $(document).ready(function() {
                         $allRows.eq(currentIndex + 1).click();
                     }
                 } else {
-                    alert('Ошибка при сохранении');
+                    alert('שגיאה בשמירה');
                     $btnSave.prop('disabled', false).html('<i class="bi bi-check-lg"></i>');
                 }
             },
             error: function() {
-                alert('Ошибка связи с сервером');
+                alert('שגיאת תקשורת עם השרת');
                 $btnSave.prop('disabled', false).html('<i class="bi bi-check-lg"></i>');
             }
         });

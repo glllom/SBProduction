@@ -4,22 +4,22 @@ from .models import Series, Front, ProductFamily, ProductModel, Customizer
 class SeriesSerializer(serializers.ModelSerializer):
     class Meta:
         model = Series
-        fields = ['id', 'code', 'name']
+        fields = ['id', 'code', 'name', 'description']
 
 class FrontSerializer(serializers.ModelSerializer):
     class Meta:
         model = Front
-        fields = ['id', 'series', 'name', 'code']
+        fields = ['id', 'series', 'name', 'code', 'description']
 
 class ProductFamilySerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductFamily
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'code', 'description']
 
 class ProductModelSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductModel
-        fields = ['id', 'code', 'name', 'product_family', 'series']
+        fields = ['id', 'code', 'name', 'product_family', 'series', 'description']
 
 class CustomizerSerializer(serializers.ModelSerializer):
     class Meta:

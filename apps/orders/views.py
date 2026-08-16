@@ -331,5 +331,16 @@ def order_production_report(request, pk):
     from apps.production.services import ProductionDataService
     order = get_object_or_404(Order, pk=pk)
     service = ProductionDataService(order)
-    report_html = service.generate_report_html()
+    
+    report_type = request.GET.get('type')
+    
+    # If no type specified, try to determine best default
+    if not report_type:
+        has_split = order.groups.filter(is_split_installation=True).exists()
+        if has_split and order.status == OrderStatus.PHASE1_PRODUCTION:
+            report_type = ProductionDataService.ReportType.PHASE1_FRAMES
+        else:
+            report_type = ProductionDataService.ReportType.FULL_PRODUCTION
+    
+    report_html = service.generate_report_html(report_type)
     return HttpResponse(report_html)
