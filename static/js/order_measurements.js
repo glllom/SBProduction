@@ -29,11 +29,11 @@ const formatNum = (val) => {
  * @returns {string} HTML string
  */
 function renderStaticRowContent(data) {
-    const openingText = (data.opening === 'LEFT' ? 'L' : (data.opening === 'RIGHT' ? 'R' : ''));
-    const directionText = (data.direction === 'IN' ? 'פנימה' : (data.direction === 'OUT' ? 'החוצה' : ''));
+    const openingText = (data.opening === 'IN' ? 'פנימה' : (data.opening === 'OUT' ? 'החוצה' : ''));
+    const directionText = (data.direction === 'L' ? 'L' : (data.direction === 'R' ? 'R' : ''));
     let combinedText = '-';
     if (openingText || directionText) {
-        combinedText = `${openingText} / ${directionText}`;
+        combinedText = `${directionText} | ${openingText}`;
     }
 
     return `
@@ -178,14 +178,14 @@ $(document).ready(function() {
         
         const openingOptions = `
             <option value="">-</option>
-            <option value="LEFT" ${data.opening === 'LEFT' ? 'selected' : ''}>L</option>
-            <option value="RIGHT" ${data.opening === 'RIGHT' ? 'selected' : ''}>R</option>
+            <option value="IN" ${data.opening === 'IN' ? 'selected' : ''}>פ</option>
+            <option value="OUT" ${data.opening === 'OUT' ? 'selected' : ''}>ח</option>
         `;
         
         const directionOptions = `
             <option value="">-</option>
-            <option value="IN" ${data.direction === 'IN' ? 'selected' : ''}>פנימה</option>
-            <option value="OUT" ${data.direction === 'OUT' ? 'selected' : ''}>החוצה</option>
+            <option value="L" ${data.direction === 'L' ? 'selected' : ''}>L</option>
+            <option value="R" ${data.direction === 'R' ? 'selected' : ''}>R</option>
         `;
         
         const sketchBtnClass = data.sketchUrl ? 'btn-primary' : 'btn-outline-primary';
@@ -198,8 +198,9 @@ $(document).ready(function() {
             <td><input type="text" class="form-control form-control-sm numeric-input" name="wall" value="${data.wall}" ${data.hasFrame ? '' : 'disabled'} placeholder="משקוף" data-bs-toggle="tooltip" title="עובי קיר עבור המשקוף במילימטרים"></td>
             <td>
                 <div class="d-flex gap-1">
-                    <select class="form-select form-select-sm" name="opening" ${data.hasDoor ? '' : 'disabled'}>${openingOptions}</select>
                     <select class="form-select form-select-sm" name="direction" ${data.hasDoor ? '' : 'disabled'}>${directionOptions}</select>
+                    <select class="form-select form-select-sm" name="opening" ${data.hasDoor ? '' : 'disabled'}>${openingOptions}</select>
+
                 </div>
             </td>
             <td><input type="text" class="form-control form-control-sm numeric-input" name="addition_cut" value="${data.additionCut || ''}" placeholder="רווח נוסף" data-bs-toggle="tooltip" title="חיתוך תחתון נוסף במילימטרים (לריצוף או שטיח)"></td>

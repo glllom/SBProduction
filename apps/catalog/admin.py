@@ -1,15 +1,17 @@
 from django.contrib import admin
+
+from apps.production.models import ProductTechnicalData, BOM
 from .models import (
     ProductType,
     ProductFamily,
     Series,
     Front,
+    Color,
     Material,
     ProductModel,
     Handle,
     Hardware,
 )
-from apps.production.models import ProductTechnicalData, BOM
 
 
 @admin.register(ProductType)
@@ -31,6 +33,12 @@ class FrontInline(admin.TabularInline):
     extra = 1
 
 
+class FrameColorInline(admin.TabularInline):
+    """Displays the list of frame colors directly inside the series form."""
+    model = Color
+    extra = 1
+
+
 @admin.register(Series)
 class SeriesAdmin(admin.ModelAdmin):
     list_display = ('id', 'name')
@@ -45,6 +53,13 @@ class FrontAdmin(admin.ModelAdmin):
     search_fields = ('name', 'code')
 
 
+@admin.register(Color)
+class FrameColorAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'active')
+    list_filter = ('id', 'name')
+    search_fields = ('name', 'code')
+
+
 @admin.register(Handle)
 class HandleAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'code', 'active')
@@ -53,9 +68,9 @@ class HandleAdmin(admin.ModelAdmin):
 
 @admin.register(Material)
 class MaterialAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'sku', 'material_type', 'thickness', 'price_per_unit')
-    list_filter = ('material_type',)
-    search_fields = ('name', 'sku')
+    list_display = ('id', 'name', 'common_name', 'sku', 'material_type', 'color', 'thickness', 'price_per_unit')
+    list_filter = ('material_type', 'color')
+    search_fields = ('name', 'common_name', 'sku')
 
 
 @admin.register(Hardware)
@@ -114,6 +129,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = ('product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name')
     inlines = [BOMInline, ProductTechnicalDataInline]
+
 
 from django.contrib import admin
 from .models import Customizer

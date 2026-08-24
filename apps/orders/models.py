@@ -1,6 +1,8 @@
 import math
+
 from django.db import models
 from django.db import transaction
+from django.utils import timezone
 
 from apps.catalog.models import ProductModel, Front
 
@@ -17,8 +19,8 @@ class OrderStatus(models.TextChoices):
 
 
 class OpeningSide(models.TextChoices):
-    LEFT = 'LEFT', 'L'
-    RIGHT = 'RIGHT', 'R'
+    LEFT = 'L', 'L'
+    RIGHT = 'R', 'R'
 
 
 class OpeningType(models.TextChoices):
@@ -55,8 +57,8 @@ class Order(models.Model):
     )
 
     # --- Stage dates ---
-    painting_date = models.DateField(
-        null=True, blank=True, verbose_name="תאריך צביעה"
+    painting_completion_date = models.DateField(
+        null=True, blank=True, verbose_name="תאריך סיום צבע"
     )
     phase1_completion_date = models.DateField(
         null=True, blank=True, verbose_name="תאריך סיום שלב א"
@@ -121,9 +123,33 @@ class Order(models.Model):
     def __str__(self):
         return f"הזמנה מס' {self.order_number} ({self.customer or 'ללא לקוח'})"
 
+    def save(self, *args, **kwargs):
+        from apps.orders.utils import add_israeli_working_days
+        base_date = self.created_at.date() if self.created_at else timezone.now().date()
+        if not self.completion_date:
+            self.completion_date = add_israeli_working_days(base_date, 10)
+        if not self.painting_completion_date:
+            self.painting_completion_date = add_israeli_working_days(base_date, 20)
+        super().save(*args, **kwargs)
+
     @property
     def has_split_installation(self):
         return self.groups.filter(is_split_installation=True).exists()
+
+    @property
+    def available_frames(self):
+        if self.series:
+            return self.series.available_frames
+        from apps.catalog.models import Material
+        return Material.objects.all().order_by('name')
+
+    @property
+    def available_frame_colors(self):
+        """Deprecated: use available_frames instead"""
+        if self.series:
+            return self.series.frame_colors
+        from apps.catalog.models import Color
+        return Color.objects.filter(active=True).order_by('id')
 
     def recalculate_item_marks(self):
         """
@@ -143,64 +169,31 @@ class Order(models.Model):
         if items_to_update:
             OrderItem.objects.bulk_update(items_to_update, ['mark'])
 
-    def validate_for_production(self):
+    def validate_for_production(self, validation_type=None):
         """
         Validates if the order is ready for production.
-        If any group has is_split_installation = True, validation is partial.
+        Delegates to OrderValidationService in apps.production.services.
         Returns (is_valid, errors)
         """
-        errors = []
-        has_split = self.groups.filter(is_split_installation=True).exists()
-        
-        # Base order validation
-        if not self.order_number:
-            errors.append("מספר הזמנה חסר")
-        if not self.customer:
-            errors.append("שם לקוח חסר")
-
-        for group in self.groups.all():
-            # Check basic item data
-            items = group.items.all()
-            if not items.exists():
-                errors.append(f"קבוצה {group.id} ריקה")
-            
-            for item in items:
-                if not item.height or not item.width:
-                    errors.append(f"מידות חסרות בפריט {item.mark}")
-                
-            if group.is_split_installation:
-                # Partial validation: series and frames should be defined, panels and handles can wait
-                if not group.series and not self.series:
-                    errors.append(f"סדרה חסרה בקבוצה {group.id} (שלב א)")
-            else:
-                # Full validation
-                if not group.series and not self.series:
-                    errors.append(f"סדרה חסרה בקבוצה {group.id}")
-                if not group.front and not self.front:
-                    errors.append(f"חזית/גימור חסרה בקבוצה {group.id}")
-                if not self.handle:
-                    errors.append("ידית לא נבחרה")
-
-        return len(errors) == 0, errors
+        from apps.production.services import OrderValidationService
+        if validation_type:
+            res = OrderValidationService.validate(self, validation_type)
+        elif self.has_split_installation and self.status in [OrderStatus.DRAFT, OrderStatus.MEASUREMENT]:
+            res = OrderValidationService.validate_partial(self)
+        else:
+            res = OrderValidationService.validate_full(self)
+        return res.is_valid, res.errors
 
     def start_production(self, user=None):
         """
         Transitions order to production. Handles split installation phases.
+        Performs full validation prior to starting production.
         """
-        from apps.production.services import TechnicalSpecService, ProductionDataService
-        
-        # 1. Validation before production
-        all_errors = []
-        for group in self.groups.all():
-            for item in group.items.all():
-                errors = TechnicalSpecService.validate(item)
-                all_errors.extend(errors)
-        
-        if all_errors:
-            # We could raise an exception here or handle it as requested.
-            # The issue says "я хочу, чтобы после запуска заказа в работу, была валидация данных"
-            # It might mean we should prevent transition if validation fails.
-            raise ValueError(f"Validation failed for production: {', '.join(all_errors)}")
+        from apps.production.services import OrderValidationService, ProductionDataService
+
+        # 1. Full validation before production
+        val_res = OrderValidationService.validate_full(self)
+        val_res.raise_if_invalid()
 
         old_status = self.status
         has_split = self.groups.filter(is_split_installation=True).exists()
@@ -211,7 +204,7 @@ class Order(models.Model):
                 self.status = OrderStatus.IN_PRODUCTION
             elif has_split:
                 self.status = OrderStatus.PHASE1_PRODUCTION
-                # Create sub-orders for split groups
+                # Create suborders for split groups
                 for group in self.groups.filter(is_split_installation=True):
                     SubOrder.objects.get_or_create(
                         order=self,
@@ -226,17 +219,10 @@ class Order(models.Model):
                 self.status = OrderStatus.IN_PRODUCTION
 
             self.save()
-            
+
             # Generate CNC files
             service = ProductionDataService(self)
             service.generate_cnc_files()
-            
-            # 2. Generate Technical Specs
-            for group in self.groups.all():
-                for item in group.items.all():
-                    spec = TechnicalSpecService.build_spec(item)
-                    # Currently we just build it to ensure it works.
-                    # In real usage, this will be called when generating reports.
 
             OrderChangeLog.objects.create(
                 order=self,
@@ -249,12 +235,30 @@ class Order(models.Model):
     def start_phase1(self, user=None):
         """
         Explicitly starts Phase A (frames production).
+        Performs partial validation prior to starting Phase A.
         """
-        from apps.production.services import ProductionDataService
+        from apps.production.services import OrderValidationService, ProductionDataService
+
+        # 1. Partial validation before Phase 1
+        val_res = OrderValidationService.validate_partial(self)
+        val_res.raise_if_invalid()
+
         old_status = self.status
         with transaction.atomic():
             self.status = OrderStatus.PHASE1_PRODUCTION
             self.save()
+
+            # Create suborders for split groups
+            for group in self.groups.filter(is_split_installation=True):
+                SubOrder.objects.get_or_create(
+                    order=self,
+                    group=group,
+                    phase=SubOrder.Phase.PHASE1,
+                    defaults={
+                        'status': OrderStatus.IN_PRODUCTION,
+                        'completion_date': self.phase1_completion_date
+                    }
+                )
 
             # Generate CNC files
             service = ProductionDataService(self)
@@ -342,6 +346,13 @@ class OrderItemsGroup(models.Model):
         verbose_name="חזית / גימור",
         help_text="אם ריק - יימשך מההזמנה",
     )
+    basic_color_frames = models.ForeignKey(
+        'catalog.Material',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקוף בסיסי",
+    )
 
     panel_paint_option = models.CharField(
         max_length=20,
@@ -387,6 +398,29 @@ class OrderItemsGroup(models.Model):
     def __str__(self):
         return f"קבוצה #{self.id} — {self.quantity} יח' (הזמנה ID:{self.order_id})"
 
+    @property
+    def available_frames(self):
+        if self.product:
+            return self.product.available_frames
+        if self.series:
+            return self.series.available_frames
+        if self.order and self.order.series:
+            return self.order.series.available_frames
+        from apps.catalog.models import Material
+        return Material.objects.all().order_by('name')
+
+    @property
+    def available_frame_colors(self):
+        """Deprecated: use available_frames instead"""
+        if self.product:
+            return self.product.frame_colors
+        if self.series:
+            return self.series.frame_colors
+        if self.order and self.order.series:
+            return self.order.series.frame_colors
+        from apps.catalog.models import Color
+        return Color.objects.filter(active=True).order_by('id')
+
     def save(self, *args, **kwargs):
         is_new = self.pk is None  # Check if the record is being created for the first time
 
@@ -427,6 +461,7 @@ class OrderItemsGroup(models.Model):
                         OrderItem(
                             group=self,
                             mark=str(item_index),
+                            wall=self.product.product_family.default_value_for_frame or None,
                         )
                         for item_index in range(current_count + 1, self.quantity + 1)
                     ]
@@ -451,6 +486,7 @@ class SubOrder(models.Model):
     Represents a specific phase of production for an Order or a Group.
     Used for split installations where frames are produced first.
     """
+
     class Phase(models.TextChoices):
         PHASE1 = 'PHASE1', 'שלב א (משקופים)'
         PHASE2 = 'PHASE2', 'שלב ב (כנפיים והשאר)'
@@ -491,7 +527,7 @@ class SubOrder(models.Model):
     def save(self, *args, **kwargs):
         is_new = self.pk is None
         super().save(*args, **kwargs)
-        
+
         if not is_new and self.status == OrderStatus.COMPLETED and self.phase == self.Phase.PHASE1:
             # When phase 1 suborder is completed, update the main order status
             order = self.order
@@ -570,14 +606,14 @@ class OrderItem(models.Model):
     # --- Structure and Opening ---
     direction = models.CharField(
         max_length=10,
-        choices=OpeningType.choices,
+        choices=OpeningSide.choices,
         blank=True,
         null=True,
         verbose_name="כיוון פתיחה",
     )
     opening = models.CharField(
         max_length=10,
-        choices=OpeningSide.choices,
+        choices=OpeningType.choices,
         blank=True,
         null=True,
         verbose_name="צד פתיחה",
@@ -671,11 +707,16 @@ class OrderItem(models.Model):
         return "{:.1f}".format(val_float)
 
     @property
-    def h_fmt(self): return self.format_decimal(self.height)
+    def h_fmt(self):
+        return self.format_decimal(self.height)
+
     @property
-    def w_fmt(self): return self.format_decimal(self.width)
+    def w_fmt(self):
+        return self.format_decimal(self.width)
+
     @property
-    def wall_fmt(self): return self.format_decimal(self.wall)
+    def wall_fmt(self):
+        return self.format_decimal(self.wall)
 
     def save(self, *args, **kwargs):
         # Truncate all decimal fields to 1 decimal place

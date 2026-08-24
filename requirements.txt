@@ -3,3 +3,4 @@ waitress
 whitenoise
 djangorestframework
 openpyxl
+holidays

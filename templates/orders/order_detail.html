@@ -23,7 +23,7 @@
                 <label class="text-muted small d-block">חזית / גימור</label>
                 <span class="fw-medium">{{ order.front.name|default:"-" }}</span>
             </div>
-            <div class="mb-3 col-2" data-bs-toggle="tooltip" title="דגם ידית נבחר עבור ההזמנה">
+            <div class="mb-3 col-1" data-bs-toggle="tooltip" title="דגם ידית נבחר עבור ההזמנה">
                 <label class="text-muted small d-block">ידית</label>
                 <span class="fw-medium">{{ order.handle.name|default:"-" }}</span>
             </div>
@@ -31,11 +31,11 @@
                 <label class="text-muted small d-block">גוון בכנפיים</label>
                 <span class="fw-medium">{{ order.color_panels|default:"-" }}</span>
             </div>
-            <div class="mb-3 col-2" data-bs-toggle="tooltip" title="גוון צבע ראשי עבור המשקופים">
+            <div class="mb-3 col-1" data-bs-toggle="tooltip" title="גוון צבע ראשי עבור המשקופים">
                 <label class="text-muted small d-block">גוון במשקופים</label>
                 <span class="fw-medium">{{ order.color_frames|default:"-" }}</span>
             </div>
-            <div class="mb-3 col-3"></div>
+            <div class="mb-3 col-1"></div>
             <div class="mb-3 col-1" data-bs-toggle="tooltip" title="תאריך יצירת ההזמנה במערכת">
                 <label class="text-muted small d-block">ירידה לייצור</label>
                 <span class="fw-normal">{{ order.created_at|date:"d/m/Y" }}</span>
@@ -52,7 +52,7 @@
             </div>
             <div class="mb-3 col-1" data-bs-toggle="tooltip" title="תאריך מתוכנן לצביעת הפריטים">
                 <label class="text-muted small d-block">סיום צבע</label>
-                <span class="fw-normal">{{ order.painting_date|date:"d/m/Y" }}</span>
+                <span class="fw-normal">{{ order.painting_completion_date|date:"d/m/Y" }}</span>
             </div>
         </div>
     </div>
@@ -179,8 +179,8 @@
                                         <!-- Note: We are using manual fields here because group_form in context is for new group -->
                                         <!-- In a real scenario, we'd use a formset or AJAX, but for this task I'll use a simple approach -->
                                         <div class="row g-3">
-                                            <!-- Row 1: Series & Front -->
-                                            <div class="col-md-6">
+                                            <!-- Row 1: Series, Front & Basic Color -->
+                                            <div class="col-md-4">
                                                 <label class="form-label fw-bold" data-bs-toggle="tooltip" title="סדרה ספציפית לקבוצה זו (אם ריק - יימשך מההזמנה)">
                                                     סדרה <i class="bi bi-info-circle help-hint-icon"></i>
                                                 </label>
@@ -191,14 +191,25 @@
                                                     {% endfor %}
                                                 </select>
                                             </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="חזית או גימור ספציפי לקבוצה זו (אם ריק - יימשך מההזמנה)">
+                                            <div class="col-md-4">
+                                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="חזית или גימור ספציפי לקבוצה זו (אם ריק - יימשך מההזמנה)">
                                                     חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
                                                 </label>
                                                 <select name="front" class="form-select">
                                                     <option value="">---------</option>
                                                     {% for f in group.series.fronts.all %}
                                                         <option value="{{ f.id }}" {% if f.id == group.front_id %}selected{% endif %} data-description="{{ f.description|default:'' }}" title="{{ f.description|default:'' }}">{{ f.name }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="צבע משקוף בסיסי לקבוצה זו">
+                                                    צבע משקוף (בסיס) <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
+                                                <select name="basic_color_frames" class="form-select">
+                                                    <option value="">---------</option>
+                                                    {% for c in group.available_frame_colors %}
+                                                        <option value="{{ c.id }}" {% if c.id == group.basic_color_frames_id %}selected{% endif %}>{{ c.name }}</option>
                                                     {% endfor %}
                                                 </select>
                                             </div>
@@ -371,7 +382,7 @@
                                                     <span class="">{{ item.place|default:"" }}</span>
                                                 </td>
                                                 <td>{{ item.w_fmt|default:"-" }}×{{ item.h_fmt|default:"-" }}</td>
-                                                <td>{{ item.wall_fmt|default:"" }}{{ item.get_opening_display|default:"" }}
+                                                <td>{{ item.wall_fmt|default:"" }}{{ item.get_direction_display|default:"" }}
                                                 </td>
                                                 <td></td>
 
@@ -469,6 +480,10 @@
                                     </div>
                                     <div class="col-md-6 ps-md-4">
                                         <h6 class="fw-bold text-primary mb-3">צביעת משקוף</h6>
+                                        <div class="mb-2" data-bs-toggle="tooltip" title="צבע משקוף בסיסי (חומר)">
+                                            <span class="text-muted small">צבע בסיס:</span>
+                                            <span class="fw-bold text-success">{{ group.basic_color_frames.name|default:"סטנדרט" }}</span>
+                                        </div>
                                         <div class="mb-2" data-bs-toggle="tooltip" title="אופציית צביעת המשקוף">
                                             <span class="text-muted small">אופציית צביעה:</span>
                                             <span class="fw-medium">{{ group.get_frame_paint_option_display }}</span>
@@ -521,18 +536,6 @@
                                 </label>
                                 {{ header_form.customer }}
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.painting_date.help_text|default:'תאריך מתוכנן לצביעת הפריטים' }}">
-                                    תאריך צביעה <i class="bi bi-info-circle help-hint-icon"></i>
-                                </label>
-                                {{ header_form.painting_date }}
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.completion_date.help_text|default:'תאריך יעד סופי לאספקת ההזמנה' }}">
-                                    תאריך סיום <i class="bi bi-info-circle help-hint-icon"></i>
-                                </label>
-                                {{ header_form.completion_date }}
-                            </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.series.help_text|default:'סדרת הדלתות (פרופיל / מבנה)' }}">
                                     סדרה <i class="bi bi-info-circle help-hint-icon"></i>
@@ -545,19 +548,19 @@
                                 </label>
                                 {{ header_form.front }}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.handle.help_text|default:'דגם ידית נבחר' }}">
                                     ידית <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
                                 {{ header_form.handle }}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.color_panels.help_text|default:'גוון צבע עבור כנפי הדלתות' }}">
                                     צבע פנלים (כנף) <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
                                 {{ header_form.color_panels }}
                             </div>
-                            <div class="col-md-4 d-flex align-items-center pt-4">
+                            <div class="col-md-3 d-flex align-items-center pt-4">
                                 <div class="form-check" data-bs-toggle="tooltip" title="{{ header_form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים בצבע ייעודי' }}">
                                     {{ header_form.is_frames_to_paint }}
                                     <label class="form-check-label fw-bold" for="{{ header_form.is_frames_to_paint.id_for_label }}">
@@ -565,7 +568,7 @@
                                     </label>
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ header_form.color_frames.help_text|default:'גוון צבע עבור המשקופים' }}">
                                     צבע משקופים <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
@@ -607,18 +610,24 @@
                     {% csrf_token %}
                     <div class="modal-body">
                         <div class="row g-3">
-                            <!-- Row 1: Series & Front -->
-                            <div class="col-md-6">
+                            <!-- Row 1: Series, Front & Basic Color -->
+                            <div class="col-md-4">
                                 <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ group_form.series.help_text|default:'סדרת הדלתות לקבוצה זו' }}">
                                     סדרה <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
                                 {{ group_form.series }}
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ group_form.front.help_text|default:'חזית או גימור הכנף' }}">
                                     חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
                                 {{ group_form.front }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold" data-bs-toggle="tooltip" title="{{ group_form.basic_color_frames.help_text|default:'צבע משקוף בסיסי לקבוצה זו' }}">
+                                    צבע משקוף (בסיס) <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                {{ group_form.basic_color_frames }}
                             </div>
 
                             <!-- Row 2: Product Type & Product Family -->
@@ -926,6 +935,9 @@
 
 {% block extra_js %}
     <script>
+        const orderSeriesId = "{{ order.series_id|default:'' }}";
+        const orderFrontId = "{{ order.front_id|default:'' }}";
+
         /**
          * Configuration for Product Types.
          * Used to show/hide fields based on door/frame characteristics.
@@ -1423,36 +1435,91 @@
             });
 
             /**
-             * Logic for dependent selects in modals (e.g., Series -> Front).
+             * Logic for dependent selects in modals (e.g., Series -> Front & Basic Frame Colors).
              */
             $(document).on('change', 'select[name="series"]', function () {
                 const $seriesSelect = $(this);
                 const seriesId = $seriesSelect.val();
-                
-                // Find the associated front select in the same container (modal or form)
                 const $container = $seriesSelect.closest('.modal-body, form, .card-body');
-                const $frontSelect = $container.find('select[name="front"]');
+                const familyId = $container.find('select[name="product_family"]').val();
+                
+                updateFronts($container, seriesId);
+                updateFrameColors($container, seriesId, familyId);
+            });
 
+            $(document).on('change', 'select[name="product_family"]', function () {
+                const $familySelect = $(this);
+                const familyId = $familySelect.val();
+                const $container = $familySelect.closest('.modal-body, form, .card-body');
+                const seriesId = $container.find('select[name="series"]').val();
+                
+                updateFrameColors($container, seriesId, familyId);
+            });
+
+            function updateFronts($container, seriesId) {
+                const $frontSelect = $container.find('select[name="front"]');
                 if (!$frontSelect.length) return;
 
                 if (!seriesId) {
                     $frontSelect.html('<option value="">---------</option>').trigger('change');
-                    return;
+                } else {
+                    const currentVal = $frontSelect.val();
+                    fetch(`/catalog/api/fronts/?series=${seriesId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            let options = '<option value="">---------</option>';
+                            const fronts = (Array.isArray(data) ? data : data.results) || [];
+                            fronts.forEach(front => {
+                                const desc = front.description || '';
+                                options += `<option value="${front.id}" data-description="${desc}" title="${desc}">${front.name}</option>`;
+                            });
+                            $frontSelect.html(options);
+                            
+                            const isNew = $container.closest('#addGroupModal').length > 0;
+                            if (!isNew && currentVal && fronts.some(f => String(f.id) === String(currentVal))) {
+                                $frontSelect.val(currentVal);
+                            } else if (isNew && seriesId == orderSeriesId && orderFrontId && fronts.some(f => String(f.id) === String(orderFrontId))) {
+                                $frontSelect.val(orderFrontId);
+                            }
+                            $frontSelect.trigger('change');
+                        })
+                        .catch(error => console.error('Error fetching fronts:', error));
                 }
+            }
 
-                fetch(`/catalog/api/fronts/?series=${seriesId}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        let options = '<option value="">---------</option>';
-                        const fronts = (Array.isArray(data) ? data : data.results) || [];
-                        fronts.forEach(front => {
-                            const desc = front.description || '';
-                            options += `<option value="${front.id}" data-description="${desc}" title="${desc}">${front.name}</option>`;
-                        });
-                        $frontSelect.html(options).trigger('change');
-                    })
-                    .catch(error => console.error('Error fetching fronts:', error));
-            });
+            function updateFrameColors($container, seriesId, familyId) {
+                const $basicColorFramesSelect = $container.find('select[name="basic_color_frames"]');
+                if (!$basicColorFramesSelect.length) return;
+
+                if (!seriesId) {
+                    $basicColorFramesSelect.html('<option value="">---------</option>').val('').trigger('change');
+                } else {
+                    const currentVal = $basicColorFramesSelect.val();
+                    let url = `/catalog/api/frame-colors/?series=${seriesId}`;
+                    if (familyId) url += `&family=${familyId}`;
+                    
+                    fetch(url)
+                        .then(response => response.json())
+                        .then(data => {
+                            let options = '<option value="">---------</option>';
+                            const colors = (Array.isArray(data) ? data : data.results) || [];
+                            colors.forEach(color => {
+                                const desc = color.sku || color.description || '';
+                                options += `<option value="${color.id}" data-description="${desc}" title="${desc}">${color.name}</option>`;
+                            });
+                            $basicColorFramesSelect.html(options);
+                            
+                            const isNew = $container.closest('#addGroupModal').length > 0;
+                            if (!isNew && currentVal && colors.some(c => String(c.id) === String(currentVal))) {
+                                $basicColorFramesSelect.val(currentVal);
+                            } else if (colors.length > 0) {
+                                $basicColorFramesSelect.val(colors[0].id);
+                            }
+                            $basicColorFramesSelect.trigger('change');
+                        })
+                        .catch(error => console.error('Error fetching frame colors:', error));
+                }
+            }
 
             // Logic for dependent product type -> family
             $(document).on('change', 'select[name="product_type"]', function () {

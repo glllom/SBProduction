@@ -1,17 +1,19 @@
-from django.shortcuts import render, get_object_or_404, redirect
-from django.views.generic import ListView, CreateView, UpdateView, DetailView, TemplateView, DeleteView
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.urls import reverse_lazy
+from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import JsonResponse, HttpResponse
+from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
-from django.contrib.auth.decorators import login_required
+from django.views.generic import ListView, CreateView, UpdateView, DetailView, TemplateView, DeleteView
 from rest_framework import viewsets, permissions
-from .serializers import OrderItemsGroupCustomizerSerializer
-from django.core.exceptions import PermissionDenied
-from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer, OrderStatus
+
+from apps.catalog.models import ProductFamily, Series, ProductType
 from .forms import OrderForm, OrderHeaderForm, OrderItemsGroupForm, OrderItemForm
-from apps.catalog.models import ProductFamily, Series, Front, ProductType
+from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer, OrderStatus
+from .serializers import OrderItemsGroupCustomizerSerializer
+
 
 class OrderEditPermissionMixin:
     def dispatch(self, request, *args, **kwargs):
@@ -31,7 +33,7 @@ class OrderEditPermissionMixin:
                         order = obj.group.order
             except:
                 pass
-        
+
         # Try to get order from URL kwargs if not found yet
         if not order:
             if 'order_pk' in self.kwargs:
@@ -43,6 +45,7 @@ class OrderEditPermissionMixin:
             raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
         return super().dispatch(request, *args, **kwargs)
 
+
 class OrderItemUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, UpdateView):
     model = OrderItem
     form_class = OrderItemForm
@@ -50,8 +53,10 @@ class OrderItemUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, UpdateVi
     def get_success_url(self):
         return reverse_lazy('order-detail', kwargs={'pk': self.object.group.order.pk})
 
+
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = 'dashboard.html'
+
 
 class OrderListView(LoginRequiredMixin, ListView):
     model = Order
@@ -74,6 +79,7 @@ class OrderListView(LoginRequiredMixin, ListView):
         context['search_query'] = self.request.GET.get('q', '')
         return context
 
+
 class OrderCreateView(LoginRequiredMixin, CreateView):
     model = Order
     form_class = OrderForm
@@ -81,6 +87,7 @@ class OrderCreateView(LoginRequiredMixin, CreateView):
 
     def get_success_url(self):
         return reverse_lazy('order-detail', kwargs={'pk': self.object.pk})
+
 
 class OrderDetailView(LoginRequiredMixin, DetailView):
     model = Order
@@ -122,7 +129,7 @@ class OrderHeaderUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, Update
         for field in changed_fields:
             old_val = getattr(old_instance, field)
             new_val = getattr(new_instance, field)
-            
+
             # For ForeignKeys, we might want the __str__ or name
             if field in ['series', 'front', 'handle'] and old_val:
                 old_val = str(old_val)
@@ -160,7 +167,7 @@ class OrderItemsGroupCreateView(LoginRequiredMixin, OrderEditPermissionMixin, Cr
     def form_valid(self, form):
         form.instance.order = get_object_or_404(Order, pk=self.kwargs.get('order_pk'))
         return super().form_valid(form)
-    
+
     def form_invalid(self, form):
         # Log errors for debugging
         print(f"Group Create failed: {form.errors}")
@@ -234,7 +241,7 @@ def update_item_measurements(request, pk):
             if val == '':
                 val = None
             setattr(item, field, val)
-    
+
     if 'sketch' in request.FILES:
         item.sketch = request.FILES['sketch']
     elif request.POST.get('delete_sketch') == 'true':
@@ -255,10 +262,10 @@ def duplicate_item_measurements(request, pk):
     if item.group.order.status == OrderStatus.IN_PRODUCTION and not request.user.is_admin_user:
         raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
     group = item.group
-    
+
     # Get all items in the same group that come AFTER the current item (by ID)
     items_to_update = OrderItem.objects.filter(group=group, id__gt=item.id)
-    
+
     # Fields to duplicate
     fields = ['height', 'width', 'wall', 'direction', 'opening', 'place', 'addition_cut', 'comment']
     update_data = {}
@@ -268,59 +275,77 @@ def duplicate_item_measurements(request, pk):
             if val == '':
                 val = None
             update_data[field] = val
-            
+
     if update_data:
         # We also need to consider if fields are disabled (has_door, has_frame)
         # But for now, we apply to all as per user request "она все данные из текущей строки должна продублировать"
         # The frontend handles disabling, so if a field was empty/null it stays so.
         items_to_update.update(**update_data)
-        
+
     return JsonResponse({'status': 'ok'})
 
 
 @login_required
 def order_transfer_to_production(request, pk):
+    from apps.production.services import OrderValidationService
+    from django.contrib import messages
     order = get_object_or_404(Order, pk=pk)
-    
-    is_valid, errors = order.validate_for_production()
-    if not is_valid:
-        # We could use messages framework here
-        from django.contrib import messages
-        for error in errors:
+
+    val_res = OrderValidationService.validate_full(order)
+    if not val_res.is_valid:
+        for error in val_res.errors:
             messages.error(request, error)
         return redirect('order-detail', pk=pk)
 
-    order.start_production(user=request.user)
-    
+    try:
+        order.start_production(user=request.user)
+        messages.success(request, "ההזמנה הועברה לייצור בהצלחה")
+    except ValueError as e:
+        messages.error(request, str(e))
+
     return redirect('order-detail', pk=pk)
 
 
 @login_required
 def order_transfer_to_phase1(request, pk):
+    from apps.production.services import OrderValidationService
+    from django.contrib import messages
     order = get_object_or_404(Order, pk=pk)
-    
-    # We use the same validation as for production, 
-    # but validate_for_production already handles split installation logic.
-    is_valid, errors = order.validate_for_production()
-    if not is_valid:
-        from django.contrib import messages
-        for error in errors:
+
+    val_res = OrderValidationService.validate_partial(order)
+    if not val_res.is_valid:
+        for error in val_res.errors:
             messages.error(request, error)
         return redirect('order-detail', pk=pk)
 
-    order.start_phase1(user=request.user)
-    
+    try:
+        order.start_phase1(user=request.user)
+        messages.success(request, "שלב א' (משקופים) הועבר לייצור בהצלחה")
+    except ValueError as e:
+        messages.error(request, str(e))
+
     return redirect('order-detail', pk=pk)
 
 
 @login_required
 def order_production_data(request, pk):
-    from apps.production.services import ProductionDataService
+    from apps.production.services import ProductionDataService, OrderValidationService
+    from django.contrib import messages
     order = get_object_or_404(Order, pk=pk)
-    
-    service = ProductionDataService(order)
-    zip_buffer = service.generate_production_zip()
-    
+
+    val_res = OrderValidationService.validate_for_zip(order)
+    if not val_res.is_valid:
+        for error in val_res.errors:
+            messages.error(request, f"לא ניתן להפיק קובצי ייצור: {error}")
+        return redirect('order-detail', pk=pk)
+
+    try:
+        service = ProductionDataService(order)
+        zip_buffer = service.generate_production_zip()
+    except ValueError as e:
+        messages.error(request, f"שגיאה בהפקת קובצי ייצור: {str(e)}")
+        return redirect('order-detail', pk=pk)
+
     response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
     response['Content-Disposition'] = f'attachment; filename="production_data_{order.order_number}.zip"'
     return response
@@ -328,12 +353,12 @@ def order_production_data(request, pk):
 
 @login_required
 def order_production_report(request, pk):
-    from apps.production.services import ProductionDataService
+    from apps.production.services import ProductionDataService, OrderValidationService
     order = get_object_or_404(Order, pk=pk)
     service = ProductionDataService(order)
-    
+
     report_type = request.GET.get('type')
-    
+
     # If no type specified, try to determine best default
     if not report_type:
         has_split = order.groups.filter(is_split_installation=True).exists()
@@ -341,6 +366,34 @@ def order_production_report(request, pk):
             report_type = ProductionDataService.ReportType.PHASE1_FRAMES
         else:
             report_type = ProductionDataService.ReportType.FULL_PRODUCTION
-    
-    report_html = service.generate_report_html(report_type)
+
+    val_res = OrderValidationService.validate_for_report(order, report_type)
+    if not val_res.is_valid:
+        label = report_type
+        if report_type in ProductionDataService.ReportType.values:
+            label = ProductionDataService.ReportType(report_type).label
+
+        context = {
+            'order': order,
+            'report_type': report_type,
+            'report_label': label,
+            'validation_errors': val_res.errors,
+            'validation_type': val_res.validation_type,
+        }
+        return render(request, 'orders/report_validation_error.html', context)
+
+    try:
+        report_html = service.generate_report_html(report_type)
+    except ValueError as e:
+        context = {
+            'order': order,
+            'report_type': report_type,
+            'report_label': report_type,
+            'validation_errors': [str(e)],
+        }
+        return render(request, 'orders/report_validation_error.html', context)
+
     return HttpResponse(report_html)
+
+
+alum_frames_report = order_production_report

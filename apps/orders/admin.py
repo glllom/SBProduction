@@ -1,8 +1,6 @@
 from django.contrib import admin
-from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog
 
-
-from django.contrib import admin
+from .models import Order, OrderChangeLog
 from .models import OrderItemsGroup
 
 
@@ -14,6 +12,7 @@ class OrderItemsGroupInline(admin.TabularInline):
         "quantity",
         "series",
         "front",
+        "basic_color_frames",
         "color_panels",
         "color_frames",
         "is_split_installation",
@@ -29,6 +28,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
         "quantity",
         "series",
         "front",
+        "basic_color_frames",
         "color_panels",
         "color_frames",
         "is_split_installation",
@@ -62,6 +62,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
                 "fields": (
                     "series",
                     "front",
+                    "basic_color_frames",
                     "color_panels",
                     "color_frames",
                 ),
@@ -90,7 +91,7 @@ class OrderAdmin(admin.ModelAdmin):
         "order_number",
         "customer",
         "status",
-        "painting_date",
+        "painting_completion_date",
         "completion_date",
         "series",
         "created_at",
@@ -100,7 +101,7 @@ class OrderAdmin(admin.ModelAdmin):
     list_filter = (
         "status",
         "series",
-        "painting_date",
+        "painting_completion_date",
         "completion_date",
     )
 
@@ -126,7 +127,8 @@ class OrderAdmin(admin.ModelAdmin):
             "Даты и График",
             {
                 "fields": (
-                    "painting_date",
+                    "painting_completion_date",
+                    "phase1_completion_date",
                     "completion_date",
                 )
             },
@@ -137,7 +139,9 @@ class OrderAdmin(admin.ModelAdmin):
                 "fields": (
                     "series",
                     "front",
+                    "handle",
                     "color_panels",
+                    "is_frames_to_paint",
                     "color_frames",
                 )
             },
@@ -149,6 +153,8 @@ class OrderAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+
 from django.contrib import admin
 from .models import OrderItem
 

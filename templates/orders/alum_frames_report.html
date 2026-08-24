@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>דו''ח לייצור - הזמנה {{ order.order_number }}</title>
+    <!-- Bootstrap 5 RTL CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+
+        .page {
+            background: white;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm;
+            margin: 10mm auto;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid #000;
+            padding: 8px;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .header {
+            margin-bottom: 20px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+        }
+
+        .phase-mark {
+            color: red;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .no-print {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin: 0 5px;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+
+        @media print {
+            body {
+                background-color: white;
+                margin: 0;
+            }
+
+            .page {
+                margin: 0;
+                box-shadow: none;
+                width: 100%;
+                padding: 10mm;
+            }
+
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="no-print">
+    <button onclick="window.print()" class="btn">הדפס דו''ח</button>
+    <button onclick="window.close()" class="btn btn-secondary">סגור</button>
+</div>
+<div class="page">
+    <div class="header mb-0">
+        <h4 class="my-1">משקופים אלומימיום <span class="text-danger">{% if order.status == 'PHASE1_PRODUCTION' %}
+            שלב א' {% else %} קומפלט {% endif %}</span>
+        </h4>
+        <div style="display: flex; justify-content: space-between;">
+            <div>
+                <p class="fs-5">הזמנה:<span class="fw-bold">{{ order.order_number }}</span></p>
+            </div>
+            <div class="">
+                <p>לקוח: {{ order.customer }}</p>
+            </div>
+            <div>
+                <p><strong>תאריך:</strong> {{ now|date:"d/m/Y" }}</p>
+            </div>
+        </div>
+    </div>
+
+    {% for g_data in groups_data %}
+        <div class="group-section">
+            <div class="group-header bg-light px-2 border">
+                <div class="row g-1">
+                    <div class="col-8">
+                        <h4 class="">דגם: <span
+                                class="text-decoration-underline">{{ g_data.group_spec.product_family }}   </span>
+
+                        </h4>
+                    </div>
+                    <div class="col-3">
+                        <h5 class="">סדרה: <span
+                                class="text-decoration-underline">{{ g_data.group_spec.series }}   </span>
+
+                        </h5>
+                    </div>
+                    <div class="col-1">
+                        <div class="badge text-bg-info"> {{ g_data.group_spec.code }}</div>
+                    </div>
+                </div>
+
+                <div class="row">
+
+                    {% if not order.status == 'PHASE1_PRODUCTION' %}
+                        <div class="col-md-3"><strong>צבע פאנל:</strong> {{ g_data.group_spec.color_panels }}</div>
+                    {% endif %}
+
+
+                    <div class="col">
+                        <strong>פרופיל:</strong>
+                        <span class="fs-5">{{ g_data.group_spec.basic_color_frames }}
+                            {% if g_data.group_spec.frame_paint_option != "NO_PAINT" %}
+                                <span class="badge rounded-pill text-bg-dark">לצבע</span>
+                            {% endif %}
+                    </span>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-5 border border-2 mx-1 mt-1">
+                        <strong>מנעול: {{ g_data.group_spec.lock_name }} </strong>
+                        <span class="fs-3"> {{ g_data.group_spec.common_lock_height |floatformat }} </span>
+                    </div>
+                    <div class="col border border-2 mx-1 mt-1">
+                        <strong>צירים: {{ g_data.group_spec.hinge_name }} </strong><span
+                            class="fs-3"> {% for h in g_data.group_spec.common_hinge_heights %}{{ h |floatformat }}
+
+                        {% if not forloop.last %}\
+                        {% endif %}{% endfor %}</span>
+                    </div>
+                </div>
+            </div>
+
+            <table class="table table-sm table-bordered mt-0">
+                <thead>
+                <tr>
+                    <th style="width: 9%;">#</th>
+                    <th style="width: 21.5%;">מידות</th>
+                    <th style="width: 13%;">פתיחה</th>
+                    <th colspan="2" class="fst-italic fw-light">תיקוני מידות</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for spec in g_data.items_specs %}
+                    <tr>
+                        <td class="fw-bolder fs-4">{{ spec.mark }}</td>
+                        <td class="fw-bolder fs-4">{{ spec.width|floatformat }} \ {{ spec.height|floatformat }}</td>
+                        <td class="fw-bolder fs-4">{{ spec.direction }} | {{ spec.opening | first }}</td>
+
+                        <td style="width: 15%;">מנעול:</td>
+                        <td>צירים:</td>
+                    </tr>
+
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% empty %}
+        <div class="alert alert-info text-center mt-5">
+            <h4>אין נתונים להצגה בדוח זה</h4>
+            <p>הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
+        </div>
+    {% endfor %}
+</div>
+</body>
+</html>

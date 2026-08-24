@@ -32,6 +32,7 @@ class ProductFamily(models.Model):
     code = models.CharField('קוד', max_length=32, unique=True)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
+    default_value_for_frame = models.CharField('עובי משקוף ברירת מחדל', max_length=255, blank=True, default='')
 
     class Meta:
         verbose_name = 'משפחת מוצרים'
@@ -59,6 +60,30 @@ class Series(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def available_frames(self):
+        products = self.products.all()
+        frames = Material.objects.filter(
+            id__in=products.filter(bom__frame__isnull=False).values_list('bom__frame_id', flat=True)
+        )
+        common_names = frames.exclude(common_name='').values_list('common_name', flat=True).distinct()
+        
+        material_ids = set(frames.values_list('id', flat=True))
+        if common_names:
+            c_mats = Material.objects.filter(
+                common_name__in=common_names
+            ).values_list('id', flat=True)
+            material_ids.update(c_mats)
+
+        if material_ids:
+            return Material.objects.filter(id__in=material_ids).order_by('name')
+        return Material.objects.none()
+
+    @property
+    def frame_colors(self):
+        """Deprecated: use available_frames instead"""
+        return Color.objects.filter(id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(), active=True)
+
 
 class Front(models.Model):
     series = models.ForeignKey(
@@ -79,6 +104,22 @@ class Front(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Color(models.Model):
+    name = models.CharField('שם', max_length=100)
+    code = models.CharField('קוד/גוון', max_length=50, blank=True)
+    description = models.TextField('תיאור', blank=True)
+    active = models.BooleanField('פעיל', default=True)
+
+    class Meta:
+        verbose_name = 'צבע משקוף'
+        verbose_name_plural = 'צבעי משקופים'
+        unique_together = ('id', 'name')
+        ordering = ['id']
+
+    def __str__(self):
+        return f"{self.name}"
 
 
 class Handle(models.Model):
@@ -120,6 +161,7 @@ class Hardware(models.Model):
 
 class Material(models.Model):
     name = models.CharField('שם', max_length=255)
+    common_name = models.CharField('שם רגיל', max_length=255, blank=True, default='')
     sku = models.CharField('מק""ט', max_length=100, unique=True)
     material_type = models.CharField(
         'סוג חומר',
@@ -130,6 +172,7 @@ class Material(models.Model):
     thickness = models.DecimalField('עובי, מ""מ', max_digits=5, decimal_places=2, null=True, blank=True)
     length = models.DecimalField('אורך סטנדרטי, מ""מ', max_digits=7, decimal_places=2, null=True, blank=True)
     width = models.DecimalField('רוחב סטנדרטי, מ""מ', max_digits=7, decimal_places=2, null=True, blank=True)
+    color = models.ForeignKey(Color, on_delete=models.SET_NULL, null=True, blank=True, related_name='materials')
 
     price_per_unit = models.DecimalField('מחיר ליחידה', max_digits=10, decimal_places=2, default=0)
     unit_of_measure = models.CharField('יחידת מידה', max_length=20, default='pcs')
@@ -139,7 +182,7 @@ class Material(models.Model):
         verbose_name_plural = 'חומרים'
 
     def __str__(self):
-        return f"{self.name} ({self.sku})"
+        return f"{self.name}"
 
 
 # ==========================================
@@ -177,6 +220,25 @@ class ProductModel(models.Model):
 
     def __str__(self):
         return f"[{self.code}] {self.name} ({self.product_family.name} / {self.series.name})"
+
+    @property
+    def available_frames(self):
+        try:
+            bom = self.bom
+        except Exception:
+            return Material.objects.none()
+        if not bom or not bom.frame:
+            return Material.objects.none()
+        frame = bom.frame
+        if not frame.common_name:
+            return Material.objects.filter(id=frame.id)
+
+        return Material.objects.filter(common_name=frame.common_name).order_by('name')
+
+    @property
+    def frame_colors(self):
+        """Deprecated: use available_frames instead"""
+        return Color.objects.filter(id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(), active=True)
 
 
 class Customizer(models.Model):

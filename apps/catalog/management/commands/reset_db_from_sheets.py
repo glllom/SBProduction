@@ -202,7 +202,7 @@ class Command(BaseCommand):
                 customer=row.get('customer', ''),
                 status=row.get('status', 'DRAFT'),
                 start_date=row.get('start_date') or None,
-                painting_date=row.get('painting_date') or None,
+                painting_completion_date=row.get('painting_completion_date') or row.get('painting_date') or None,
                 completion_date=row.get('completion_date') or None,
                 series=row.get('series', ''),
                 front=row.get('front', ''),

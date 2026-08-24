@@ -1,6 +1,7 @@
 from django import forms
+
+from apps.catalog.models import Front, Color, ProductType, ProductFamily, Series, ProductModel, Material
 from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer, OrderItem
-from apps.catalog.models import Series, Front, ProductModel, ProductType, ProductFamily, Handle
 
 
 class TooltipSelect(forms.Select):
@@ -8,14 +9,15 @@ class TooltipSelect(forms.Select):
     Select widget that extracts description/help_text from Model instances
     and adds 'title' and 'data-description' attributes to each <option>.
     """
+
     def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
         option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
         instance = getattr(value, 'instance', None)
         if instance:
             desc = (
-                getattr(instance, 'description', None) or 
-                getattr(instance, 'help_text', None) or 
-                getattr(instance, 'par1_hint', None)
+                    getattr(instance, 'description', None) or
+                    getattr(instance, 'help_text', None) or
+                    getattr(instance, 'par1_hint', None)
             )
             if desc:
                 desc_str = str(desc).strip()
@@ -53,6 +55,7 @@ class TooltipFormMixin:
     """
     Mixin that configures tooltip data attributes on fields with help_text or descriptions.
     """
+
     def apply_tooltips(self):
         for field_name, field in self.fields.items():
             if field.help_text:
@@ -70,9 +73,9 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
     class Meta:
         model = OrderItem
         fields = [
-            'mark', 'place', 'width', 'height', 'wall', 
+            'mark', 'place', 'width', 'height', 'wall',
             'direction', 'opening', 'addition_cut', 'comment',
-            'custom_lock_height', 'custom_hinge1', 'custom_hinge2', 
+            'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
             'custom_hinge3', 'custom_hinge4', 'custom_hinge5',
             'sketch'
         ]
@@ -122,9 +125,9 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
         instance = self.instance
         if not instance or not instance.group or not instance.group.product:
             return cleaned_data
-            
+
         product_type = instance.group.product.product_family.product_type
-        
+
         # 1. Dimensions (width, height) - needed if has_door OR has_frame
         if not (product_type.has_door or product_type.has_frame):
             # For Wall Cladding, dimensions might be optional or hidden
@@ -134,14 +137,14 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
                 self.add_error('width', 'רוחב נדרש עבור סוג מוצר זה')
             if not cleaned_data.get('height'):
                 self.add_error('height', 'גובה נדרש עבור סוג מוצר זה')
-        
+
         # 2. Wall thickness dependency
         if product_type.has_frame:
             if not cleaned_data.get('wall'):
                 self.add_error('wall', 'עובי קיר נדרש עבור סוג מוצר זה')
         else:
             cleaned_data['wall'] = None
-            
+
         # 3. Door parameters dependency
         if not product_type.has_door:
             # Clear door-only fields if they were somehow submitted
@@ -154,30 +157,27 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
             cleaned_data['custom_hinge3'] = None
             cleaned_data['custom_hinge4'] = None
             cleaned_data['custom_hinge5'] = None
-            
+
         return cleaned_data
+
 
 class OrderForm(TooltipFormMixin, forms.ModelForm):
     class Meta:
         model = Order
         fields = [
-            'order_number', 
-            'customer', 
-            'painting_date', 
-            'completion_date', 
-            'series', 
-            'front', 
+            'order_number',
+            'customer',
+            'series',
+            'front',
             'handle',
-            'color_panels', 
+            'color_panels',
             'is_frames_to_paint',
-            'color_frames', 
+            'color_frames',
             'comments'
         ]
         help_texts = {
             'order_number': 'מספר הזמנה ייחודי במערכת (למשל ORD-2026-001)',
             'customer': 'שם הלקוח או הפרויקט',
-            'painting_date': 'תאריך מתוכנן לצביעת הפריטים',
-            'completion_date': 'תאריך יעד סופי לאספקת ההזמנה (דלתות)',
             'series': 'סדרת הדלתות (פרופיל / מבנה)',
             'front': 'חזית או גימור הכנף',
             'handle': 'דגם ידית נבחר',
@@ -187,8 +187,6 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
             'comments': 'הערות והנחיות מיוחדות להזמנה',
         }
         widgets = {
-            'painting_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'order_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'מספר הזמנה'}),
             'customer': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'שם הלקוח'}),
             'series': TooltipSelect(attrs={'class': 'form-select'}),
@@ -202,16 +200,19 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        # Initialize front queryset as empty if no series is selected
+
+        # Initialize front queryset based on series
+        series_id = None
         if 'series' in self.data:
             try:
                 series_id = int(self.data.get('series'))
-                self.fields['front'].queryset = Front.objects.filter(series_id=series_id).order_by('name')
             except (ValueError, TypeError):
-                self.fields['front'].queryset = Front.objects.none()
+                series_id = None
         elif self.instance.pk and self.instance.series:
-            self.fields['front'].queryset = self.instance.series.fronts.order_by('name')
+            series_id = self.instance.series_id
+
+        if series_id:
+            self.fields['front'].queryset = Front.objects.filter(series_id=series_id, active=True).order_by('name')
         else:
             self.fields['front'].queryset = Front.objects.none()
 
@@ -223,9 +224,6 @@ class OrderHeaderForm(TooltipFormMixin, forms.ModelForm):
         model = Order
         fields = [
             'customer',
-            'painting_date',
-            'phase1_completion_date',
-            'completion_date',
             'series',
             'front',
             'handle',
@@ -236,9 +234,6 @@ class OrderHeaderForm(TooltipFormMixin, forms.ModelForm):
         ]
         help_texts = {
             'customer': 'שם הלקוח או הפרויקט',
-            'painting_date': 'תאריך מתוכנן לצביעת הפריטים',
-            'phase1_completion_date': 'תאריך מוכנות שלב א (משקופים)',
-            'completion_date': 'תאריך יעד סופי לאספקת ההזמנה (דלתות)',
             'series': 'סדרת הדלתות (פרופיל / מבנה)',
             'front': 'חזית או גימור הכנף',
             'handle': 'דגם ידית נבחר',
@@ -249,9 +244,6 @@ class OrderHeaderForm(TooltipFormMixin, forms.ModelForm):
         }
         widgets = {
             'customer': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'שם הלקוח'}),
-            'painting_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'phase1_completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'series': TooltipSelect(attrs={'class': 'form-select'}),
             'front': TooltipSelect(attrs={'class': 'form-select'}),
             'handle': TooltipSelect(attrs={'class': 'form-select'}),
@@ -263,14 +255,17 @@ class OrderHeaderForm(TooltipFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        series_id = None
         if 'series' in self.data:
             try:
                 series_id = int(self.data.get('series'))
-                self.fields['front'].queryset = Front.objects.filter(series_id=series_id).order_by('name')
             except (ValueError, TypeError):
-                self.fields['front'].queryset = Front.objects.none()
+                series_id = None
         elif self.instance.pk and self.instance.series:
-            self.fields['front'].queryset = self.instance.series.fronts.order_by('name')
+            series_id = self.instance.series_id
+
+        if series_id:
+            self.fields['front'].queryset = Front.objects.filter(series_id=series_id, active=True).order_by('name')
         else:
             self.fields['front'].queryset = Front.objects.none()
 
@@ -302,6 +297,7 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
             'product',
             'series',
             'front',
+            'basic_color_frames',
             'panel_paint_option',
             'color_panels',
             'frame_paint_option',
@@ -314,6 +310,7 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
             'product': 'דגם מוצר ספציפי מתוך המשפחה והסדרה',
             'series': 'סדרה ספציפית לקבוצה זו (אם ריק - יימשך מההזמנה)',
             'front': 'חזית ספציפית לקבוצה זו (אם ריק - יימשך מההזמנה)',
+            'basic_color_frames': 'צבע משקוף בסיסי לקבוצה זו',
             'panel_paint_option': 'בחירת אופן צביעת כנפי הדלתות',
             'color_panels': 'גוון צבע עבור כנפי הדלתות בקבוצה זו',
             'frame_paint_option': 'בחירת אופן צביעת המשקופים',
@@ -326,6 +323,7 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
             'product': TooltipSelect(attrs={'class': 'form-select'}),
             'series': TooltipSelect(attrs={'class': 'form-select'}),
             'front': TooltipSelect(attrs={'class': 'form-select'}),
+            'basic_color_frames': TooltipSelect(attrs={'class': 'form-select'}),
             'panel_paint_option': TooltipRadioSelect(attrs={'class': 'form-check-input'}),
             'color_panels': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע פנלים'}),
             'frame_paint_option': TooltipRadioSelect(attrs={'class': 'form-check-input'}),
@@ -337,49 +335,100 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.order = kwargs.pop('order', None)
         super().__init__(*args, **kwargs)
-        
+
         # Set initial values for product_type and product_family if product is set
         if self.instance.pk and self.instance.product:
             self.initial['product_family'] = self.instance.product.product_family
             self.initial['product_type'] = self.instance.product.product_family.product_type
-            
+
         # Set default frame_paint_option based on order.is_frames_to_paint
         if not self.instance.pk and self.order:
             if self.order.is_frames_to_paint:
                 self.initial['frame_paint_option'] = OrderItemsGroup.PaintOption.MAIN_COLOR
             else:
                 self.initial['frame_paint_option'] = OrderItemsGroup.PaintOption.NO_PAINT
-            
-            # Default series and front from order
+
+            # Default series from order
             if self.order.series:
                 self.initial['series'] = self.order.series
-            if self.order.front:
-                self.initial['front'] = self.order.front
 
+        series_id = None
         if 'series' in self.data:
             try:
                 series_id = int(self.data.get('series'))
-                self.fields['front'].queryset = Front.objects.filter(series_id=series_id).order_by('name')
             except (ValueError, TypeError):
-                self.fields['front'].queryset = Front.objects.none()
+                series_id = None
         elif self.instance.pk and self.instance.series:
-            self.fields['front'].queryset = self.instance.series.fronts.order_by('name')
-        elif self.order and self.order.series:
-            self.fields['front'].queryset = self.order.series.fronts.order_by('name')
+            series_id = self.instance.series_id
+        elif self.order and self.order.series_id:
+            series_id = self.order.series_id
+
+        if series_id:
+            self.fields['front'].queryset = Front.objects.filter(series_id=series_id, active=True).order_by('name')
         else:
             self.fields['front'].queryset = Front.objects.none()
+
+        # Resolve product for frame color queryset
+        product = None
+        if 'product' in self.data:
+            try:
+                product_id = int(self.data.get('product'))
+                product = ProductModel.objects.filter(id=product_id).first()
+            except (ValueError, TypeError):
+                product = None
+
+        if not product and series_id:
+            family_id = None
+            if 'product_family' in self.data:
+                try:
+                    family_id = int(self.data.get('product_family'))
+                except (ValueError, TypeError):
+                    family_id = None
+            elif self.instance.pk and self.instance.product_id:
+                family_id = self.instance.product.product_family_id
+
+            if family_id:
+                product = ProductModel.objects.filter(series_id=series_id, product_family_id=family_id).first()
+
+        if not product and self.instance.pk and self.instance.product:
+            product = self.instance.product
+
+        # Populate basic_color_frames queryset
+        if product:
+            available_frames = product.available_frames
+            self.fields['basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.all().order_by('name')
+        elif series_id:
+            series = Series.objects.filter(id=series_id).first()
+            if series:
+                available_frames = series.available_frames
+                self.fields['basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.all().order_by('name')
+            else:
+                self.fields['basic_color_frames'].queryset = Material.objects.all().order_by('name')
+        else:
+            self.fields['basic_color_frames'].queryset = Material.objects.none()
+
+        if self.instance.pk and self.instance.basic_color_frames_id:
+            self.fields['basic_color_frames'].queryset = (
+                    self.fields['basic_color_frames'].queryset | Material.objects.filter(
+                id=self.instance.basic_color_frames_id)).distinct()
 
         # Handle product_family queryset filtering if product_type is in data
         if 'product_type' in self.data:
             try:
                 type_id = int(self.data.get('product_type'))
-                self.fields['product_family'].queryset = ProductFamily.objects.filter(product_type_id=type_id).order_by('name')
+                self.fields['product_family'].queryset = ProductFamily.objects.filter(product_type_id=type_id).order_by(
+                    'name')
             except (ValueError, TypeError):
                 self.fields['product_family'].queryset = ProductFamily.objects.none()
         elif self.instance.pk and self.instance.product:
             self.fields['product_family'].queryset = ProductFamily.objects.filter(
                 product_type=self.instance.product.product_family.product_type
             ).order_by('name')
+
+        # Inheritance logic for front from order (if possible)
+        if not self.instance.pk and self.order:
+            if self.order.front and self.order.front in self.fields['front'].queryset:
+                self.initial['front'] = self.order.front
 
         self.apply_tooltips()
 

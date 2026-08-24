@@ -85,7 +85,7 @@
                         <td class="field-wall">{{ item.wall_fmt }}</td>
                         <td class="field-opening small">
                             {% if item.opening or item.direction %}
-                                {{ item.get_opening_display|default:"" }} / {{ item.get_direction_display|default:"" }}
+                                {{ item.get_direction_display|default:"" }} | {{ item.get_opening_display|default:"" }}
                             {% else %}
                                 -
                             {% endif %}
