@@ -2,8 +2,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
-from django.http import JsonResponse, HttpResponse
-from django.shortcuts import render, get_object_or_404, redirect
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, TemplateView, DeleteView
@@ -101,6 +101,7 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
         context['product_types'] = ProductType.objects.filter(active=True)
         context['header_form'] = OrderHeaderForm(instance=self.object)
         context['group_form'] = OrderItemsGroupForm(order=self.object)
+        context['status'] = "asdas"
         return context
 
 
@@ -283,117 +284,3 @@ def duplicate_item_measurements(request, pk):
         items_to_update.update(**update_data)
 
     return JsonResponse({'status': 'ok'})
-
-
-@login_required
-def order_transfer_to_production(request, pk):
-    from apps.production.services import OrderValidationService
-    from django.contrib import messages
-    order = get_object_or_404(Order, pk=pk)
-
-    val_res = OrderValidationService.validate_full(order)
-    if not val_res.is_valid:
-        for error in val_res.errors:
-            messages.error(request, error)
-        return redirect('order-detail', pk=pk)
-
-    try:
-        order.start_production(user=request.user)
-        messages.success(request, "ההזמנה הועברה לייצור בהצלחה")
-    except ValueError as e:
-        messages.error(request, str(e))
-
-    return redirect('order-detail', pk=pk)
-
-
-@login_required
-def order_transfer_to_phase1(request, pk):
-    from apps.production.services import OrderValidationService
-    from django.contrib import messages
-    order = get_object_or_404(Order, pk=pk)
-
-    val_res = OrderValidationService.validate_partial(order)
-    if not val_res.is_valid:
-        for error in val_res.errors:
-            messages.error(request, error)
-        return redirect('order-detail', pk=pk)
-
-    try:
-        order.start_phase1(user=request.user)
-        messages.success(request, "שלב א' (משקופים) הועבר לייצור בהצלחה")
-    except ValueError as e:
-        messages.error(request, str(e))
-
-    return redirect('order-detail', pk=pk)
-
-
-@login_required
-def order_production_data(request, pk):
-    from apps.production.services import ProductionDataService, OrderValidationService
-    from django.contrib import messages
-    order = get_object_or_404(Order, pk=pk)
-
-    val_res = OrderValidationService.validate_for_zip(order)
-    if not val_res.is_valid:
-        for error in val_res.errors:
-            messages.error(request, f"לא ניתן להפיק קובצי ייצור: {error}")
-        return redirect('order-detail', pk=pk)
-
-    try:
-        service = ProductionDataService(order)
-        zip_buffer = service.generate_production_zip()
-    except ValueError as e:
-        messages.error(request, f"שגיאה בהפקת קובצי ייצור: {str(e)}")
-        return redirect('order-detail', pk=pk)
-
-    response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
-    response['Content-Disposition'] = f'attachment; filename="production_data_{order.order_number}.zip"'
-    return response
-
-
-@login_required
-def order_production_report(request, pk):
-    from apps.production.services import ProductionDataService, OrderValidationService
-    order = get_object_or_404(Order, pk=pk)
-    service = ProductionDataService(order)
-
-    report_type = request.GET.get('type')
-
-    # If no type specified, try to determine best default
-    if not report_type:
-        has_split = order.groups.filter(is_split_installation=True).exists()
-        if has_split and order.status == OrderStatus.PHASE1_PRODUCTION:
-            report_type = ProductionDataService.ReportType.PHASE1_FRAMES
-        else:
-            report_type = ProductionDataService.ReportType.FULL_PRODUCTION
-
-    val_res = OrderValidationService.validate_for_report(order, report_type)
-    if not val_res.is_valid:
-        label = report_type
-        if report_type in ProductionDataService.ReportType.values:
-            label = ProductionDataService.ReportType(report_type).label
-
-        context = {
-            'order': order,
-            'report_type': report_type,
-            'report_label': label,
-            'validation_errors': val_res.errors,
-            'validation_type': val_res.validation_type,
-        }
-        return render(request, 'orders/report_validation_error.html', context)
-
-    try:
-        report_html = service.generate_report_html(report_type)
-    except ValueError as e:
-        context = {
-            'order': order,
-            'report_type': report_type,
-            'report_label': report_type,
-            'validation_errors': [str(e)],
-        }
-        return render(request, 'orders/report_validation_error.html', context)
-
-    return HttpResponse(report_html)
-
-
-alum_frames_report = order_production_report

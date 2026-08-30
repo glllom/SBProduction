@@ -151,127 +151,6 @@ class Order(models.Model):
         from apps.catalog.models import Color
         return Color.objects.filter(active=True).order_by('id')
 
-    def recalculate_item_marks(self):
-        """
-        Recalculates sequential numbers (mark) for all OrderItems in this order.
-        Orders by group.id and then item.id.
-        """
-        # Prefetch items for efficiency if needed, but OrderItem.objects.filter is clear
-        all_items = OrderItem.objects.filter(group__order=self).order_by('group__id', 'id')
-
-        items_to_update = []
-        for i, item in enumerate(all_items, start=1):
-            new_mark = str(i)
-            if item.mark != new_mark:
-                item.mark = new_mark
-                items_to_update.append(item)
-
-        if items_to_update:
-            OrderItem.objects.bulk_update(items_to_update, ['mark'])
-
-    def validate_for_production(self, validation_type=None):
-        """
-        Validates if the order is ready for production.
-        Delegates to OrderValidationService in apps.production.services.
-        Returns (is_valid, errors)
-        """
-        from apps.production.services import OrderValidationService
-        if validation_type:
-            res = OrderValidationService.validate(self, validation_type)
-        elif self.has_split_installation and self.status in [OrderStatus.DRAFT, OrderStatus.MEASUREMENT]:
-            res = OrderValidationService.validate_partial(self)
-        else:
-            res = OrderValidationService.validate_full(self)
-        return res.is_valid, res.errors
-
-    def start_production(self, user=None):
-        """
-        Transitions order to production. Handles split installation phases.
-        Performs full validation prior to starting production.
-        """
-        from apps.production.services import OrderValidationService, ProductionDataService
-
-        # 1. Full validation before production
-        val_res = OrderValidationService.validate_full(self)
-        val_res.raise_if_invalid()
-
-        old_status = self.status
-        has_split = self.groups.filter(is_split_installation=True).exists()
-
-        with transaction.atomic():
-            if self.status == OrderStatus.PHASE1_READY:
-                # Moving from Phase 1 Ready to full In Production
-                self.status = OrderStatus.IN_PRODUCTION
-            elif has_split:
-                self.status = OrderStatus.PHASE1_PRODUCTION
-                # Create suborders for split groups
-                for group in self.groups.filter(is_split_installation=True):
-                    SubOrder.objects.get_or_create(
-                        order=self,
-                        group=group,
-                        phase=SubOrder.Phase.PHASE1,
-                        defaults={
-                            'status': OrderStatus.IN_PRODUCTION,
-                            'completion_date': self.phase1_completion_date
-                        }
-                    )
-            else:
-                self.status = OrderStatus.IN_PRODUCTION
-
-            self.save()
-
-            # Generate CNC files
-            service = ProductionDataService(self)
-            service.generate_cnc_files()
-
-            OrderChangeLog.objects.create(
-                order=self,
-                user=user,
-                field_name='status',
-                old_value=old_status,
-                new_value=self.status
-            )
-
-    def start_phase1(self, user=None):
-        """
-        Explicitly starts Phase A (frames production).
-        Performs partial validation prior to starting Phase A.
-        """
-        from apps.production.services import OrderValidationService, ProductionDataService
-
-        # 1. Partial validation before Phase 1
-        val_res = OrderValidationService.validate_partial(self)
-        val_res.raise_if_invalid()
-
-        old_status = self.status
-        with transaction.atomic():
-            self.status = OrderStatus.PHASE1_PRODUCTION
-            self.save()
-
-            # Create suborders for split groups
-            for group in self.groups.filter(is_split_installation=True):
-                SubOrder.objects.get_or_create(
-                    order=self,
-                    group=group,
-                    phase=SubOrder.Phase.PHASE1,
-                    defaults={
-                        'status': OrderStatus.IN_PRODUCTION,
-                        'completion_date': self.phase1_completion_date
-                    }
-                )
-
-            # Generate CNC files
-            service = ProductionDataService(self)
-            service.generate_cnc_files()
-
-            OrderChangeLog.objects.create(
-                order=self,
-                user=user,
-                field_name='status',
-                old_value=old_status,
-                new_value=self.status
-            )
-
 
 class OrderChangeLog(models.Model):
     order = models.ForeignKey(
@@ -472,78 +351,17 @@ class OrderItemsGroup(models.Model):
                     OrderItem.objects.filter(id__in=[item.id for item in items_to_delete]).delete()
 
             # After syncing items in this group, recalculate marks for the entire order
-            self.order.recalculate_item_marks()
+            from apps.production.services import OrderProductionService
+            OrderProductionService.recalculate_item_marks(self.order)
 
     def delete(self, *args, **kwargs):
         order = self.order
         super().delete(*args, **kwargs)
         # After deleting the group, recalculate marks for the remaining items in the order
-        order.recalculate_item_marks()
+        from apps.production.services import OrderProductionService
+        OrderProductionService.recalculate_item_marks(order)
 
 
-class SubOrder(models.Model):
-    """
-    Represents a specific phase of production for an Order or a Group.
-    Used for split installations where frames are produced first.
-    """
-
-    class Phase(models.TextChoices):
-        PHASE1 = 'PHASE1', 'שלב א (משקופים)'
-        PHASE2 = 'PHASE2', 'שלב ב (כנפיים והשאר)'
-
-    order = models.ForeignKey(
-        Order,
-        on_delete=models.CASCADE,
-        related_name="sub_orders",
-        verbose_name="הזמנה",
-    )
-    group = models.ForeignKey(
-        OrderItemsGroup,
-        on_delete=models.CASCADE,
-        related_name="sub_orders",
-        null=True, blank=True,
-        verbose_name="קבוצה",
-    )
-    phase = models.CharField(
-        max_length=20,
-        choices=Phase.choices,
-        default=Phase.PHASE1,
-        verbose_name="שלב",
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=OrderStatus.choices,
-        default=OrderStatus.IN_PRODUCTION,
-        verbose_name="סטטוס",
-    )
-    completion_date = models.DateField(
-        null=True, blank=True, verbose_name="תאריך סיום צפוי"
-    )
-    actual_completion_date = models.DateTimeField(
-        null=True, blank=True, verbose_name="תאריך סיום בפועל"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        super().save(*args, **kwargs)
-
-        if not is_new and self.status == OrderStatus.COMPLETED and self.phase == self.Phase.PHASE1:
-            # When phase 1 suborder is completed, update the main order status
-            order = self.order
-            if order.status == OrderStatus.PHASE1_PRODUCTION:
-                # Check if all other phase 1 suborders are completed
-                if not order.sub_orders.filter(phase=self.Phase.PHASE1).exclude(status=OrderStatus.COMPLETED).exists():
-                    order.status = OrderStatus.PHASE1_READY
-                    order.save()
-
-    class Meta:
-        db_table = "sub_orders"
-        verbose_name = "תת-הזמנה (שלב)"
-        verbose_name_plural = "תת-הזמנות (שלבים)"
-
-    def __str__(self):
-        return f"{self.order.order_number} - {self.get_phase_display()}"
 
 
 class OrderItemsGroupCustomizer(models.Model):

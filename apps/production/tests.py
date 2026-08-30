@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.catalog.models import ProductType, ProductFamily, Series, Front, ProductModel, Handle
 from apps.orders.models import Order, OrderItemsGroup, OrderStatus
-from apps.production.services import OrderValidationService
+from apps.production.services import OrderValidationService, OrderProductionService
 
 
 class OrderValidationServiceTests(TestCase):
@@ -201,7 +201,7 @@ class OrderValidationServiceTests(TestCase):
 
     def test_model_methods_validate_and_start(self):
         """
-        Tests order.validate_for_production(), order.start_production(), order.start_phase1().
+        Tests OrderProductionService.validate_for_production(), start_production(), start_phase1().
         """
         order = Order.objects.create(
             order_number='ORD-MODEL-METH', customer='Customer',
@@ -219,17 +219,18 @@ class OrderValidationServiceTests(TestCase):
         item.direction = 'IN'
         item.save()
 
-        # Partial validation via model
-        is_valid, errors = order.validate_for_production()
+        # Partial validation via service
+        is_valid, errors = OrderProductionService.validate_for_production(order)
         self.assertTrue(is_valid)
 
         # start_phase1 should succeed
-        order.start_phase1(user=self.user)
+        OrderProductionService.start_phase1(order, user=self.user)
+        order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.PHASE1_PRODUCTION)
 
         # start_production without handle should raise ValueError
         with self.assertRaises(ValueError):
-            order.start_production(user=self.user)
+            OrderProductionService.start_production(order, user=self.user)
 
         # Add handle -> start_production should succeed
         order.handle = self.handle
@@ -237,7 +238,8 @@ class OrderValidationServiceTests(TestCase):
         order.status = OrderStatus.PHASE1_READY
         order.save()
 
-        order.start_production(user=self.user)
+        OrderProductionService.start_production(order, user=self.user)
+        order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.IN_PRODUCTION)
 
 
@@ -276,7 +278,7 @@ class ProductionReportAndZipValidationTests(TestCase):
         item.save()
 
         # GET phase 1 report
-        url = reverse('alum-frames-report', args=[order.pk]) + '?type=PHASE1_FRAMES'
+        url = reverse('production:alum-frames-report', args=[order.pk]) + '?type=PHASE1_FRAMES'
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'ORD-REP-P1')
@@ -305,7 +307,7 @@ class ProductionReportAndZipValidationTests(TestCase):
         item.direction = 'IN'
         item.save()
 
-        url = reverse('alum-frames-report', args=[order.pk]) + '?type=PHASE2_DOORS'
+        url = reverse('production:alum-frames-report', args=[order.pk]) + '?type=PHASE2_DOORS'
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'לא ניתן להפיק את הדו"ח')
@@ -320,7 +322,7 @@ class ProductionReportAndZipValidationTests(TestCase):
             status=OrderStatus.IN_PRODUCTION
         )
         # Empty order -> invalid
-        url = reverse('order-production-data', args=[order.pk])
+        url = reverse('production:order-production-data', args=[order.pk])
         resp = self.client.get(url)
         # Should redirect to order-detail with error message
         self.assertEqual(resp.status_code, 302)
@@ -347,7 +349,7 @@ class ProductionReportAndZipValidationTests(TestCase):
         item.direction = 'IN'
         item.save()
 
-        url = reverse('order-production-data', args=[order.pk])
+        url = reverse('production:order-production-data', args=[order.pk])
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp['Content-Type'], 'application/zip')
@@ -394,7 +396,7 @@ class OrderStatusTransitionValidationTests(TestCase):
         item.direction = 'IN'
         item.save()
 
-        resp = self.client.get(reverse('order-transfer-to-phase1', args=[order.pk]))
+        resp = self.client.get(reverse('production:order-transfer-to-phase1', args=[order.pk]))
         self.assertEqual(resp.status_code, 302)
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.PHASE1_PRODUCTION)
@@ -420,7 +422,7 @@ class OrderStatusTransitionValidationTests(TestCase):
         item.direction = 'IN'
         item.save()
 
-        resp = self.client.get(reverse('order-transfer-to-production', args=[order.pk]))
+        resp = self.client.get(reverse('production:order-transfer-to-production', args=[order.pk]))
         self.assertEqual(resp.status_code, 302)
         order.refresh_from_db()
         # Status should NOT change
@@ -447,7 +449,7 @@ class OrderStatusTransitionValidationTests(TestCase):
         item.direction = 'IN'
         item.save()
 
-        resp = self.client.get(reverse('order-transfer-to-production', args=[order.pk]))
+        resp = self.client.get(reverse('production:order-transfer-to-production', args=[order.pk]))
         self.assertEqual(resp.status_code, 302)
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.IN_PRODUCTION)

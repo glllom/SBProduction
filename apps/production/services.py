@@ -8,8 +8,9 @@ from django.db import models
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from apps.orders.models import OrderItemsGroup, OrderItem, OrderStatus
+from apps.orders.models import OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
 from .models import LockStandardHeight, HingeStandardHeight, BOM
+from django.db import transaction
 
 
 class ValidationType(models.TextChoices):
@@ -125,7 +126,7 @@ class OrderValidationService:
 
         groups = list(order.groups.all())
         if not groups:
-            errors.append("אין קבוצות מוצרים בהזמנה")
+            errors.append("אין מוצרים בהזמנה")
             return errors
 
         has_any_doors = False
@@ -143,13 +144,12 @@ class OrderValidationService:
             if not effective_series:
                 errors.append(f"{group_label}: לא נבחרה סדרה")
 
-            # 2. חזית / גימור (Front)
-            effective_front = group.front or getattr(order, 'front', None)
-            if not effective_front:
-                errors.append(f"{group_label}: לא נבחרה חזית / גימור")
-
             # 3. צבעי צביעה בבדיקה מלאה (אם נבחר גוון מיוחד)
             if is_full:
+                effective_front = group.front or getattr(order, 'front', None)
+                if not effective_front:
+                    errors.append(f"{group_label}: לא נבחרה חזית / גימור")
+
                 if group.panel_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
                     if not group.color_panels and not getattr(order, 'color_panels', None):
                         errors.append(f"{group_label}: נבחר גוון מיוחד לפנל אך לא הוגדר צבע פנלים")
@@ -254,6 +254,7 @@ class TechnicalSpec:
     place: str = ""
     comment: str = ""
     sketch_url: str = ""
+    frames_report_customizers: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class TechnicalSpecService:
@@ -356,6 +357,41 @@ class TechnicalSpecService:
                 res.append(float(val))
         return res
 
+    @staticmethod
+    def _format_customizer_for_report(group_customizer) -> Dict[str, Any]:
+        """
+        Formats a customizer for the production report (Strategy 10).
+        Returns a dictionary with name and parameters (label, value, is_custom).
+        """
+        c = group_customizer.customizer
+        params = []
+        for i in range(1, 5):
+            label = getattr(c, f'par{i}_label')
+            if label:
+                # Value from order group
+                val_order = getattr(group_customizer, f'par{i}')
+                # Default value from catalog
+                val_default = getattr(c, f'par{i}_value')
+
+                is_custom = False
+                val = val_order
+                if val is None or val == '':
+                    val = val_default
+                elif val_default and val != val_default:
+                    is_custom = True
+
+                if val:
+                    params.append({
+                        'label': label,
+                        'value': val,
+                        'is_custom': is_custom
+                    })
+
+        return {
+            'name': c.name,
+            'params': params
+        }
+
     @classmethod
     def build_spec(cls, item: OrderItem) -> TechnicalSpec:
         """
@@ -396,6 +432,33 @@ class TechnicalSpecService:
             b['item'].name for b in bom_result
             if b.get('tag') in ['profile1', 'profile2', 'profile3']
         ]
+
+        # Processing Customizer Strategies (1-10)
+        frames_report_customizers = []
+        if group:
+            # Get all customizers for the group, pre-fetching the definitions
+            group_customizers = group.customizers.select_related('customizer').order_by('customizer__strategy',
+                                                                                        'customizer__priority')
+
+            from collections import defaultdict
+            strategy_map = defaultdict(list)
+            for gc in group_customizers:
+                strategy_map[gc.customizer.strategy].append(gc)
+
+            # Execute strategies in sequence 1..10
+            for s_num in range(1, 11):
+                gcs = strategy_map.get(s_num, [])
+
+                if s_num == 10:
+                    # Strategy 10: Frames Report presentation
+                    for gc in gcs:
+                        formatted = cls._format_customizer_for_report(gc)
+                        frames_report_customizers.append(formatted)
+                else:
+                    # Strategies 1-9 placeholders
+                    for gc in gcs:
+                        # Placeholder for future logic
+                        pass
 
         series_name = ""
         if group and group.series:
@@ -438,6 +501,7 @@ class TechnicalSpecService:
             frame=frame.name if frame else "",
             series=series_name,
             product_family=product_family_name,
+            frames_report_customizers=frames_report_customizers,
         )
 
 
@@ -657,7 +721,7 @@ class ProductionDataService:
             'groups_data': self._get_order_data(report_type),
             'now': timezone.now(),
         }
-        return render_to_string('orders/alum_frames_report.html', context)
+        return render_to_string('production/alum_frames_report.html', context)
 
     def _get_order_data(self, report_type=None):
         # 1. Collect all specs
@@ -690,19 +754,21 @@ class ProductionDataService:
                 spec = TechnicalSpecService.build_spec(item)
                 all_specs.append(spec)
 
-        # 2. Grouping logic (remains the same as before)
+        # 2. Grouping logic
         grouped_specs = {}
         for spec in all_specs:
-            # Key for grouping: Model, Lock, Lock Height, Hinge, Hinge Heights, Profiles
+            # Key for grouping: Product, Series, Front, Colors, and Profiles
+            # Removed lock and hinge details from the key as per requirements
             key = (
-                spec.product_name,
+                spec.product_family,
+                spec.series,
                 spec.product_code,
-                spec.lock_name,
-                spec.lock_height,
-                spec.hinge_name,
-                tuple(spec.hinge_heights),
-                tuple(spec.profiles)
-
+                spec.front_name,
+                spec.basic_color_frames,
+                spec.frame_paint_option,
+                spec.color_frames,
+                spec.color_panels,
+                tuple(spec.profiles),
             )
             if key not in grouped_specs:
                 grouped_specs[key] = []
@@ -744,6 +810,7 @@ class ProductionDataService:
                 'frame': first.frame,
                 'series': first.series,
                 'product_family': first.product_family,
+                'frames_report_customizers': first.frames_report_customizers,
             }
 
             groups_data.append({
@@ -752,3 +819,106 @@ class ProductionDataService:
             })
 
         return groups_data
+
+
+class OrderProductionService:
+    """
+    Сервис управления жизненным циклом заказа в производстве.
+    Переносит логику запуска и смены статусов из приложения orders в production.
+    """
+
+    @staticmethod
+    def recalculate_item_marks(order):
+        """
+        Пересчитывает порядковые номера (mark) для всех изделий в заказе.
+        """
+        # Импортируем OrderItem локально, чтобы избежать циклического импорта
+        from apps.orders.models import OrderItem
+        all_items = OrderItem.objects.filter(group__order=order).order_by('group__id', 'id')
+
+        items_to_update = []
+        for i, item in enumerate(all_items, start=1):
+            new_mark = str(i)
+            if item.mark != new_mark:
+                item.mark = new_mark
+                items_to_update.append(item)
+
+        if items_to_update:
+            OrderItem.objects.bulk_update(items_to_update, ['mark'])
+
+    @staticmethod
+    def validate_for_production(order, validation_type: Optional[str] = None):
+        """
+        Проверяет готовность заказа к производству.
+        Возвращает (is_valid, errors).
+        """
+        if validation_type:
+            res = OrderValidationService.validate(order, validation_type)
+        elif order.has_split_installation and order.status in [OrderStatus.DRAFT, OrderStatus.MEASUREMENT]:
+            res = OrderValidationService.validate_partial(order)
+        else:
+            res = OrderValidationService.validate_full(order)
+        return res.is_valid, res.errors
+
+    @staticmethod
+    def start_production(order, user=None):
+        """
+        Переводит заказ в производство. Обрабатывает этапы при раздельной установке.
+        """
+        # 1. Полная валидация перед производством
+        val_res = OrderValidationService.validate_full(order)
+        val_res.raise_if_invalid()
+
+        old_status = order.status
+        has_split = order.groups.filter(is_split_installation=True).exists()
+
+        with transaction.atomic():
+            if order.status == OrderStatus.PHASE1_READY:
+                # Переход из "Фаза 1 готова" в полный цикл производства
+                order.status = OrderStatus.IN_PRODUCTION
+            elif has_split:
+                order.status = OrderStatus.PHASE1_PRODUCTION
+            else:
+                order.status = OrderStatus.IN_PRODUCTION
+
+            order.save()
+
+            # Генерация CNC файлов
+            service = ProductionDataService(order)
+            service.generate_cnc_files()
+
+            OrderChangeLog.objects.create(
+                order=order,
+                user=user,
+                field_name='status',
+                old_value=old_status,
+                new_value=order.status
+            )
+        return order
+
+    @staticmethod
+    def start_phase1(order, user=None):
+        """
+        Явный запуск Фазы А (производство משקופים).
+        """
+        # 1. Частичная валидация перед Фазой 1
+        val_res = OrderValidationService.validate_partial(order)
+        val_res.raise_if_invalid()
+
+        old_status = order.status
+        with transaction.atomic():
+            order.status = OrderStatus.PHASE1_PRODUCTION
+            order.save()
+
+            # Генерация CNC файлов
+            service = ProductionDataService(order)
+            service.generate_cnc_files()
+
+            OrderChangeLog.objects.create(
+                order=order,
+                user=user,
+                field_name='status',
+                old_value=old_status,
+                new_value=order.status
+            )
+        return order

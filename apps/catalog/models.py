@@ -285,6 +285,25 @@ class Customizer(models.Model):
     )
 
     # --- Engine/Pipeline settings (Strategy & Chain of Responsibility) ---
+    class Strategy(models.IntegerChoices):
+        NONE = 0, 'ללא אסטרטגיה'
+        STRATEGY_1 = 1, 'אסטרטגיה 1'
+        STRATEGY_2 = 2, 'אסטרטגיה 2'
+        STRATEGY_3 = 3, 'אסטרטגיה 3'
+        STRATEGY_4 = 4, 'אסטרטגיה 4'
+        STRATEGY_5 = 5, 'אסטרטגיה 5'
+        STRATEGY_6 = 6, 'אסטרטגיה 6'
+        STRATEGY_7 = 7, 'אסטרטגיה 7'
+        STRATEGY_8 = 8, 'אסטרטגיה 8'
+        STRATEGY_9 = 9, 'אסטרטגיה 9'
+        STRATEGY_10 = 10, 'אסטרטגיה 10 (Frames Report)'
+
+    strategy = models.IntegerField(
+        choices=Strategy.choices,
+        default=Strategy.NONE,
+        verbose_name="אסטרטגיה",
+        help_text="שלב עיבוד שבו התוספת משתתפת"
+    )
     tag = models.CharField(
         max_length=100,
         blank=True,
