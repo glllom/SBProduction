@@ -1,0 +1,70 @@
+;NOME : STD_Notch
+;DESCRIZIONE : Head/Tail Notching
+;TIPO : 1
+;DIMENSIONI : 1 1 1
+;PROFILO : 
+; ------------------------------------------------------------
+;PARAM : 1 5
+;PARAM : 2 10
+;PARAM : 3 5
+;PARAM : 4 1
+;PARAM : 5 0
+;PARAM : 6 0
+;PARAM : 7 0
+;PARAM : 8 0
+;PARAM : 9 0
+;PARAM : 10 0
+;PARAM : 11 0
+;PARAM : 12 0
+;PARAM : 13 0
+;PARAM : 14 0
+;PARAM : 15 0
+;PARAM : 16 0
+;PARAM : 18 0
+;PARAM : 19 0
+;PARAM : 20 0
+;PARAM : 21 0
+;PARAM : 22 0
+;PARAM : 23 0
+;PARAM : 24 0
+;PARAM : 25 0
+; ------------------------------------------------------------
+
+PARAM L1 = 5	"Cutting depth"
+PARAM L2 = 10	"Z Notch position"
+PARAM L3 = 5	"Notch height"
+PARAM L4 = 1 	"1 = Horizontal - 3= Vertical"
+PARAM L5 = 0 	"0 = Head - 1 = Tail"
+PARAM L6 = 0    "Angle"
+PARAM L7 = 0    "Inclination Ref. 0=Y- 1=Y+"
+PARAM L8 = 0    "Dimension Reduction in Y-"
+PARAM L9 = 0    "Dimension Reduction in Y+"
+PARAM L10=0 "Free"  
+PARAM L11=0 "Free"
+PARAM L12=0 "Free"
+PARAM L13=0 "Free"
+PARAM L14=0 "Free"
+PARAM L15=0 "Free"
+PARAM L16=0 "Free"
+PARAM L17=0 "Free"
+PARAM L18=0 "Free"
+PARAM L19=0 "Free"
+PARAM L20=0 "Free"
+PARAM L21=0 "Free"
+PARAM L22=0 "Free"
+PARAM L23=0 "Free"
+PARAM L24=0 "Free"
+;PARAM L25=-1 "Priority"
+PARAM L26=-1	"Probing correction index"
+; -------------------------------------------------------------
+
+;G1011 P(L25)
+G79 (L6<>0) N20
+G500 A(L1) B(L2) C(L3) D(L5) S(L8) L(L26) E(L9) T(L86) O(L4)
+G79 N40
+N20
+G501 A(L1) B(L2) C(L3) D(L5) H(L6) F(L7) L(L26) S(L8) E(L9) T(L86) O(L4)
+N40
+
+
+

@@ -3,16 +3,23 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
-from django.urls import reverse_lazy
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse_lazy, reverse
 from django.views.decorators.http import require_POST
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, TemplateView, DeleteView
 from rest_framework import viewsets, permissions
 
 from apps.catalog.models import ProductFamily, Series, ProductType
 from .forms import OrderForm, OrderHeaderForm, OrderItemsGroupForm, OrderItemForm
-from .models import Order, OrderItemsGroup, OrderItem, OrderChangeLog, OrderItemsGroupCustomizer, OrderStatus
-from .serializers import OrderItemsGroupCustomizerSerializer
+from .models import (
+    Order, OrderItemsGroup, OrderItem, OrderChangeLog,
+    OrderItemsGroupCustomizer, OrderStatus,
+    GroupSpecification
+)
+from .serializers import (
+    OrderItemsGroupCustomizerSerializer,
+    GroupSpecificationSerializer
+)
 
 
 class OrderEditPermissionMixin:
@@ -41,7 +48,7 @@ class OrderEditPermissionMixin:
             elif 'pk' in self.kwargs and isinstance(self, (OrderHeaderUpdateView, OrderDeleteView)):
                 order = get_object_or_404(Order, pk=self.kwargs.get('pk'))
 
-        if order and order.status == OrderStatus.IN_PRODUCTION and not request.user.is_admin_user:
+        if order and order.status != OrderStatus.NEW and not request.user.is_admin_user:
             raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
         return super().dispatch(request, *args, **kwargs)
 
@@ -102,7 +109,33 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
         context['header_form'] = OrderHeaderForm(instance=self.object)
         context['group_form'] = OrderItemsGroupForm(order=self.object)
         context['status'] = "asdas"
+        context['saved_specifications'] = GroupSpecification.objects.all().select_related(
+            'product', 'product__product_family__product_type', 'product__product_family',
+            'series', 'front', 'basic_color_frames', 'created_by'
+        ).prefetch_related('customizers__customizer')
         return context
+
+
+@login_required
+def order_reset_to_new(request, pk):
+    if not request.user.is_admin_user:
+        raise PermissionDenied("שינוי סטטוס הזמנה מותר למנהל מערכת בלבד.")
+
+    order = get_object_or_404(Order, pk=pk)
+    if order.status != OrderStatus.NEW:
+        old_status = order.status
+        order.status = OrderStatus.NEW
+        order.save()
+
+        OrderChangeLog.objects.create(
+            order=order,
+            user=request.user,
+            field_name='status',
+            old_value=old_status,
+            new_value=OrderStatus.NEW
+        )
+
+    return redirect('order-detail', pk=pk)
 
 
 class OrderMeasurementsView(LoginRequiredMixin, DetailView):
@@ -227,7 +260,7 @@ class OrderItemsGroupCustomizerViewSet(viewsets.ModelViewSet):
 @require_POST
 def update_item_measurements(request, pk):
     item = get_object_or_404(OrderItem, pk=pk)
-    if item.group.order.status == OrderStatus.IN_PRODUCTION and not request.user.is_admin_user:
+    if item.group.order.status != OrderStatus.NEW and not request.user.is_admin_user:
         raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
     # Fields that measurer can update
     fields = [
@@ -260,7 +293,7 @@ def update_item_measurements(request, pk):
 @require_POST
 def duplicate_item_measurements(request, pk):
     item = get_object_or_404(OrderItem, pk=pk)
-    if item.group.order.status == OrderStatus.IN_PRODUCTION and not request.user.is_admin_user:
+    if item.group.order.status != OrderStatus.NEW and not request.user.is_admin_user:
         raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
     group = item.group
 
@@ -284,3 +317,152 @@ def duplicate_item_measurements(request, pk):
         items_to_update.update(**update_data)
 
     return JsonResponse({'status': 'ok'})
+
+
+@login_required
+@require_POST
+def group_duplicate(request, pk):
+    group = get_object_or_404(OrderItemsGroup, pk=pk)
+    if group.order.status != OrderStatus.NEW and not request.user.is_admin_user:
+        raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
+
+    new_group = group.duplicate()
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or 'application/json' in request.headers.get(
+            'accept', ''):
+        return JsonResponse({
+            'status': 'ok',
+            'new_group_id': new_group.id,
+            'redirect_url': reverse('order-detail', kwargs={'pk': group.order.pk}),
+            'message': 'הקבוצה שוכפלה בהצלחה'
+        })
+    return redirect('order-detail', pk=group.order.pk)
+
+
+@login_required
+@require_POST
+def save_group_specification(request, pk):
+    group = get_object_or_404(OrderItemsGroup, pk=pk)
+    name = request.POST.get('name', '').strip()
+    description = request.POST.get('description', '').strip()
+
+    if not name and 'application/json' in request.content_type:
+        try:
+            import json
+            data = json.loads(request.body)
+            name = data.get('name', '').strip()
+            description = data.get('description', '').strip()
+        except Exception:
+            pass
+
+    if not name:
+        return JsonResponse({'status': 'error', 'message': 'נא להזין שם למפרט'}, status=400)
+
+    spec = GroupSpecification.create_from_group(
+        group=group,
+        name=name,
+        description=description,
+        user=request.user,
+    )
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or 'application/json' in request.headers.get(
+            'accept', ''):
+        return JsonResponse({
+            'status': 'ok',
+            'spec_id': spec.id,
+            'spec_name': spec.name,
+            'message': 'המפרט נשמר בהצלחה'
+        })
+    return redirect('order-detail', pk=group.order.pk)
+
+
+@login_required
+@require_POST
+def apply_group_specification(request, pk, spec_pk):
+    group = get_object_or_404(OrderItemsGroup, pk=pk)
+    if group.order.status != OrderStatus.NEW and not request.user.is_admin_user:
+        raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
+
+    spec = get_object_or_404(GroupSpecification, pk=spec_pk)
+    update_qty = request.POST.get('update_quantity') in ['true', '1', 'on', True]
+    new_qty = None
+    if update_qty and request.POST.get('quantity'):
+        try:
+            new_qty = int(request.POST.get('quantity'))
+        except (ValueError, TypeError):
+            new_qty = None
+
+    spec.apply_to_group(group, update_quantity=update_qty, new_quantity=new_qty)
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or 'application/json' in request.headers.get(
+            'accept', ''):
+        return JsonResponse({
+            'status': 'ok',
+            'group_id': group.id,
+            'redirect_url': reverse('order-detail', kwargs={'pk': group.order.pk}),
+            'message': 'המפרט הוחל על הקבוצה בהצלחה'
+        })
+    return redirect('order-detail', pk=group.order.pk)
+
+
+@login_required
+@require_POST
+def create_group_from_specification(request, order_pk, spec_pk):
+    order = get_object_or_404(Order, pk=order_pk)
+    if order.status != OrderStatus.NEW and not request.user.is_admin_user:
+        raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
+
+    spec = get_object_or_404(GroupSpecification, pk=spec_pk)
+    qty = None
+    if request.POST.get('quantity'):
+        try:
+            qty = int(request.POST.get('quantity'))
+        except (ValueError, TypeError):
+            qty = None
+
+    new_group = spec.create_order_group(order, quantity=qty)
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or 'application/json' in request.headers.get(
+            'accept', ''):
+        return JsonResponse({
+            'status': 'ok',
+            'new_group_id': new_group.id,
+            'redirect_url': reverse('order-detail', kwargs={'pk': order.pk}),
+            'message': 'הקבוצה נוספה בהצלחה מתוך המפרט'
+        })
+    return redirect('order-detail', pk=order.pk)
+
+
+@login_required
+@require_POST
+def delete_group_specification(request, pk):
+    spec = get_object_or_404(GroupSpecification, pk=pk)
+    spec.delete()
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or 'application/json' in request.headers.get(
+            'accept', ''):
+        return JsonResponse({'status': 'ok', 'message': 'המפרט נמחק בהצלחה'})
+    return redirect(request.META.get('HTTP_REFERER', '/'))
+
+
+class GroupSpecificationViewSet(viewsets.ModelViewSet):
+    queryset = GroupSpecification.objects.all().select_related(
+        'product', 'product__product_family__product_type', 'product__product_family',
+        'series', 'front', 'basic_color_frames', 'created_by'
+    ).prefetch_related('customizers__customizer')
+    serializer_class = GroupSpecificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        q = self.request.query_params.get('q')
+        if q:
+            queryset = queryset.filter(
+                Q(name__icontains=q) |
+                Q(description__icontains=q) |
+                Q(product__name__icontains=q) |
+                Q(series__name__icontains=q)
+            )
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)

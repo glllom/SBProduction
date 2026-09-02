@@ -1,0 +1,61 @@
+; ---------------------------------------------------------------------------
+;#WRKINFO{Version="1.1.2", Date="15/05/2017"}
+;NOME : STD_CUT
+;DESCRIZIONE : Cut operation
+;TIPO : 1
+;DIMENSIONI : 1 1 1
+; ---------------------------------------------------------------------------
+; Creates a cut with blade 
+; 
+; 
+; ---------------------------------------------------------------------------
+PARAM L1 = 0        "Rotation Angle Along X"
+PARAM L2 = 0        "Rotation Angle Along Z"
+PARAM L3 = 0        "Plane Normal Rotation Angle"
+PARAM L4 = 1        "Cut Lenght"
+PARAM L5 = 1        "Leadin Type"
+PARAM L6 = 4        "Leadin Length"
+PARAM L7 = 1        "Leadout Type"
+PARAM L8 = 4        "Leadout Length"
+PARAM L9 = 0        "0=Lower Sharp, 1=Upper Sharp"
+PARAM L10 = 0       "X Offset"
+PARAM L11 = 0       "Y Offset"
+PARAM L12 = 0       "Z Offset"
+PARAM L13 = 0       "Shoulder position -1=L 0=D 1=R"
+PARAM L14 = -1		"Probing correction index"
+; ---------------------------------------------------------------------------
+
+L21 = L3; N (rotation with respect to cutting face normal)
+L22 = L1; A (rotation with respect to X axis: A spindle axis)
+L23 = L2; C (rotation with respect to Z axis: C spindle axis)
+
+; Relative translations
+L25 = L10                               ; Xr relative to cutting plane
+L26 = L11                               ; Yr relative to cutting plane
+L27 = L12 - L9 * GETTOOL(L86, 6)        ; Zr relative to cutting plane = Z_Offset - s (s = Blade thickness)
+
+;[Xr Yr Zr] [ cos(n) -sin(n)  0]
+;           [ sin(n)  cos(n)  0]
+;           [ 0        0      1]
+
+L31 =  COS(L21) * L25 + SIN(L21) * L26 + 0 * L27
+L32 = -SIN(L21) * L25 + COS(L21) * L26 + 0 * L27
+L33 =     0     * L25 +    0     * L26 + 1 * L27
+
+;[L31 L32 L33] [ 1    0       0   ]
+;              [ 0  cos(a) -sin(a)]
+;              [ 0  sin(a)  cos(a)]
+
+L41= 1 * L31 +    0     * L32 +    0     * L33
+L42= 0 * L31 + COS(L22) * L32 + SIN(L22) * L33
+L43= 0 * L31 - SIN(L22) * L32 + COS(L22) * L33
+
+;[L41 L42 L43] [  cos(c) -sin(c)  0]
+;              [  sin(c)  cos(c)  0]
+;              [    0       0     1]
+
+L51=  COS(L23) * L41 + SIN(L23) * L42 + 0 * L43
+L52= -SIN(L23) * L41 + COS(L23) * L42 + 0 * L43
+L53=     0     * L41 +    0     * L42 + 1 * L43
+
+G411 X(L90+L51) Y(L91+L52) Z(L92+L53) A(L1) C(L2) N(L3) W(L4) T(L86) D(L5) Q(L7) E(L6) H(L8) U(L13) L(L14)

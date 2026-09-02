@@ -1,16 +1,22 @@
 import io
 import math
+import os
+import shutil
 import zipfile
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
+from django.conf import settings
 from django.db import models
+from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 
 from apps.orders.models import OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
-from .models import LockStandardHeight, HingeStandardHeight, BOM
-from django.db import transaction
+from .models import (
+    LockStandardHeight, HingeStandardHeight, BOM, 
+    ProductionStation, ProductionRoute, CustomizerProductionStation
+)
 
 
 class ValidationType(models.TextChoices):
@@ -64,6 +70,7 @@ class OrderValidationService:
         """
         בדיקה חלקית (שלב א - משקופים בהתקנה מפוצלת).
         """
+
         errors = cls._run_validation(order, is_full=False)
         return ValidationResult(
             is_valid=(len(errors) == 0),
@@ -89,20 +96,36 @@ class OrderValidationService:
         בדיקה מתאימה לפני העברת ההזמנה לייצור.
         """
         has_split = getattr(order, 'has_split_installation', False)
-        if phase == 'PHASE1' or (
-                has_split and getattr(order, 'status', None) in [OrderStatus.DRAFT, OrderStatus.MEASUREMENT]):
+        if phase == str(order.status).upper() == 'PHASE1_PRODUCTION' or (
+                has_split and getattr(order, 'status', None) == OrderStatus.NEW):
             return cls.validate_partial(order)
         return cls.validate_full(order)
 
     @classmethod
-    def validate_for_report(cls, order, report_type: str) -> ValidationResult:
+    def validate_for_report(cls, order, report_type: str = None, station=None) -> ValidationResult:
         """
         בדיקה מתאימה לפני הפקת דו"ח טכני.
         עבור דו"ח משקופים שלב א (PHASE1_FRAMES) - בדיקה חלקית.
         עבור שאר הדו"חות (דלתות, פרס, משקופים מלא, ייצור מלא) - בדיקה מלאה.
         """
-        if str(report_type).upper() == 'PHASE1_FRAMES' or report_type == ProductionDataService.ReportType.PHASE1_FRAMES:
+        if station and not station.has_specification:
+             # Если станция не требует спецификации, но мы почему-то тут, делаем полную
+             return cls.validate_full(order)
+
+        p1_values = [
+            'PHASE1_PRODUCTION',
+            'PHASE1_FRAMES',
+            str(ProductionDataService.ReportType.PHASE1_FRAMES)
+        ]
+        
+        # Если передан код станции, проверяем не является ли она станцией "משקופים שלב א"
+        # Для простоты пока считаем, что если report_type или код станции содержит PHASE1, то PARTIAL
+        r_type_str = str(report_type).upper() if report_type else ""
+        s_code_str = station.code.upper() if station else ""
+        
+        if r_type_str in p1_values or 'PHASE1' in s_code_str:
             return cls.validate_partial(order)
+            
         return cls.validate_full(order)
 
     @classmethod
@@ -111,7 +134,8 @@ class OrderValidationService:
         בדיקה מתאימה לפני הפקת קובצי ייצור (ZIP).
         """
         has_split = getattr(order, 'has_split_installation', False)
-        if has_split and getattr(order, 'status', None) == OrderStatus.PHASE1_PRODUCTION:
+        print(order.status)
+        if has_split and getattr(order, 'status', None) == OrderStatus.IN_PRODUCTION_PHASE1:
             return cls.validate_partial(order)
         return cls.validate_full(order)
 
@@ -126,7 +150,7 @@ class OrderValidationService:
 
         groups = list(order.groups.all())
         if not groups:
-            errors.append("אין מוצרים בהזמנה")
+            errors.append("אין קבוצות מוצרים בהזמנה")
             return errors
 
         has_any_doors = False
@@ -144,12 +168,13 @@ class OrderValidationService:
             if not effective_series:
                 errors.append(f"{group_label}: לא נבחרה סדרה")
 
+            # 2. חזית / גימור (Front)
+            effective_front = group.front or getattr(order, 'front', None)
+            if not effective_front:
+                errors.append(f"{group_label}: לא נבחרה חזית / גימור")
+
             # 3. צבעי צביעה בבדיקה מלאה (אם נבחר גוון מיוחד)
             if is_full:
-                effective_front = group.front or getattr(order, 'front', None)
-                if not effective_front:
-                    errors.append(f"{group_label}: לא נבחרה חזית / גימור")
-
                 if group.panel_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
                     if not group.color_panels and not getattr(order, 'color_panels', None):
                         errors.append(f"{group_label}: נבחר גוון מיוחד לפנל אך לא הוגדר צבע פנלים")
@@ -630,11 +655,11 @@ class BOMCalculator:
 
 class ProductionDataService:
     class ReportType(models.TextChoices):
-        PHASE1_FRAMES = 'PHASE1_FRAMES', 'משקופים שלב א'
+        PHASE1_FRAMES = 'PHASE1_PRODUCTION', 'משקופים שלב א'
         PHASE2_DOORS = 'PHASE2_DOORS', 'דלתות שלב ב'
         PHASE2_PRESS = 'PHASE2_PRESS', 'פרס'
         PHASE2_FRAMES = 'PHASE2_FRAMES', 'משקופים'
-        FULL_PRODUCTION = 'FULL_PRODUCTION', 'דו"ח ייצור מלא'
+        IN_PRODUCTION = 'IN_PRODUCTION', 'דו"ח ייצור מלא'
 
     def __init__(self, order):
         self.order = order
@@ -651,7 +676,7 @@ class ProductionDataService:
         has_split = getattr(self.order, 'has_split_installation', False)
 
         with zipfile.ZipFile(buffer, 'w') as zip_file:
-            if has_split and self.order.status == OrderStatus.PHASE1_PRODUCTION:
+            if has_split and self.order.status == OrderStatus.IN_PRODUCTION_PHASE1:
                 # Only Phase 1 report
                 report_content = self.generate_report_html(self.ReportType.PHASE1_FRAMES, validate=False)
                 zip_file.writestr(f"Order_{self.order.order_number}_PhaseA_Frames.html", report_content)
@@ -661,7 +686,7 @@ class ProductionDataService:
                     report_content = self.generate_report_html(rt, validate=False)
                     zip_file.writestr(f"Order_{self.order.order_number}_{rt.name}.html", report_content)
             else:
-                # DRAFT etc - just full report if any
+                # NEW etc - just full report if any
                 report_content = self.generate_report_html(self.ReportType.FULL_PRODUCTION, validate=False)
                 zip_file.writestr(f"Order_{self.order.order_number}_Full.html", report_content)
 
@@ -673,7 +698,7 @@ class ProductionDataService:
 
     def _add_cnc_files_to_zip(self, zip_file):
         """Internal helper to add CNC files to the zip buffer"""
-        is_phase_a = self.order.status == OrderStatus.PHASE1_PRODUCTION
+        is_phase_a = self.order.status == OrderStatus.IN_PRODUCTION_PHASE1
         order_data = self._get_order_data()  # Gets all for CNC
 
         for group_data in order_data:
@@ -685,58 +710,146 @@ class ProductionDataService:
 
     def generate_cnc_files(self):
         """
-        Standalone method to generate CNC files.
-        מבצע וולידציה לפני יצירת הקבצים.
+        Standalone method to generate CNC files on the server filesystem.
+        Создает структуру папок cnc_files/mecal/<order_number>/ и наполняет её XML файлами.
         """
         val_res = OrderValidationService.validate_for_zip(self.order)
         val_res.raise_if_invalid()
-        print(f"Generating CNC XML files for Order {self.order.order_number}")
+
+        # Пути
+        cnc_root = os.path.join(settings.BASE_DIR, 'cnc_files')
+        mecal_dir = os.path.join(cnc_root, 'mecal')
+        order_dir = os.path.join(mecal_dir, str(self.order.order_number))
+
+        # Создаем базовые директории
+        os.makedirs(mecal_dir, exist_ok=True)
+
+        # Очищаем папку заказа, если она есть
+        if os.path.exists(order_dir):
+            shutil.rmtree(order_dir)
+        os.makedirs(order_dir)
+
+        # Создаем основные поддиректории
+        frames_root = os.path.join(order_dir, 'frames')
+        doors_root = os.path.join(order_dir, 'doors')
+        os.makedirs(frames_root)
+        os.makedirs(doors_root)
+
+        # Проходим по всем группам и элементам заказа
+        for group in self.order.groups.all():
+            product_type = None
+            if group.product and group.product.product_family and group.product.product_family.product_type:
+                product_type = group.product.product_family.product_type
+
+            has_frame = product_type.has_frame if product_type else True
+            has_door = product_type.has_door if product_type else True
+
+            for item in group.items.all():
+                mark = item.mark or str(item.id)
+
+                if has_frame:
+                    item_frame_dir = os.path.join(frames_root, f"frame_{mark}")
+                    os.makedirs(item_frame_dir, exist_ok=True)
+                    self._write_xml_files(item_frame_dir, item, "frame")
+
+                if has_door:
+                    item_door_dir = os.path.join(doors_root, f"door_{mark}")
+                    os.makedirs(item_door_dir, exist_ok=True)
+                    self._write_xml_files(item_door_dir, item, "door")
+
+    def _write_xml_files(self, target_dir, item, item_type):
+        """
+        Вспомогательный метод для записи XML файлов в указанную директорию.
+        Сделан для будущего расширения логики генерации XML.
+        """
+        # Генерация hinges.xml
+        hinges_content = self._generate_hinges_xml(item, item_type)
+        with open(os.path.join(target_dir, 'hinges.xml'), 'w', encoding='utf-8') as f:
+            f.write(hinges_content)
+
+        # Генерация lock.xml
+        lock_content = self._generate_lock_xml(item, item_type)
+        with open(os.path.join(target_dir, 'lock.xml'), 'w', encoding='utf-8') as f:
+            f.write(lock_content)
+
+    def _generate_hinges_xml(self, item, item_type):
+        """
+        Генерирует содержимое для hinges.xml.
+        Пока заглушка, в будущем здесь будут правила.
+        """
+        return '<?xml version="1.0" encoding="UTF-8"?>\n<hinges>\n  <status>placeholder</status>\n</hinges>'
+
+    def _generate_lock_xml(self, item, item_type):
+        """
+        Генерирует содержимое для lock.xml.
+        Пока заглушка, в будущем здесь будут правила.
+        """
+        return '<?xml version="1.0" encoding="UTF-8"?>\n<lock>\n  <status>placeholder</status>\n</lock>'
 
     def change_material(self):
         for group in self.order.groups.all():
             print(group.basic_color_frames)
 
-    def generate_report_html(self, report_type=ReportType.FULL_PRODUCTION, validate=True):
+    def generate_report_html(self, report_type=None, station_code=None, validate=True):
         """
         יוצר קובץ HTML עבור הדו"ח הטכני המבוקש.
         מבצע וולידציה לפני היצירה (אלא אם צוין validate=False).
         """
+        station = None
+        if station_code:
+            station = ProductionStation.objects.filter(code=station_code).first()
+
+        # Normalize report_type if it's a string name of the member
+        if report_type and isinstance(report_type, str) and report_type not in self.ReportType.values:
+            try:
+                report_type = self.ReportType[report_type.upper()].value
+            except (KeyError, AttributeError):
+                pass
+
         if validate:
-            val_res = OrderValidationService.validate_for_report(self.order, report_type)
+            val_res = OrderValidationService.validate_for_report(self.order, report_type, station=station)
             val_res.raise_if_invalid()
 
-        # self.change_material()
+        if station:
+            label = station.label or station.name
+            template = station.template_name or 'production/alum_frames_report.html'
+        else:
+            label = self.ReportType(report_type).label
+            template = 'production/alum_frames_report.html'
 
-        label = self.ReportType(report_type).label
-
-        # Adjust label if no split installation in the whole order
-        if not getattr(self.order, 'has_split_installation', False):
-            if report_type == self.ReportType.PHASE2_DOORS:
-                label = 'דלתות'
+            # Adjust label if no split installation in the whole order
+            if not getattr(self.order, 'has_split_installation', False):
+                if report_type == self.ReportType.PHASE2_DOORS:
+                    label = 'דלתות'
 
         context = {
             'order': self.order,
             'report_type': report_type,
+            'station': station,
             'report_label': label,
-            'groups_data': self._get_order_data(report_type),
+            'groups_data': self._get_order_data(report_type, station=station),
             'now': timezone.now(),
         }
-        return render_to_string('production/alum_frames_report.html', context)
+        return render_to_string(template, context)
 
-    def _get_order_data(self, report_type=None):
+    def _get_order_data(self, report_type=None, station=None):
         # 1. Collect all specs
         all_specs = []
         for group in self.order.groups.all():
             is_split = group.is_split_installation
-            frame_paint_option = group.frame_paint_option
             product_type = None
             if group.product and group.product.product_family and group.product.product_family.product_type:
                 product_type = group.product.product_family.product_type
             has_frame = product_type.has_frame if product_type else True
             has_door = product_type.has_door if product_type else True
 
-            # Filter based on report type
-            if report_type == self.ReportType.PHASE1_FRAMES:
+            # Filter based on report type OR station
+            if station:
+                # Check if station is in group's route (including customizers)
+                group_stations = ProductionRoute.get_stations_for_group(group)
+                if station not in group_stations:
+                    continue
+            elif report_type == self.ReportType.PHASE1_FRAMES:
                 if not is_split or not has_frame:
                     continue
             elif report_type == self.ReportType.PHASE2_DOORS:
@@ -854,7 +967,7 @@ class OrderProductionService:
         """
         if validation_type:
             res = OrderValidationService.validate(order, validation_type)
-        elif order.has_split_installation and order.status in [OrderStatus.DRAFT, OrderStatus.MEASUREMENT]:
+        elif order.has_split_installation and order.status == OrderStatus.NEW:
             res = OrderValidationService.validate_partial(order)
         else:
             res = OrderValidationService.validate_full(order)
@@ -865,19 +978,25 @@ class OrderProductionService:
         """
         Переводит заказ в производство. Обрабатывает этапы при раздельной установке.
         """
-        # 1. Полная валидация перед производством
-        val_res = OrderValidationService.validate_full(order)
+        # 1. Валидация перед производством (частичная или полная в зависимости от статуса и has_split_installation)
+        has_split = order.has_split_installation
+        if order.status == OrderStatus.PHASE1_READY:
+            val_res = OrderValidationService.validate_full(order)
+        elif has_split:
+            val_res = OrderValidationService.validate_partial(order)
+        else:
+            val_res = OrderValidationService.validate_full(order)
+            
         val_res.raise_if_invalid()
 
         old_status = order.status
-        has_split = order.groups.filter(is_split_installation=True).exists()
 
         with transaction.atomic():
             if order.status == OrderStatus.PHASE1_READY:
                 # Переход из "Фаза 1 готова" в полный цикл производства
                 order.status = OrderStatus.IN_PRODUCTION
             elif has_split:
-                order.status = OrderStatus.PHASE1_PRODUCTION
+                order.status = OrderStatus.IN_PRODUCTION_PHASE1
             else:
                 order.status = OrderStatus.IN_PRODUCTION
 
@@ -886,6 +1005,28 @@ class OrderProductionService:
             # Генерация CNC файлов
             service = ProductionDataService(order)
             service.generate_cnc_files()
+
+            OrderChangeLog.objects.create(
+                order=order,
+                user=user,
+                field_name='status',
+                old_value=old_status,
+                new_value=order.status
+            )
+        return order
+
+    @staticmethod
+    def complete_phase1(order, user=None):
+        """
+        Завершает первый этап производства и переводит заказ в статус PHASE1_READY.
+        """
+        if order.status != OrderStatus.IN_PRODUCTION_PHASE1:
+            raise ValueError("Завершение этапа А возможно только для заказов в статусе 'ייצור שלב א'")
+
+        old_status = order.status
+        with transaction.atomic():
+            order.status = OrderStatus.PHASE1_READY
+            order.save()
 
             OrderChangeLog.objects.create(
                 order=order,
@@ -907,7 +1048,7 @@ class OrderProductionService:
 
         old_status = order.status
         with transaction.atomic():
-            order.status = OrderStatus.PHASE1_PRODUCTION
+            order.status = OrderStatus.IN_PRODUCTION_PHASE1
             order.save()
 
             # Генерация CNC файлов

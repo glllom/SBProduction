@@ -8,10 +8,9 @@ from apps.catalog.models import ProductModel, Front
 
 
 class OrderStatus(models.TextChoices):
-    DRAFT = 'DRAFT', 'טיוטה'
-    MEASUREMENT = 'MEASUREMENT', 'ממתין למדידה'
+    NEW = 'NEW', 'חדש'
     IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
-    PHASE1_PRODUCTION = 'PHASE1_PRODUCTION', 'ייצור שלב א (משקופים)'
+    IN_PRODUCTION_PHASE1 = 'PHASE1_PRODUCTION', 'ייצור שלב א (משקופים)'
     PHASE1_READY = 'PHASE1_READY', 'שלב א מוכן (ממתין להמשך)'
     READY = 'READY', 'מוכן למשלוח'
     COMPLETED = 'COMPLETED', 'הושלם'
@@ -51,7 +50,7 @@ class Order(models.Model):
     status = models.CharField(
         max_length=20,
         choices=OrderStatus.choices,
-        default=OrderStatus.DRAFT,
+        default=OrderStatus.NEW,
         db_index=True,
         verbose_name="סטטוס",
     )
@@ -135,6 +134,27 @@ class Order(models.Model):
     @property
     def has_split_installation(self):
         return self.groups.filter(is_split_installation=True).exists()
+
+    def get_production_stations(self):
+        """
+        Returns all unique production stations for all items in this order,
+        considering their routes and customizers.
+        """
+        from apps.production.models import ProductionRoute
+        all_stations = []
+        seen_ids = set()
+
+        # Prefetch groups and their customizers for efficiency
+        groups = self.groups.all().prefetch_related('customizers__customizer', 'product__product_family__product_type')
+
+        for group in groups:
+            group_stations = ProductionRoute.get_stations_for_group(group)
+            for s in group_stations:
+                if s.id not in seen_ids:
+                    all_stations.append(s)
+                    seen_ids.add(s.id)
+
+        return all_stations
 
     @property
     def available_frames(self):
@@ -361,7 +381,37 @@ class OrderItemsGroup(models.Model):
         from apps.production.services import OrderProductionService
         OrderProductionService.recalculate_item_marks(order)
 
-
+    def duplicate(self):
+        """
+        Создает дубликат текущей группы для того же заказа.
+        Копирует параметры группы и ее кастомайзеры.
+        Двери (OrderItem) создаются пустыми через стандартный OrderItemsGroup.save().
+        """
+        with transaction.atomic():
+            new_group = OrderItemsGroup.objects.create(
+                order=self.order,
+                quantity=self.quantity,
+                product=self.product,
+                series=self.series,
+                front=self.front,
+                basic_color_frames=self.basic_color_frames,
+                panel_paint_option=self.panel_paint_option,
+                color_panels=self.color_panels,
+                frame_paint_option=self.frame_paint_option,
+                color_frames=self.color_frames,
+                is_split_installation=self.is_split_installation,
+                comments=self.comments,
+            )
+            for cust in self.customizers.all():
+                OrderItemsGroupCustomizer.objects.create(
+                    group=new_group,
+                    customizer=cust.customizer,
+                    par1=cust.par1,
+                    par2=cust.par2,
+                    par3=cust.par3,
+                    par4=cust.par4
+                )
+            return new_group
 
 
 class OrderItemsGroupCustomizer(models.Model):
@@ -550,3 +600,217 @@ class OrderItem(models.Model):
                 truncated = math.floor(f_val * 10) / 10.0
                 setattr(self, field, truncated)
         super().save(*args, **kwargs)
+
+
+# ==========================================
+# 4. GROUP SPECIFICATION (PRESET / TEMPLATE)
+# ==========================================
+
+class GroupSpecification(models.Model):
+    name = models.CharField(
+        max_length=255,
+        verbose_name="שם המפרט",
+        help_text="שם מזהה למפרט השמור (למשל: דלתות קומה טיפוסית)",
+    )
+    description = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="תיאור",
+    )
+    product = models.ForeignKey(
+        "catalog.ProductModel",
+        on_delete=models.PROTECT,
+        related_name="saved_specifications",
+        verbose_name="דגם מוצר",
+    )
+    series = models.ForeignKey(
+        'catalog.Series',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="סדרה",
+    )
+    front = models.ForeignKey(
+        'catalog.Front',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="חזית / גימור",
+    )
+    basic_color_frames = models.ForeignKey(
+        'catalog.Material',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקוף בסיסי",
+    )
+    panel_paint_option = models.CharField(
+        max_length=20,
+        choices=OrderItemsGroup.PaintOption.choices,
+        default=OrderItemsGroup.PaintOption.MAIN_COLOR,
+        verbose_name="אופציית צביעת פנל",
+    )
+    color_panels = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע פנלים (כנף)",
+    )
+    frame_paint_option = models.CharField(
+        max_length=20,
+        choices=OrderItemsGroup.PaintOption.choices,
+        default=OrderItemsGroup.PaintOption.NO_PAINT,
+        verbose_name="אופציית צביעת משקוף",
+    )
+    color_frames = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקופים",
+    )
+    is_split_installation = models.BooleanField(
+        default=False,
+        verbose_name="התקנה מפוצלת",
+    )
+    quantity = models.PositiveIntegerField(
+        default=1,
+        verbose_name="כמות דלתות ברירת מחדל",
+    )
+    comments = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="הערות",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="נוצר במערכת",
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="נוצר ע\"י",
+    )
+
+    class Meta:
+        db_table = "group_specifications"
+        verbose_name = "מפרט קבוצה שמור"
+        verbose_name_plural = "מפרטי קבוצות שמורים"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.product.name})"
+
+    @classmethod
+    def create_from_group(cls, group, name, description='', user=None):
+        with transaction.atomic():
+            spec = cls.objects.create(
+                name=name,
+                description=description,
+                product=group.product,
+                series=group.series,
+                front=group.front,
+                basic_color_frames=group.basic_color_frames,
+                panel_paint_option=group.panel_paint_option,
+                color_panels=group.color_panels,
+                frame_paint_option=group.frame_paint_option,
+                color_frames=group.color_frames,
+                is_split_installation=group.is_split_installation,
+                quantity=group.quantity,
+                comments=group.comments,
+                created_by=user if user and user.is_authenticated else None,
+            )
+            for cust in group.customizers.all():
+                GroupSpecificationCustomizer.objects.create(
+                    specification=spec,
+                    customizer=cust.customizer,
+                    par1=cust.par1,
+                    par2=cust.par2,
+                    par3=cust.par3,
+                    par4=cust.par4,
+                )
+            return spec
+
+    def apply_to_group(self, group, update_quantity=False, new_quantity=None):
+        with transaction.atomic():
+            group.product = self.product
+            group.series = self.series
+            group.front = self.front
+            group.basic_color_frames = self.basic_color_frames
+            group.panel_paint_option = self.panel_paint_option
+            group.color_panels = self.color_panels
+            group.frame_paint_option = self.frame_paint_option
+            group.color_frames = self.color_frames
+            group.is_split_installation = self.is_split_installation
+            if self.comments:
+                group.comments = self.comments
+            if update_quantity and new_quantity:
+                group.quantity = new_quantity
+            group.save()
+
+            group.customizers.all().delete()
+            for cust in self.customizers.all():
+                OrderItemsGroupCustomizer.objects.create(
+                    group=group,
+                    customizer=cust.customizer,
+                    par1=cust.par1,
+                    par2=cust.par2,
+                    par3=cust.par3,
+                    par4=cust.par4,
+                )
+            return group
+
+    def create_order_group(self, order, quantity=None):
+        with transaction.atomic():
+            qty = quantity if (quantity is not None and quantity > 0) else self.quantity
+            new_group = OrderItemsGroup.objects.create(
+                order=order,
+                quantity=qty,
+                product=self.product,
+                series=self.series,
+                front=self.front,
+                basic_color_frames=self.basic_color_frames,
+                panel_paint_option=self.panel_paint_option,
+                color_panels=self.color_panels,
+                frame_paint_option=self.frame_paint_option,
+                color_frames=self.color_frames,
+                is_split_installation=self.is_split_installation,
+                comments=self.comments,
+            )
+            for cust in self.customizers.all():
+                OrderItemsGroupCustomizer.objects.create(
+                    group=new_group,
+                    customizer=cust.customizer,
+                    par1=cust.par1,
+                    par2=cust.par2,
+                    par3=cust.par3,
+                    par4=cust.par4,
+                )
+            return new_group
+
+
+class GroupSpecificationCustomizer(models.Model):
+    specification = models.ForeignKey(
+        GroupSpecification,
+        on_delete=models.CASCADE,
+        related_name="customizers",
+        verbose_name="מפרט",
+    )
+    customizer = models.ForeignKey(
+        'catalog.Customizer',
+        on_delete=models.CASCADE,
+        verbose_name="קסטומייזר",
+    )
+    par1 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 1")
+    par2 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 2")
+    par3 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 3")
+    par4 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 4")
+
+    class Meta:
+        db_table = "group_specification_customizers"
+        verbose_name = "קסטומייזר למפרט"
+        verbose_name_plural = "קסטומייזרים למפרט"
+
+    def __str__(self):
+        return f"{self.specification.name} - {self.customizer.name}"

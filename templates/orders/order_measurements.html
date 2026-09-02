@@ -1,133 +1,167 @@
 {% extends "base.html" %}
-
 {% block page_title %}טופס מידות: {{ order.order_number }}{% endblock %}
 {% block navbar_extra %}
-    <span class=" mx-3 fw-bold">{{ order.customer }}</span>
-    <a href="{% url 'order-detail' order.pk %}" class="btn btn-sm btn-outline-primary ms-3 no-print" data-bs-toggle="tooltip" title="חזרה לדף ניהול ההזמנה">
+    <span class="mx-3 fw-bold">{{ order.customer }}</span>
+    <a href="{% url 'order-detail' order.pk %}"
+       class="btn btn-sm btn-outline-primary ms-3 no-print"
+       data-bs-toggle="tooltip"
+       title="חזרה לדף ניהול ההזמנה">
         <i class="bi bi-arrow-right me-1"></i> חזרה להזמנה
     </a>
 {% endblock %}
-
 {% block content %}
-<div class="container mt-3" dir="rtl">
-    <div class="print-header d-none d-print-block mb-4">
-        <h2 class="h3 fw-bold">טופס מידות: {{ order.order_number }}</h2>
-        <p class="mb-0">לקוח: {{ order.customer }}</p>
-        <hr>
-    </div>
-
-    {% for group in order.groups.all %}
-    <div class="card mb-4 border-excel shadow-none">
-        <div class="card-header bg-light border-bottom py-2 d-flex justify-content-between align-items-center">
-            <div>
-                <h5 class="mb-0 fw-bold text-dark d-inline" data-bs-toggle="tooltip" title="{{ group.product.description|default:group.product.name }}">{{ group.product.name }}</h5>
-                <span class="text-muted small ms-2">
-                    {% for gc in group.customizers.all %}
-                        <span class="badge bg-white text-dark border me-1" data-bs-toggle="tooltip" title="{{ gc.customizer.description|default:gc.customizer.name }}">
-                            {{ gc.customizer.name }}{% if gc.customizer.par1_value %}: {{ gc.customizer.par1_value}}{% endif %}
+    <div class="container mt-3" dir="rtl">
+        <div class="print-header d-none d-print-block mb-4">
+            <h2 class="h3 fw-bold">טופס מידות: {{ order.order_number }}</h2>
+            <p class="mb-0">לקוח: {{ order.customer }}</p>
+            <hr>
+        </div>
+        {% for group in order.groups.all %}
+            <div class="card mb-4 border-excel shadow-none">
+                <div class="card-header bg-light border-bottom py-2 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0 fw-bold text-dark d-inline"
+                            data-bs-toggle="tooltip"
+                            title="{{ group.product.description|default:group.product.name }}">{{ group.product.name }}</h5>
+                        <span class="text-muted small ms-2">
+                            {% for gc in group.customizers.all %}
+                                <span class="badge bg-white text-dark border me-1"
+                                      data-bs-toggle="tooltip"
+                                      title="{{ gc.customizer.description|default:gc.customizer.name }}">
+                                    {{ gc.customizer.name }}{% if gc.customizer.par1_value %}: {{ gc.customizer.par1_value }}{% endif %}
+                                </span>
+                            {% endfor %}
                         </span>
-                    {% endfor %}
-                </span>
-            </div>
-            {% if forloop.first %}
-            <div class="no-print">
-                <button class="btn btn-sm btn-light border" onclick="exportToExcel()" data-bs-toggle="tooltip" title="ייצוא כל טבלאות המידות לקובץ Excel / CSV">
-                    <i class="bi bi-download"></i>
-                </button>
-                <button class="btn btn-sm btn-light border" onclick="window.print()" data-bs-toggle="tooltip" title="הדפסת טופס מידות">
-                    <i class="bi bi-printer"></i>
-                </button>
-            </div>
-            {% endif %}
-        </div>
-        <div class="table-responsive">
-            <table class="table table-bordered mb-0 align-middle text-center excel-table">
-                <thead class="table-secondary small">
-                    <tr>
-                        <th style="width: 40px;" data-bs-toggle="tooltip" title="מספר סידורי של הפריט (Mark)">#</th>
-                        <th style="width: 8%;" data-bs-toggle="tooltip" title="מיקום ההתקנה (חדר, קומה, דירה)">מיקום</th>
-                        <th style="width: 6%;" data-bs-toggle="tooltip" title="רוחב פתח אור / כנף במילימטרים">רוחב</th>
-                        <th style="width: 7%;" data-bs-toggle="tooltip" title="גובה פתח אור / כנף במילימטרים">גובה</th>
-                        <th style="width: 6%;" data-bs-toggle="tooltip" title="עובי קיר עבור המשקוף במילימטרים">משקוף</th>
-                        <th style="width: 10%;" data-bs-toggle="tooltip" title="יד פתיחה וכיוון (L/R פנימה/החוצה)">פתיחה</th>
-                        <th style="width: 6%;" data-bs-toggle="tooltip" title="חיתוך תחתון נוסף במילימטרים">רווח נוסף</th>
-                        <th data-bs-toggle="tooltip" title="הערות מיוחדות לפריט">הערה</th>
-                        <th class="no-print" style="width: 160px;" data-bs-toggle="tooltip" title="פעולות ועריכה">פעולות</th>
-                    </tr>
-                </thead>
-                <tbody id="group-body-{{ group.id }}">
-                    {% for item in group.items.all %}
-                    <tr id="row-{{ item.id }}" class="item-row clickable-row" data-item-id="{{ item.id }}" 
-                        data-mark="{{ item.mark|default:'' }}" 
-                        data-height="{{ item.h_fmt }}" 
-                        data-width="{{ item.w_fmt }}" 
-                        data-wall="{{ item.wall_fmt }}" 
-                        data-opening="{{ item.opening|default:'' }}"
-                        data-direction="{{ item.direction|default:'' }}"
-                        data-place="{{ item.place|default:'' }}"
-                        data-addition-cut="{{ item.addition_cut|default:'' }}"
-                        data-comment="{{ item.comment|default:'' }}"
-                        data-custom-lock-height="{{ item.custom_lock_height|default:'' }}"
-                        data-custom-hinge1="{{ item.custom_hinge1|default:'' }}"
-                        data-custom-hinge2="{{ item.custom_hinge2|default:'' }}"
-                        data-custom-hinge3="{{ item.custom_hinge3|default:'' }}"
-                        data-custom-hinge4="{{ item.custom_hinge4|default:'' }}"
-                        data-custom-hinge5="{{ item.custom_hinge5|default:'' }}"
-                        data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
-                        data-has-door="{{ group.product.product_family.product_type.has_door|yesno:'true,false' }}"
-                        data-has-frame="{{ group.product.product_family.product_type.has_frame|yesno:'true,false' }}"
-                        title="לחץ לעריכת מידות פריט {{ item.mark }}">
-                        
-                        <td class="fw-bold bg-light">{{ item.mark }}</td>
-                        <td class="field-place small text-start">{{ item.place|default:'' }}</td>
-                        <td class="field-width">{{ item.w_fmt }}</td>
-                        <td class="field-height">{{ item.h_fmt }}</td>
-                        <td class="field-wall">{{ item.wall_fmt }}</td>
-                        <td class="field-opening small">
-                            {% if item.opening or item.direction %}
-                                {{ item.get_direction_display|default:"" }} | {{ item.get_opening_display|default:"" }}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td class="field-addition-cut small">{{ item.addition_cut|default:'' }}</td>
-                        <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
-                        <td class="no-print text-nowrap">
-                            {% if order.sketch or item.sketch %}
-                                <a href="{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}" target="_blank" class="btn btn-sm btn-primary py-0" data-bs-toggle="tooltip" title="צפה בשרטוט עבור פריט זה">
-                                    <i class="bi bi-file-earmark-image"></i>
-                                </a>
-                            {% endif %}
-                            {% if order.status != 'IN_PRODUCTION' or user.is_admin_user %}
-                                <i class="bi bi-pencil-square opacity-50 ms-2" data-bs-toggle="tooltip" title="עריכת פריט"></i>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% if item.custom_lock_height or item.custom_hinge1 or item.custom_hinge2 or item.custom_hinge3 or item.custom_hinge4 or item.custom_hinge5 %}
-                    <tr id="display-custom-{{ item.id }}" class="custom-heights-display-row text-muted">
-                        <td></td>
-                        <td colspan="7" class="text-start">
-                            <span class="ps-4" dir="rtl">
-                                {% if item.custom_lock_height %}<span class="custom-label">מנעול:</span><span class="custom-value ms-1 me-3">{{ item.custom_lock_height }}</span>{% endif %}
-                                {% if item.custom_hinge1 %}<span class="custom-label" dir="rtl">ציר 1:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge1 }}</span>{% endif %}
-                                {% if item.custom_hinge2 %}<span class="custom-label" dir="rtl">ציר 2:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge2 }}</span>{% endif %}
-                                {% if item.custom_hinge3 %}<span class="custom-label" dir="rtl">ציר 3:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge3 }}</span>{% endif %}
-                                {% if item.custom_hinge4 %}<span class="custom-label" dir="rtl">ציר 4:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge4 }}</span>{% endif %}
-                                {% if item.custom_hinge5 %}<span class="custom-label" dir="rtl">ציר 5:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge5 }}</span>{% endif %}
-                            </span>
-                        </td>
-                        <td class="no-print"></td>
-                    </tr>
+                    </div>
+                    {% if forloop.first %}
+                        <div class="no-print">
+                            <button class="btn btn-sm btn-light border"
+                                    onclick="exportToExcel()"
+                                    data-bs-toggle="tooltip"
+                                    title="ייצוא כל טבלאות המידות לקובץ Excel / CSV">
+                                <i class="bi bi-download"></i>
+                            </button>
+                            <button class="btn btn-sm btn-light border"
+                                    onclick="window.print()"
+                                    data-bs-toggle="tooltip"
+                                    title="הדפסת טופס מידות">
+                                <i class="bi bi-printer"></i>
+                            </button>
+                        </div>
                     {% endif %}
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered mb-0 align-middle text-center excel-table">
+                        <thead class="table-secondary small">
+                            <tr>
+                                <th style="width: 40px"
+                                    data-bs-toggle="tooltip"
+                                    title="מספר סידורי של הפריט (Mark)">#</th>
+                                <th style="width: 8%"
+                                    data-bs-toggle="tooltip"
+                                    title="מיקום ההתקנה (חדר, קומה, דירה)">מיקום</th>
+                                <th style="width: 6%"
+                                    data-bs-toggle="tooltip"
+                                    title="רוחב פתח אור / כנף במילימטרים">רוחב</th>
+                                <th style="width: 7%"
+                                    data-bs-toggle="tooltip"
+                                    title="גובה פתח אור / כנף במילימטרים">גובה</th>
+                                <th style="width: 6%"
+                                    data-bs-toggle="tooltip"
+                                    title="עובי קיר עבור המשקוף במילימטרים">משקוף</th>
+                                <th style="width: 10%"
+                                    data-bs-toggle="tooltip"
+                                    title="יד פתיחה וכיוון (L/R פנימה/החוצה)">פתיחה</th>
+                                <th style="width: 6%"
+                                    data-bs-toggle="tooltip"
+                                    title="חיתוך תחתון נוסף במילימטרים">רווח נוסף</th>
+                                <th data-bs-toggle="tooltip" title="הערות מיוחדות לפריט">הערה</th>
+                                <th class="no-print"
+                                    style="width: 160px"
+                                    data-bs-toggle="tooltip"
+                                    title="פעולות ועריכה">פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="group-body-{{ group.id }}">
+                            {% for item in group.items.all %}
+                                <tr id="row-{{ item.id }}"
+                                    class="item-row clickable-row"
+                                    data-item-id="{{ item.id }}"
+                                    data-mark="{{ item.mark|default:'' }}"
+                                    data-height="{{ item.h_fmt }}"
+                                    data-width="{{ item.w_fmt }}"
+                                    data-wall="{{ item.wall_fmt }}"
+                                    data-opening="{{ item.opening|default:'' }}"
+                                    data-direction="{{ item.direction|default:'' }}"
+                                    data-place="{{ item.place|default:'' }}"
+                                    data-addition-cut="{{ item.addition_cut|default:'' }}"
+                                    data-comment="{{ item.comment|default:'' }}"
+                                    data-custom-lock-height="{{ item.custom_lock_height|default:'' }}"
+                                    data-custom-hinge1="{{ item.custom_hinge1|default:'' }}"
+                                    data-custom-hinge2="{{ item.custom_hinge2|default:'' }}"
+                                    data-custom-hinge3="{{ item.custom_hinge3|default:'' }}"
+                                    data-custom-hinge4="{{ item.custom_hinge4|default:'' }}"
+                                    data-custom-hinge5="{{ item.custom_hinge5|default:'' }}"
+                                    data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
+                                    data-has-door="{{ group.product.product_family.product_type.has_door|yesno:'true,false' }}"
+                                    data-has-frame="{{ group.product.product_family.product_type.has_frame|yesno:'true,false' }}"
+                                    title="לחץ לעריכת מידות פריט {{ item.mark }}">
+                                    <td class="fw-bold bg-light">{{ item.mark }}</td>
+                                    <td class="field-place small text-start">{{ item.place|default:'' }}</td>
+                                    <td class="field-width">{{ item.w_fmt }}</td>
+                                    <td class="field-height">{{ item.h_fmt }}</td>
+                                    <td class="field-wall">{{ item.wall_fmt }}</td>
+                                    <td class="field-opening small">
+                                        {% if item.opening or item.direction %}
+                                            {{ item.get_direction_display|default:"" }} | {{ item.get_opening_display|default:"" }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td class="field-addition-cut small">{{ item.addition_cut|default:'' }}</td>
+                                    <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
+                                    <td class="no-print text-nowrap">
+                                        {% if order.sketch or item.sketch %}
+                                            <a href="{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
+                                               target="_blank"
+                                               class="btn btn-sm btn-primary py-0"
+                                               data-bs-toggle="tooltip"
+                                               title="צפה בשרטוט עבור פריט זה">
+                                                <i class="bi bi-file-earmark-image"></i>
+                                            </a>
+                                        {% endif %}
+                                        {% if order.status == 'NEW' or user.is_admin_user %}
+                                            <i class="bi bi-pencil-square opacity-50 ms-2"
+                                               data-bs-toggle="tooltip"
+                                               title="עריכת פריט"></i>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% if item.custom_lock_height or item.custom_hinge1 or item.custom_hinge2 or item.custom_hinge3 or item.custom_hinge4 or item.custom_hinge5 %}
+                                    <tr id="display-custom-{{ item.id }}"
+                                        class="custom-heights-display-row text-muted">
+                                        <td></td>
+                                        <td colspan="7" class="text-start">
+                                            <span class="ps-4" dir="rtl">
+                                                {% if item.custom_lock_height %}<span class="custom-label">מנעול:</span><span class="custom-value ms-1 me-3">{{ item.custom_lock_height }}</span>{% endif %}
+                                                {% if item.custom_hinge1 %}<span class="custom-label" dir="rtl">ציר 1:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge1 }}</span>{% endif %}
+                                                {% if item.custom_hinge2 %}<span class="custom-label" dir="rtl">ציר 2:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge2 }}</span>{% endif %}
+                                                {% if item.custom_hinge3 %}<span class="custom-label" dir="rtl">ציר 3:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge3 }}</span>{% endif %}
+                                                {% if item.custom_hinge4 %}<span class="custom-label" dir="rtl">ציר 4:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge4 }}</span>{% endif %}
+                                                {% if item.custom_hinge5 %}<span class="custom-label" dir="rtl">ציר 5:</span><span class="custom-value ms-1 me-3">{{ item.custom_hinge5 }}</span>{% endif %}
+                                            </span>
+                                        </td>
+                                        <td class="no-print"></td>
+                                    </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endfor %}
     </div>
-    {% endfor %}
-</div>
-
-<style>
+    <style>
     .border-excel { border: 1px solid #dee2e6 !important; border-radius: 0; }
     .excel-table { border-collapse: collapse; }
     .excel-table th, .excel-table td { border: 1px solid #dee2e6 !important; padding: 0.4rem !important; }
@@ -157,12 +191,10 @@
         .bg-light { background-color: #fff !important; }
         .table-secondary { background-color: #eee !important; -webkit-print-color-adjust: exact; }
     }
-</style>
-
+    </style>
 {% endblock %}
-
 {% block extra_js %}
-<script>
+    <script>
     /**
      * Configuration for Order Measurements script.
      * Passed from Django context to external JS file.
@@ -171,8 +203,8 @@
         orderNumber: "{{ order.order_number|escapejs }}",
         customer: "{{ order.customer|escapejs }}",
         csrfToken: "{{ csrf_token }}",
-        canEdit: {% if order.status != 'IN_PRODUCTION' or user.is_admin_user %}true{% else %}false{% endif %}
+        canEdit: {% if order.status == 'NEW' or user.is_admin_user %}true{% else %}false{% endif %}
     };
-</script>
-<script src="/static/js/order_measurements.js"></script>
+    </script>
+    <script src="/static/js/order_measurements.js"></script>
 {% endblock %}

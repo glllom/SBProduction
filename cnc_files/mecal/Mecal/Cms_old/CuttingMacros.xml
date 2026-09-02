@@ -1,0 +1,22 @@
+<Mecal>
+    <CuttingMacros Version="1" SubVersion="0">
+    
+        <Vars>
+            <pi Value="3.1415926535897932384626433832795" />
+        </Vars>
+        
+        <Assert>
+            <item Exp="dim.x" Min="0"/>
+            <item Exp="dim.y" Min="0"/>
+            <item Exp="pi" ValidValues="3.1415926535897932384626433832795"/>
+        </Assert>
+        
+        <CuttingMacroSet Name="Default" Type="Internal" PriorityList="Vertical,Lateral"/>
+        <CuttingMacroSet Name="Taglio a L Posteriore" Type="Internal" PriorityList="RearL"/>
+        <CuttingMacroSet Name="Taglio a L Anteriore" Type="Internal" PriorityList="FrontL"/>
+        <CuttingMacroSet Name="Taglio a L da sopra" Type="Internal" PriorityList="TopL"/>
+        <CuttingMacroSet Name="Taglio Verticale" Type="Internal" PriorityList="Vertical"/>
+        <CuttingMacroSet Name="Taglio Laterale" Type="Internal" PriorityList="Lateral"/>
+
+    </CuttingMacros>
+</Mecal>

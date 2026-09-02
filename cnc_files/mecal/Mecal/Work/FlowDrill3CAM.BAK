@@ -1,0 +1,268 @@
+;NOME : FlowDrill3CAM
+;DESCRIZIONE : +Linee ottimizzate subroutine
+;TIPO : 1
+;DIMENSIONI : 100 100 5
+;PROFILO : 
+;PARAM : 1 0
+;PARAM : 2 1
+;PARAM : 3 0
+;PARAM : 4 1
+;PARAM : 5 0
+
+;Programma per il FlowDrill,in base al proprio diametro,l'utensile lavorer? 
+;a velocit? e profondit? diverse
+
+PARAM L1 = 11 "NUMERO UTENSILE"
+PARAM L2 = 1 "NUMERO FORI IN X"
+PARAM L3 = 0 "VALORE DEL PASSO"
+PARAM L4 = 1 "NUMERO DI LINEE"
+PARAM L5 = 0 "DISTANZA TRA LE LINEE"
+
+L55 = L4
+L77 = 0
+L8 = L2 ;contatore dei LOOP
+L7 = GETTOOL(L1,2) ;carica in L4 il valore del diametro dell'utensile L1
+G150 Z0 O99 M0 T(L1)
+G79 (L2 = 0) N900 ;se il numero di fori ? 0,salta a END
+G79 N600	;CALL Subroutine per linea dispari
+N700
+L8 = L2
+L90 = L90 - L3
+G79 (L4 = 1) N900
+
+G79 (L77 = L55) N900
+
+G79 N602	;CALL Subroutine per linea pari
+N702
+L8 = L2
+L91 = L91 + L5
+L90 = L90 + L3
+G79 (L77 = L55) N900
+;L4=L4-1
+G79 (L4 = 1) N900
+
+L10 = L4 / 2			;controllo parit?
+L11 = TRUNCH (L10)	;
+L12 = L10 - L11			;
+G79 (L12 = 0) N600	;se L4 ? pari salta a SUB per linea pari
+G79 (L12 > 0) N600 ;se L4 ? dispari salta a SUB per linea dispari
+
+
+
+
+;*************************************************************************
+;SUBROUTINE PER FILA DISPARI (foratura da Sx a Dx)
+;*************************************************************************
+N600
+L77 = L77 + 1
+N200
+L8 = L8 - 1 ;contatore dei LOOP per il numero di fori
+G79 N100
+
+N100
+G79 (L7 >= 3) N1
+G79 N900
+
+N1
+G79 (L7 <= 3.9) N10
+G79 N2
+
+N10
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z1 F30 
+G1 X(L90) Y(L91) Z2 F50
+G1 X(L90) Y(L91) Z3 F70
+G1 X(L90) Y(L91) Z5 F100
+G1 X(L90) Y(L90) Z7.1 F150
+G152
+G79 N6
+
+
+N2
+G79 (L7 <= 4.9) N20
+G79 N3
+
+N20
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z1.5 F50
+G1 X(L90) Y(L91) Z3 F70
+G1 X(L90) Y(L91) Z5 F100
+G1 X(L90) Y(L91) Z7 F150
+G1 X(L90) Y(L91) Z8.2 F200
+G152
+G79 N6
+
+N3
+G79 (L7 <= 5.9) N30
+G79 N4
+
+N30
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z1 F50
+G1 X(L90) Y(L91) Z2 F75
+G1 X(L90) Y(L91) Z4 F100
+G1 X(L90) Y(L91) Z7 F200
+G1 X(L90) Y(L91) Z10 F300
+G152
+G79 N6
+
+N4
+G79 (L7 <= 7.9) N40
+G79 N5
+
+N40
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z2 F100
+G1 X(L90) Y(L91) Z4 F150
+G1 X(L90) Y(L91) Z7 F250
+G1 X(L90) Y(L91) Z10 F300
+G1 X(L90) Y(L91) Z14 F400
+G152
+G79 N6
+
+N5
+G79 (L7 <= 9.5) N50
+G79 N6
+
+N50
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z2 F100
+G1 X(L90) Y(L91) Z4 F150
+G1 X(L90) Y(L91) Z7 F250
+G1 X(L90) Y(L91) Z10 F400
+G1 X(L90) Y(L91) Z15.8 F500
+G152
+
+N6
+L90 = L90 + L3 ;aggiungi valore del passo a ogni foro del LOOP
+G79 (L8 <> 0) N200
+G79 N700	;RET
+
+
+
+
+
+
+
+;*************************************************************************
+;SUBROUTINE PER LINEA PARI (foratura da Dx a Sx)
+;*************************************************************************
+N602
+L77 = L77 + 1
+L8 = L2	;numero di fori
+L91= L91 + L5
+
+
+N7
+L8 = L8 - 1
+G79 (L7 >= 3) N11
+G79 N900 ;se il diametro utensile ? minore di 3,salta a fine programma END
+
+
+N11
+G79 (L7 <= 3.9) N101
+G79 N21
+
+N101
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z1 F30 
+G1 X(L90) Y(L91) Z2 F50
+G1 X(L90) Y(L91) Z3 F70
+G1 X(L90) Y(L91) Z5 F100
+G1 X(L90) Y(L90) Z7.1 F150
+G152
+G79 N61
+
+
+N21
+G79 (L7 <= 4.9) N201
+G79 N31
+
+N201
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z1.5 F50
+G1 X(L90) Y(L91) Z3 F70
+G1 X(L90) Y(L91) Z5 F100
+G1 X(L90) Y(L91) Z7 F150
+G1 X(L90) Y(L91) Z8.2 F200
+G152
+G79 N61
+
+N31
+G79 (L7 <= 5.9) N301
+G79 N41
+
+N301
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z1 F50
+G1 X(L90) Y(L91) Z2 F75
+G1 X(L90) Y(L91) Z4 F100
+G1 X(L90) Y(L91) Z7 F200
+G1 X(L90) Y(L91) Z10 F300
+G152
+G79 N61
+
+N41
+G79 (L7 <= 7.9) N401
+G79 N51
+
+N401
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z2 F100
+G1 X(L90) Y(L91) Z4 F150
+G1 X(L90) Y(L91) Z7 F250
+G1 X(L90) Y(L91) Z10 F300
+G1 X(L90) Y(L91) Z14 F400
+G152
+G79 N61
+
+N51
+G79 (L7 <= 9.5) N501
+G79 N61
+
+N501
+;F100
+G1011 P0
+G150 Z0 O99 M0 T(L1)
+G151 X(L90) Y(L91) Z0
+G1 X(L90) Y(L91) Z2 F100
+G1 X(L90) Y(L91) Z4 F150
+G1 X(L90) Y(L91) Z7 F250
+G1 X(L90) Y(L91) Z10 F400
+G1 X(L90) Y(L91) Z15.8 F500
+G152
+
+N61
+L90 = L90 - L3 ;sottrai valore del passo a ogni foro del LOOP
+G79 (L8 <> 0) N7
+G79 N702	;RET
+
+N900  ;END
+

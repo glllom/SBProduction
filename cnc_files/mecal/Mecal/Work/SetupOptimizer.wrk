@@ -1,0 +1,32 @@
+;NOME : SetupOptimizer
+;DESCRIZIONE : Setup Optimizer
+;TIPO : 0
+;DIMENSIONI : 500 100 0
+;PARAM : 1 0
+;PARAM : 2 0
+;PARAM : 3 0
+
+PARAM L1 = 1.00   "LocalPriorities"
+PARAM L2 = 0.00   "G22PrioInheritance"
+PARAM L3 = 0.00   "RemoveToolDepOnPrioConflict"
+
+G79 (L1 = 0) N100
+G1100 ; LocalPriorities ON
+G79 N200
+N100
+G1101 ; LocalPriorities OFF
+N200
+
+G79 (L2 = 0) N300
+G1102 ; G22PriorityInheritance ON
+G79 N400
+N300
+G1103 ; G22PriorityInheritance OFF
+N400
+
+G79 (L3 = 0) N500
+G1104 ; RemoveToolDependencyOnPriorityConflict ON
+G79 N600
+N500
+G1105 ; RemoveToolDependencyOnPriorityConflict OFF
+N600

@@ -1,0 +1,90 @@
+; ---------------------------------------------------------------------------
+;NOME : STD_SLOT
+;DESCRIZIONE : Slot operation (Single of with Depth Table)
+;TIPO : 1
+;DIMENSIONI : 10 10 10
+; ---------------------------------------------------------------------------
+; v1.0 - 24-07-2015 - DC@Mecal
+; v1.1 - 06-11-2015 - MP@Mecal - Fix default parameters
+; ---------------------------------------------------------------------------
+; Creates a slot with specified length and width 
+; Origin of the work is referred on the centre of the slot
+; Can be rotated along his centre
+; ---------------------------------------------------------------------------
+PARAM L1 = 0      "Z Starting point"
+PARAM L2 = 100    "Width"
+PARAM L3 = 30     "Height"
+PARAM L4 = 0      "Rotation angle along z-axis"
+PARAM L5 = 1      "0=Emptying / 1=Profiling"
+PARAM L6 = 0      "Free"
+PARAM L7 = 0      "Free"
+PARAM L8 = 0      "Free"
+PARAM L9 = 0      "Space2"
+PARAM L10 = 0     "Depth2"
+PARAM L11 = 0     "Space3"
+PARAM L12 = 0     "Depth3"
+PARAM L13 = 0     "Space4"
+PARAM L14 = 0     "Depth4"
+PARAM L15 = 0     "Space5"
+PARAM L16 = 0     "Depth5"
+PARAM L17 = 0     "Space6"
+PARAM L18 = 0     "Depth6"
+PARAM L19 = 0     "Space7"
+PARAM L20 = 0     "Depth7"
+PARAM L21 = 0     "Space8"
+PARAM L22 = 0     "Depth8"
+PARAM L23 = 0     "Space9"
+PARAM L24 = 0     "Depth9"
+; ---------------------------------------------------------------------------
+
+L75=L2-L3
+L70=L90-(COS(L4)*((L75/2)+(L3/2)))
+L71=L91-(SIN(L4)*((L75/2)+(L3/2)))
+L72 = L92
+L73 = L1
+
+G210 X(L70) Y(L71) Z(L72) R(L3/2) L(L73) D(L75) A(L4) M(L5) T(L86) O99 U0
+
+G79 (L10 = 0) N1000
+L72 = L10
+L73 = L73 + L92 + L9
+G210 X(L70) Y(L71) Z(L72) R(L3/2) L(L73) D(L75) A(L4) M(L5) T(L86) O99 U0
+
+G79 (L12 = 0) N1000
+L72 = L12
+L73 = L73 + L10 + L11
+G210 X(L70) Y(L71) Z(L72) R(L3/2) L(L73) D(L75) A(L4) M(L5) T(L86) O99 U0
+
+G79 (L14 = 0) N1000
+L72 = L14
+L73 = L73 + L12 + L13
+G210 X(L70) Y(L71) Z(L72) R(L3/2) L(L73) D(L75) A(L4) M(L5) T(L86) O99 U0
+
+G79 (L16 = 0) N1000
+L72 = L16
+L73 = L73 + L14 + L15
+G210 X(L70) Y(L71) Z(L72) R(L3/2) L(L73) D(L75) A(L4) M(L5) T(L86) O99 U0
+
+G79 (L18 = 0) N1000
+L72 = L18
+L73 = L73 + L16 + L17
+G210 X(L70) Y(L71) Z(L72) R(L3/2) L(L73) D(L75) A(L4) M(L5) T(L86) O99 U0
+
+G79 (L20 = 0) N1000
+L72 = L20
+L73 = L73 + L18 + L19
+G210 X(L70) Y(L71) Z(L72) R(L3/2) L(L73) D(L75) A(L4) M(L5) T(L86) O99 U0
+
+G79 (L22 = 0) N1000
+L72 = L22
+L73 = L73 + L20 + L21
+G210 X(L70) Y(L71) Z(L72) R(L3/2) L(L73) D(L75) A(L4) M(L5) T(L86) O99 U0
+
+G79 (L24 = 0) N1000
+L72 = L24
+L73 = L73 + L22 + L23
+G210 X(L70) Y(L71) Z(L72) R(L3/2) L(L73) D(L75) A(L4) M(L5) T(L86) O99 U0
+
+N1000
+
+

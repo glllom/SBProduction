@@ -222,6 +222,15 @@ class ProductModel(models.Model):
         return f"[{self.code}] {self.name} ({self.product_family.name} / {self.series.name})"
 
     @property
+    def all_production_stations(self):
+        """
+        Returns all production stations applicable to this product,
+        considering inheritance: Type -> Family -> Series -> Model override.
+        """
+        from apps.production.models import ProductionRoute
+        return ProductionRoute.get_stations_for_product(self)
+
+    @property
     def available_frames(self):
         try:
             bom = self.bom

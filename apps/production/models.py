@@ -188,3 +188,192 @@ class HingeStandardHeight(models.Model):
 
     def __str__(self):
         return f"גובה צירים עבור {self.hinge.name} ({self.min_height}-{self.max_height})"
+
+
+class ProductionStation(models.Model):
+    """
+    Production stations or departments (участки / станции / תחנות).
+    """
+    name = models.CharField('שם התחנה', max_length=255)
+    code = models.CharField('קוד תחנה', max_length=50, blank=True)
+    label = models.CharField('תווית לכפתור', max_length=100, blank=True, help_text='הטקסט שיופיע על הכפתור')
+    hint = models.CharField('רמז/תיאור קצר', max_length=255, blank=True, help_text='יופיע כ-tooltip')
+    description = models.TextField('תיאור מפורט', blank=True)
+    template_name = models.CharField('שם תבנית HTML', max_length=255, blank=True, help_text='נתיב לקובץ ה-html של הדו"ח')
+    has_specification = models.BooleanField('יש מפרט/כפתור', default=True, help_text='האם להציג כפתור להפקת דו"ח עבור תחנה זו')
+    active = models.BooleanField('פעיל', default=True)
+
+    class Meta:
+        verbose_name = 'תחנת ייצור'
+        verbose_name_plural = 'תחנות ייצור'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class CustomizerProductionStation(models.Model):
+    """
+    Links customizers to production stations.
+    Example: Customizer 'Japanese Window' adds 'Glazing' station.
+    """
+    customizer = models.ForeignKey(
+        'catalog.Customizer',
+        on_delete=models.CASCADE,
+        related_name='added_stations',
+        verbose_name='קסטומייזר'
+    )
+    station = models.ForeignKey(
+        ProductionStation,
+        on_delete=models.CASCADE,
+        related_name='customizer_links',
+        verbose_name='תחנת ייצור'
+    )
+
+    class Meta:
+        verbose_name = 'תחנה לקסטומייזר'
+        verbose_name_plural = 'תחנות לקסטומייזרים'
+        unique_together = ('customizer', 'station')
+
+    def __str__(self):
+        return f"{self.customizer.name} -> {self.station.name}"
+
+
+class ProductionRoute(models.Model):
+    """
+    Technological route (מסלול ייצור / שרשרת טכנולוגית).
+    Describes the sequence of stations a product passes through.
+    Supports inheritance: Type -> Family -> Series -> Model.
+    """
+    name = models.CharField('שם המסלול', max_length=255, blank=True)
+
+    product_type = models.ForeignKey(
+        'catalog.ProductType',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='production_routes',
+        verbose_name='סוג מוצר'
+    )
+    product_family = models.ForeignKey(
+        'catalog.ProductFamily',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='production_routes',
+        verbose_name='משפחת מוצרים'
+    )
+    series = models.ForeignKey(
+        'catalog.Series',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='production_routes',
+        verbose_name='סדרה'
+    )
+    product_model = models.ForeignKey(
+        'catalog.ProductModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='production_routes',
+        verbose_name='דגם מוצר'
+    )
+
+    active = models.BooleanField('פעיל', default=True)
+
+    class Meta:
+        verbose_name = 'מסלול ייצור'
+        verbose_name_plural = 'מסלולי ייצור'
+
+    def __str__(self):
+        if self.name:
+            return self.name
+        levels = []
+        if self.product_type: levels.append(f"סוג: {self.product_type.name}")
+        if self.product_family: levels.append(f"משפחה: {self.product_family.name}")
+        if self.series: levels.append(f"סדרה: {self.series.name}")
+        if self.product_model: levels.append(f"דגם: {self.product_model.name}")
+        return " -> ".join(levels) if levels else f"מסלול #{self.pk}"
+
+    @classmethod
+    def get_stations_for_product(cls, product):
+        """
+        Returns a list of ProductionStation for a given product model, considering inheritance.
+        """
+        # 1. Check Model override
+        model_route = cls.objects.filter(product_model=product, active=True).first()
+        if model_route:
+            return list(ProductionStation.objects.filter(
+                id__in=model_route.steps.values_list('station_id', flat=True)
+            ).order_by('route_steps__order'))
+
+        # 2. Collect inherited chain: Type -> Family -> Series
+        stations_ids = []
+
+        # Type
+        type_route = cls.objects.filter(product_type=product.product_family.product_type, active=True).first()
+        if type_route:
+            stations_ids.extend(type_route.steps.values_list('station_id', flat=True))
+
+        # Family
+        family_route = cls.objects.filter(product_family=product.product_family, active=True).first()
+        if family_route:
+            stations_ids.extend(family_route.steps.values_list('station_id', flat=True))
+
+        # Series
+        if product.series:
+            series_route = cls.objects.filter(series=product.series, active=True).first()
+            if series_route:
+                stations_ids.extend(series_route.steps.values_list('station_id', flat=True))
+
+        # Return unique stations while preserving order would be nice, 
+        # but let's just return unique ones for now.
+        return list(ProductionStation.objects.filter(id__in=stations_ids, active=True).distinct())
+
+    @classmethod
+    def get_stations_for_group(cls, group):
+        """
+        Returns a list of ProductionStation for an OrderItemsGroup,
+        including stations from product hierarchy and from customizers.
+        """
+        # 1. Base stations from product hierarchy
+        stations = cls.get_stations_for_product(group.product)
+
+        # 2. Add stations from customizers
+        for group_cust in group.customizers.all().select_related('customizer'):
+            added_links = CustomizerProductionStation.objects.filter(
+                customizer=group_cust.customizer
+            ).select_related('station')
+            for link in added_links:
+                if link.station.active and link.station not in stations:
+                    stations.append(link.station)
+
+        return stations
+
+
+class ProductionRouteStep(models.Model):
+    """
+    A single step in a production route.
+    """
+    route = models.ForeignKey(
+        ProductionRoute,
+        on_delete=models.CASCADE,
+        related_name='steps',
+        verbose_name='מסלול'
+    )
+    station = models.ForeignKey(
+        ProductionStation,
+        on_delete=models.CASCADE,
+        related_name='route_steps',
+        verbose_name='תחנה'
+    )
+    order = models.PositiveIntegerField('סדר', default=10)
+
+    class Meta:
+        verbose_name = 'שלב במסלול'
+        verbose_name_plural = 'שלבים במסלול'
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.order}: {self.station.name}"

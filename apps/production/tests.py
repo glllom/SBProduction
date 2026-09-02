@@ -6,9 +6,16 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
-from apps.catalog.models import ProductType, ProductFamily, Series, Front, ProductModel, Handle
-from apps.orders.models import Order, OrderItemsGroup, OrderStatus
-from apps.production.services import OrderValidationService, OrderProductionService
+from apps.catalog.models import (
+    ProductType, ProductFamily, Series, Front, ProductModel, Handle,
+    Customizer
+)
+from apps.orders.models import Order, OrderItemsGroup, OrderStatus, OrderItemsGroupCustomizer
+from apps.production.models import (
+    ProductionStation, ProductionRoute, ProductionRouteStep,
+    CustomizerProductionStation
+)
+from apps.production.services import OrderValidationService, OrderProductionService, ProductionDataService
 
 
 class OrderValidationServiceTests(TestCase):
@@ -226,9 +233,20 @@ class OrderValidationServiceTests(TestCase):
         # start_phase1 should succeed
         OrderProductionService.start_phase1(order, user=self.user)
         order.refresh_from_db()
-        self.assertEqual(order.status, OrderStatus.PHASE1_PRODUCTION)
+        self.assertEqual(order.status, OrderStatus.IN_PRODUCTION_PHASE1)
 
-        # start_production without handle should raise ValueError
+        # start_production without handle should NOT raise ValueError if in Phase 1 and split
+        # because it only does partial validation
+        OrderProductionService.start_production(order, user=self.user)
+        self.assertEqual(order.status, OrderStatus.IN_PRODUCTION_PHASE1)
+
+        # Complete Phase 1
+        OrderProductionService.complete_phase1(order, user=self.user)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.PHASE1_READY)
+
+        # Now start_production without handle SHOULD raise ValueError 
+        # (Full validation required for Phase 2 regardless of has_split)
         with self.assertRaises(ValueError):
             OrderProductionService.start_production(order, user=self.user)
 
@@ -263,7 +281,7 @@ class ProductionReportAndZipValidationTests(TestCase):
         order = Order.objects.create(
             order_number='ORD-REP-P1', customer='Client A',
             series=self.series, front=self.front, handle=None,
-            status=OrderStatus.PHASE1_PRODUCTION
+            status=OrderStatus.IN_PRODUCTION_PHASE1
         )
         group = OrderItemsGroup.objects.create(
             order=order, product=self.pm, series=self.series, front=self.front,
@@ -382,7 +400,7 @@ class OrderStatusTransitionValidationTests(TestCase):
         order = Order.objects.create(
             order_number='ORD-TRANS-P1', customer='Client 1',
             series=self.series, front=self.front, handle=None,
-            status=OrderStatus.DRAFT
+            status=OrderStatus.NEW
         )
         group = OrderItemsGroup.objects.create(
             order=order, product=self.pm, series=self.series, front=self.front,
@@ -399,7 +417,7 @@ class OrderStatusTransitionValidationTests(TestCase):
         resp = self.client.get(reverse('production:order-transfer-to-phase1', args=[order.pk]))
         self.assertEqual(resp.status_code, 302)
         order.refresh_from_db()
-        self.assertEqual(order.status, OrderStatus.PHASE1_PRODUCTION)
+        self.assertEqual(order.status, OrderStatus.IN_PRODUCTION_PHASE1)
 
     def test_transfer_to_production_fails_when_handle_missing(self):
         """
@@ -408,7 +426,7 @@ class OrderStatusTransitionValidationTests(TestCase):
         order = Order.objects.create(
             order_number='ORD-TRANS-FULL-FAIL', customer='Client 2',
             series=self.series, front=self.front, handle=None,
-            status=OrderStatus.DRAFT
+            status=OrderStatus.NEW
         )
         group = OrderItemsGroup.objects.create(
             order=order, product=self.pm, series=self.series, front=self.front,
@@ -426,7 +444,7 @@ class OrderStatusTransitionValidationTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         order.refresh_from_db()
         # Status should NOT change
-        self.assertEqual(order.status, OrderStatus.DRAFT)
+        self.assertEqual(order.status, OrderStatus.NEW)
 
     def test_transfer_to_production_succeeds_when_valid(self):
         """
@@ -435,7 +453,7 @@ class OrderStatusTransitionValidationTests(TestCase):
         order = Order.objects.create(
             order_number='ORD-TRANS-FULL-OK', customer='Client 3',
             series=self.series, front=self.front, handle=self.handle,
-            status=OrderStatus.DRAFT
+            status=OrderStatus.NEW
         )
         group = OrderItemsGroup.objects.create(
             order=order, product=self.pm, series=self.series, front=self.front,
@@ -453,3 +471,118 @@ class OrderStatusTransitionValidationTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.IN_PRODUCTION)
+
+
+class ProductionRouteAndDynamicButtonsTests(TestCase):
+    def setUp(self):
+        self.pt = ProductType.objects.create(code='PT3', name='Type 3')
+        self.pf = ProductFamily.objects.create(product_type=self.pt, code='PF3', name='Fam 3')
+        self.series = Series.objects.create(code='SR3', name='Series 3')
+        self.pm = ProductModel.objects.create(code='PM3', name='Model 3', product_family=self.pf, series=self.series)
+
+        self.s1 = ProductionStation.objects.create(name='Station 1', code='S1', label='Btn 1', has_specification=True)
+        self.s2 = ProductionStation.objects.create(name='Station 2', code='S2', label='Btn 2', has_specification=True)
+        self.s3 = ProductionStation.objects.create(name='Station 3', code='S3', label='Btn 3', has_specification=False)
+        self.s_cust = ProductionStation.objects.create(name='Custom Station', code='SC', label='Btn C', has_specification=True)
+
+        self.customizer = Customizer.objects.create(code='CUST1', name='Customizer 1')
+        CustomizerProductionStation.objects.create(customizer=self.customizer, station=self.s_cust)
+
+    def test_route_inheritance(self):
+        # Route for Type
+        route_type = ProductionRoute.objects.create(product_type=self.pt, name='Type Route')
+        ProductionRouteStep.objects.create(route=route_type, station=self.s1, order=10)
+
+        # Route for Family
+        route_fam = ProductionRoute.objects.create(product_family=self.pf, name='Fam Route')
+        ProductionRouteStep.objects.create(route=route_fam, station=self.s2, order=10)
+
+        # Get stations for product
+        stations = ProductionRoute.get_stations_for_product(self.pm)
+        # Should inherit from Type and Family
+        station_ids = [s.id for s in stations]
+        self.assertIn(self.s1.id, station_ids)
+        self.assertIn(self.s2.id, station_ids)
+        self.assertEqual(len(stations), 2)
+
+    def test_model_override(self):
+        # Route for Type
+        route_type = ProductionRoute.objects.create(product_type=self.pt, name='Type Route')
+        ProductionRouteStep.objects.create(route=route_type, station=self.s1, order=10)
+
+        # Route for Model (Override)
+        route_model = ProductionRoute.objects.create(product_model=self.pm, name='Model Route')
+        ProductionRouteStep.objects.create(route=route_model, station=self.s2, order=10)
+
+        stations = ProductionRoute.get_stations_for_product(self.pm)
+        # Should only have station from Model route
+        self.assertEqual(len(stations), 1)
+        self.assertEqual(stations[0].id, self.s2.id)
+
+    def test_customizer_adds_station(self):
+        route_type = ProductionRoute.objects.create(product_type=self.pt, name='Type Route')
+        ProductionRouteStep.objects.create(route=route_type, station=self.s1, order=10)
+
+        order = Order.objects.create(order_number='ORD-CUST', customer='Customer')
+        group = OrderItemsGroup.objects.create(order=order, product=self.pm, quantity=1)
+        
+        # Add customizer to group
+        OrderItemsGroupCustomizer.objects.create(group=group, customizer=self.customizer)
+
+        stations = ProductionRoute.get_stations_for_group(group)
+        station_ids = [s.id for s in stations]
+        self.assertIn(self.s1.id, station_ids)
+        self.assertIn(self.s_cust.id, station_ids)
+        self.assertEqual(len(stations), 2)
+
+    def test_order_aggregated_stations(self):
+        route_type = ProductionRoute.objects.create(product_type=self.pt, name='Type Route')
+        ProductionRouteStep.objects.create(route=route_type, station=self.s1, order=10)
+
+        order = Order.objects.create(order_number='ORD-AGGR', customer='Customer')
+        
+        # Group 1 with product PM3 (Station 1)
+        group1 = OrderItemsGroup.objects.create(order=order, product=self.pm, quantity=1)
+        
+        # Group 2 with customizer (Station 1 + Custom Station)
+        group2 = OrderItemsGroup.objects.create(order=order, product=self.pm, quantity=1)
+        OrderItemsGroupCustomizer.objects.create(group=group2, customizer=self.customizer)
+
+        stations = order.get_production_stations()
+        station_ids = [s.id for s in stations]
+        self.assertIn(self.s1.id, station_ids)
+        self.assertIn(self.s_cust.id, station_ids)
+        self.assertEqual(len(stations), 2)
+        
+        # Verify that only unique stations are returned
+        self.assertEqual(len(set(station_ids)), len(station_ids))
+
+    def test_report_filtering_by_station(self):
+        # Route: S1 for PT3
+        route_type = ProductionRoute.objects.create(product_type=self.pt, name='Type Route')
+        ProductionRouteStep.objects.create(route=route_type, station=self.s1, order=10)
+
+        order = Order.objects.create(order_number='ORD-FILTER', customer='Customer', status=OrderStatus.IN_PRODUCTION)
+        
+        # Group 1 with PM3 (has S1)
+        group1 = OrderItemsGroup.objects.create(order=order, product=self.pm, quantity=1)
+        item1 = group1.items.first()
+        item1.height = 2000; item1.width = 800; item1.wall = 120; item1.opening = 'L'; item1.direction = 'IN'; item1.save()
+
+        # Group 2 with PM3 + customizer (has S1 + SC)
+        group2 = OrderItemsGroup.objects.create(order=order, product=self.pm, quantity=1)
+        item2 = group2.items.first()
+        item2.height = 2000; item2.width = 800; item2.wall = 120; item2.opening = 'L'; item2.direction = 'IN'; item2.save()
+        OrderItemsGroupCustomizer.objects.create(group=group2, customizer=self.customizer)
+        
+        service = ProductionDataService(order)
+        
+        # Report for S1: should contain both groups (they will be grouped together because they have same attributes)
+        data_s1 = service._get_order_data(station=self.s1)
+        item_count_s1 = sum(len(g['items_specs']) for g in data_s1)
+        self.assertEqual(item_count_s1, 2)
+        
+        # Report for SC: should contain only group 2
+        data_sc = service._get_order_data(station=self.s_cust)
+        item_count_sc = sum(len(g['items_specs']) for g in data_sc)
+        self.assertEqual(item_count_sc, 1)

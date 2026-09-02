@@ -1,7 +1,7 @@
 from django.contrib import admin
 
-from .models import Order, OrderChangeLog
-from .models import OrderItemsGroup
+from .models import Order, OrderChangeLog, OrderItem
+from .models import OrderItemsGroup, GroupSpecification, GroupSpecificationCustomizer
 
 
 class OrderItemsGroupInline(admin.TabularInline):
@@ -257,3 +257,37 @@ class OrderItemAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+
+class GroupSpecificationCustomizerInline(admin.TabularInline):
+    model = GroupSpecificationCustomizer
+    extra = 0
+    fields = ("customizer", "par1", "par2", "par3", "par4")
+
+
+@admin.register(GroupSpecification)
+class GroupSpecificationAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "product",
+        "series",
+        "front",
+        "basic_color_frames",
+        "quantity",
+        "created_by",
+        "created_at",
+    )
+    list_filter = (
+        "product",
+        "series",
+        "is_split_installation",
+        "created_at",
+    )
+    search_fields = (
+        "name",
+        "description",
+        "comments",
+    )
+    inlines = [GroupSpecificationCustomizerInline]
+    ordering = ("-created_at",)

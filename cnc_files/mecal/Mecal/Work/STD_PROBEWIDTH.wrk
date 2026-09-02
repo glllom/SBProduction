@@ -1,0 +1,14 @@
+;#WRKINFO{Version="1.0.0", Date="09/05/2019"}
+;NOME : STD_PROBEWIDTH
+;DESCRIZIONE : Feels the profile width and associates a probe index
+;TIPO : 0
+;DIMENSIONI : 100.00 100.00 0.00
+
+PARAM L1=0 	"Probing index"
+
+G314 X(L80) Y(L91) Z(L92) K(L1) R0 P1 O(99)
+
+;#TRANSL{Param="NOME", Lang="ENG", Value="Piece width measure"}
+;#TRANSL{Param="NOME", Lang="ITA", Value="Misurazione larghezza Pezzo")
+;#TRANSL{Param="DESCRIZIONE", Lang="ITA", Value="Misura la larghezza del profilo")
+;#TRANSL{Param="L1", Lang="ITA", Value="Indice tastatura associato"}

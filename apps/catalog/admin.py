@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.production.models import ProductTechnicalData, BOM
+from apps.production.models import ProductTechnicalData, BOM, ProductionStation, ProductionRoute
 from .models import (
     ProductType,
     ProductFamily,
@@ -13,11 +13,32 @@ from .models import (
     Hardware,
 )
 
+class ProductionRouteTypeInline(admin.TabularInline):
+    model = ProductionRoute
+    fk_name = 'product_type'
+    extra = 1
+
+class ProductionRouteFamilyInline(admin.TabularInline):
+    model = ProductionRoute
+    fk_name = 'product_family'
+    extra = 1
+
+class ProductionRouteSeriesInline(admin.TabularInline):
+    model = ProductionRoute
+    fk_name = 'series'
+    extra = 1
+
+class ProductionRouteModelInline(admin.TabularInline):
+    model = ProductionRoute
+    fk_name = 'product_model'
+    extra = 1
+
 
 @admin.register(ProductType)
 class ProductTypeAdmin(admin.ModelAdmin):
     list_display = ('id', 'name')
     search_fields = ('name',)
+    inlines = [ProductionRouteTypeInline]
 
 
 @admin.register(ProductFamily)
@@ -25,6 +46,7 @@ class ProductFamilyAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'product_type')
     list_filter = ('product_type',)
     search_fields = ('name',)
+    inlines = [ProductionRouteFamilyInline]
 
 
 class FrontInline(admin.TabularInline):
@@ -43,7 +65,7 @@ class FrameColorInline(admin.TabularInline):
 class SeriesAdmin(admin.ModelAdmin):
     list_display = ('id', 'name')
     search_fields = ('name',)
-    inlines = [FrontInline]
+    inlines = [FrontInline, ProductionRouteSeriesInline]
 
 
 @admin.register(Front)
@@ -128,7 +150,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ('id', 'code', 'name', 'product_family', 'series')
     list_filter = ('product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name')
-    inlines = [BOMInline, ProductTechnicalDataInline]
+    inlines = [BOMInline, ProductTechnicalDataInline, ProductionRouteModelInline]
 
 
 from django.contrib import admin

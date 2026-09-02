@@ -1,0 +1,18 @@
+;#WRKINFO{Version="1.0.4", Date="15/05/2017"}
+;NOME : STD_LMEAS
+;DESCRIZIONE : Feels the profile length and translates all machinings on the end of piece
+;TIPO : 0
+;DIMENSIONI : 100.00 100.00 0.00
+
+PARAM L1=0 	"Keep previous data"
+
+G1011 P0
+G314 X(L80+L90) Y(L91) Z(L92) R(L1) O(99)
+
+
+;#TRANSL{Param="NOME", Lang="ENG", Value="Piece Lenght Measure"}
+;#TRANSL{Param="NOME", Lang="ITA", Value="Misurazione Lunghezza Pezzo")
+
+;#TRANSL{Param="DESCRIZIONE", Lang="ITA", Value="Misura la lunghezza del profilo e muove tutte le lavorazioni legate alla fine del pezzo")
+
+;#TRANSL{Param="L1", Lang="ITA", Value="Mantieni i dati precendenti"}

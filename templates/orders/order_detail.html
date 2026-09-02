@@ -20,6 +20,11 @@
                         title="הוספת קבוצת דלתות חדשה להזמנה">
                     <i class="bi bi-plus-lg me-2"></i>הוספת דלתות
                 </button>
+                <button class="btn btn-sm btn-outline-warning ms-2 btn-open-load-spec"
+                        data-group-id=""
+                        title="הוספת קבוצה ממפרט שמור">
+                    <i class="bi bi-box-arrow-in-down me-2"></i>טעינת מפרט שמור
+                </button>
             {% endif %}
         </div>
         <div class="row">
@@ -83,11 +88,11 @@
         </div>
     </div>
     <div class="mb-2 d-flex gap-2">
-        {% if order.status == 'DRAFT' or order.status == 'MEASUREMENT' %}
-            <a href="{% url 'production:order-transfer-to-production' order.pk %}"
+        {% if order.status == 'NEW' %}
+            <a href="{% url 'production:order-check-validation' order.pk %}"
                class="btn btn-outline-info"
                data-bs-toggle="tooltip"
-               title="העברת ההזמנה לתהליך ייצור מלא">
+               title="בדיקת תקינות הנתונים של ההזמנה">
                 <i class="bi bi-list-task me-2"></i>בדיקת ההזמנה
             </a>
             <a href="{% url 'production:order-transfer-to-production' order.pk %}"
@@ -96,37 +101,82 @@
                title="העברת ההזמנה לתהליך ייצור מלא">
                 <i class="bi bi-send-check me-2"></i>העבר לייצור
             </a>
-        {% else %}
-            <a href="{% url 'production:order-production-report' order.pk %}?type=PHASE1_FRAMES"
+            <a href="{% url 'order-measurements' order.pk %}"
+               class="btn btn-outline-primary"
+               data-bs-toggle="tooltip"
+               title="צפייה ועריכת מידות הפריטים">
+                <i class="bi bi-rulers me-2"></i>טופס מידות
+            </a>
+        {% elif order.status == 'PHASE1_PRODUCTION' %}
+            <a href="{% url 'production:order-complete-phase1' order.pk %}"
+               class="btn btn-success"
+               data-bs-toggle="tooltip"
+               title="סיום שלב א' של ההזמנה">
+                <i class="bi bi-check-circle me-2"></i>סיום שלב א
+            </a>
+            <a href="{% url 'production:order-production-report' order.pk %}?type=PHASE1_PRODUCTION"
                target="_blank"
                class="btn btn-outline-info"
                data-bs-toggle="tooltip"
-               title="הפקת דו''ח ייצור משקופים לשלב א">
-                <i class="bi bi-printer ms-2"></i>משקופים
+               title="הפקת דו''ח ייצור משקופים שלב א">
+                <i class="bi bi-printer me-2"></i>משקופים
             </a>
-            {% if order.status != 'PHASE1_PRODUCTION' %}
-                <a href="{% url 'production:order-production-report' order.pk %}?type=PHASE2_PRESS"
-                   target="_blank"
-                   class="btn btn-outline-info"
-                   data-bs-toggle="tooltip"
-                   title="דו''ח עמדת פרס">
-                    <i class="bi bi-printer ms-2"></i>פרס
-                </a>
-                <a href="{% url 'production:order-production-report' order.pk %}?type=PHASE2_PRESS"
-                   target="_blank"
-                   class="btn btn-outline-info"
-                   data-bs-toggle="tooltip"
-                   title="דו''ח עמדת פרס">
-                    <i class="bi bi-printer ms-2"></i>מדבקות
-                </a>
-                <a href="{% url 'production:order-production-report' order.pk %}?type=PHASE2_PRESS"
-                   target="_blank"
-                   class="btn btn-outline-info"
-                   data-bs-toggle="tooltip"
-                   title="דו''ח עמדת פרס">
-                    <i class="bi bi-printer ms-2"></i>פרזול
-                </a>
-            {% endif %}
+        {% elif order.status == 'PHASE1_READY' %}
+            <a href="{% url 'production:order-check-validation' order.pk %}"
+               class="btn btn-outline-info"
+               data-bs-toggle="tooltip"
+               title="בדיקת תקינות הנתונים לקראת שלב ב">
+                <i class="bi bi-list-task me-2"></i>בדיקת ההזמנה
+            </a>
+            <a href="{% url 'production:order-transfer-to-production' order.pk %}"
+               class="btn btn-primary"
+               data-bs-toggle="tooltip"
+               title="העברה לייצור מלא / שלב ב">
+                <i class="bi bi-send-check me-2"></i>העברה לשלב ב
+            </a>
+            <a href="{% url 'production:order-production-report' order.pk %}?type=PHASE1_PRODUCTION"
+               target="_blank"
+               class="btn btn-outline-info"
+               data-bs-toggle="tooltip"
+               title="דו''ח משקופים שלב א">
+                <i class="bi bi-printer me-2"></i>משקופים
+            </a>
+        {% elif order.status == 'IN_PRODUCTION' %}
+            {% for station in order.get_production_stations %}
+                {% if station.has_specification %}
+                    <a href="{% url 'production:order-production-report' order.pk %}?station={{ station.code }}"
+                       target="_blank"
+                       class="btn btn-outline-info"
+                       data-bs-toggle="tooltip"
+                       title="{{ station.hint|default:station.name }}">
+                        <i class="bi bi-printer me-2"></i>{{ station.label|default:station.name }}
+                    </a>
+                {% endif %}
+            {% endfor %}
+            <a href="{% url 'production:order-production-report' order.pk %}?type=IN_PRODUCTION"
+               target="_blank"
+               class="btn btn-outline-secondary"
+               data-bs-toggle="tooltip"
+               title="דו''ח ייצור מלא עבור כל הפריטים">
+                <i class="bi bi-printer me-2"></i>דו''ח מלא
+            </a>
+        {% else %}
+            <a href="{% url 'production:order-production-report' order.pk %}?type={{ order.status }}"
+               target="_blank"
+               class="btn btn-outline-info"
+               data-bs-toggle="tooltip"
+               title="הפקת דו''ח ייצור">
+                <i class="bi bi-printer me-2"></i>הדפסת דו''ח
+            </a>
+        {% endif %}
+        {% if order.status != 'NEW' and user.is_admin_user %}
+            <a href="{% url 'order-reset-to-new' order.pk %}"
+               class="btn btn-outline-warning ms-auto"
+               onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')"
+               data-bs-toggle="tooltip"
+               title="החזרת ההזמנה לסטטוס חדש לעריכה">
+                <i class="bi bi-arrow-counterclockwise me-2"></i>שינוי הזמנה
+            </a>
         {% endif %}
     </div>
     <div class="row">
@@ -142,8 +192,7 @@
                             <h5 class="mb-0 fw-bold text-primary">
                                 {{ group.product.name }}
                                 {% if group.is_split_installation %}
-                                    <span class="badge bg-info-subtle text-info ms-2"
-                                          style="font-size: 0.7rem">התקנה מפוצלת (שלב א)</span>
+                                    <span class="badge bg-info-subtle text-info ms-2" style="font-size: 0.7rem">התקנה מפוצלת (שלב א)</span>
                                 {% endif %}
                             </h5>
                             <small class="text-muted">כמות דלתות: {{ group.quantity }}</small>
@@ -153,13 +202,45 @@
                                 <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
                                     <i class="bi bi-three-dots-vertical"></i>
                                 </button>
-                                <ul class="dropdown-menu dropdown-menu-end">
+                                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
                                     <li>
                                         <button class="dropdown-item btn-edit-group"
                                                 data-bs-toggle="modal"
                                                 data-bs-target="#editGroupModal-{{ group.id }}">
-                                            <i class="bi bi-pencil me-2"></i>ערוך קבוצה
+                                            <i class="bi bi-pencil me-2 text-primary"></i>ערוך קבוצה
                                         </button>
+                                    </li>
+                                    <li>
+                                        <form action="{% url 'group-duplicate' group.id %}" method="post">
+                                            {% csrf_token %}
+                                            <button type="submit" class="dropdown-item">
+                                                <i class="bi bi-copy me-2 text-info"></i>לשכפל קבוצה
+                                            </button>
+                                        </form>
+                                    </li>
+                                    <li>
+                                        <hr class="dropdown-divider">
+                                    </li>
+                                    <li>
+                                        <button type="button"
+                                                class="dropdown-item btn-open-save-spec"
+                                                data-group-id="{{ group.id }}"
+                                                data-group-name="{{ group.product.name }}"
+                                                data-group-details="{{ group.product.product_family.name }} / {{ group.series.name|default:'סטנדרט' }}"
+                                                data-group-qty="{{ group.quantity }}">
+                                            <i class="bi bi-bookmark-plus me-2 text-success"></i>לשמור מפרט
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button type="button"
+                                                class="dropdown-item btn-open-load-spec"
+                                                data-group-id="{{ group.id }}"
+                                                data-group-name="{{ group.product.name }}">
+                                            <i class="bi bi-box-arrow-in-down me-2 text-warning"></i>טען מפרט
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <hr class="dropdown-divider">
                                     </li>
                                     <li>
                                         <form action="{% url 'group-delete' group.id %}"
@@ -649,10 +730,17 @@
                     <div class="card-body text-center py-5">
                         <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
                         <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
-                        <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות</p>
-                        <button class="btn btn-primary"
-                                data-bs-toggle="modal"
-                                data-bs-target="#addGroupModal">הוסף קבוצה ראשונה</button>
+                        <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
+                        <div class="d-flex justify-content-center gap-2 mt-3">
+                            <button class="btn btn-primary"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#addGroupModal">
+                                <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
+                            </button>
+                            <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
+                                <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
+                            </button>
+                        </div>
                     </div>
                 </div>
             {% endfor %}
@@ -1277,6 +1365,116 @@
                                 title="שמירת שינויים בפריט">שמור שינויים</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+    <!-- Modal Save Group Specification -->
+    <div class="modal fade"
+         id="saveSpecificationModal"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-md">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-bookmark-plus me-2"></i>שמירת מפרט קבוצה
+                    </h5>
+                    <button type="button"
+                            class="btn-close btn-close-white"
+                            data-bs-dismiss="modal"></button>
+                </div>
+                <form id="saveSpecForm" method="post" action="">
+                    {% csrf_token %}
+                    <div class="modal-body">
+                        <div class="alert alert-light border mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="fw-bold text-primary" id="saveSpecGroupName">-</span>
+                                <span class="badge bg-secondary" id="saveSpecGroupQty">- דלתות</span>
+                            </div>
+                            <div class="small text-muted" id="saveSpecGroupDetails">-</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                שם המפרט <span class="text-danger">*</span>
+                            </label>
+                            <input type="text"
+                                   id="saveSpecNameInput"
+                                   name="name"
+                                   class="form-control"
+                                   placeholder="למשל: דלתות קומה טיפוסית / מפרט משרדים"
+                                   required>
+                            <div class="form-text">שם מזהה שיאפשר לך לטעון מפרט זה בקלות בעתיד.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">תיאור / הערות למפרט</label>
+                            <textarea id="saveSpecDescInput"
+                                      name="description"
+                                      class="form-control"
+                                      rows="3"
+                                      placeholder="הערות או דגשים מיוחדים עבור מפרט זה (אופציונלי)..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
+                        <button type="submit" class="btn btn-success px-4" id="btnSubmitSaveSpec">
+                            <i class="bi bi-check2-circle me-1"></i>שמור מפרט
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- Modal Load Group Specification -->
+    <div class="modal fade"
+         id="loadSpecificationModal"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-box-arrow-in-down me-2"></i>טעינת מפרט שמור
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="loadSpecTargetGroupId" value="">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-7">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                <input type="text"
+                                       id="specSearchInput"
+                                       class="form-control"
+                                       placeholder="חיפוש מפרט לפי שם, סדרה, דגם או תיאור...">
+                            </div>
+                        </div>
+                        <div class="col-md-5 d-flex align-items-center justify-content-end"
+                             id="loadSpecTargetInfo">
+                            <span class="badge bg-info-subtle text-info border border-info px-3 py-2 fs-6"
+                                  id="loadSpecTargetBadge">הוספת קבוצה חדשה להזמנה</span>
+                        </div>
+                    </div>
+                    <div id="specificationsListContainer"
+                         style="max-height: 550px;
+                                overflow-y: auto">
+                        <div class="text-center py-5 text-muted" id="specLoadingIndicator">
+                            <div class="spinner-border text-primary mb-2" role="status"></div>
+                            <div>טוען מפרטים שמורים...</div>
+                        </div>
+                        <div class="row g-3" id="specCardsGrid">
+                            <!-- Cards will be populated by JS -->
+                        </div>
+                        <div class="text-center py-5 text-muted d-none" id="specEmptyState">
+                            <i class="bi bi-bookmark-x fs-1 d-block mb-2 text-secondary"></i>
+                            <h6>לא נמצאו מפרטים שמורים</h6>
+                            <p class="small">ניתן לשמור מפרט מכל קבוצה קיימת דרך תפריט הפעולות של הקבוצה ("לשמור מפרט").</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2013,6 +2211,393 @@
             $('.edit-group-modal').each(function() {
                 setupGroupPaintingLogic($(this));
             });
+
+            // ==========================================
+            // GROUP SPECIFICATION (SAVE & LOAD)
+            // ==========================================
+
+            // Open Save Specification Modal
+            $(document).on('click', '.btn-open-save-spec', function (e) {
+                e.preventDefault();
+                const groupId = $(this).data('group-id');
+                const groupName = $(this).data('group-name') || '';
+                const groupDetails = $(this).data('group-details') || '';
+                const groupQty = $(this).data('group-qty') || 1;
+
+                $('#saveSpecGroupName').text(groupName);
+                $('#saveSpecGroupDetails').text(groupDetails);
+                $('#saveSpecGroupQty').text(groupQty + ' דלתות');
+                $('#saveSpecNameInput').val(groupName ? `מפרט ${groupName}` : '');
+                $('#saveSpecDescInput').val('');
+                $('#saveSpecForm').attr('action', `/orders/groups/${groupId}/save-specification/`);
+                $('#saveSpecForm').data('group-id', groupId);
+
+                const modal = new bootstrap.Modal(document.getElementById('saveSpecificationModal'));
+                modal.show();
+            });
+
+            // Handle Submit Save Specification Form
+            $('#saveSpecForm').on('submit', function (e) {
+                e.preventDefault();
+                const $form = $(this);
+                const url = $form.attr('action');
+                const name = $('#saveSpecNameInput').val().trim();
+                const description = $('#saveSpecDescInput').val().trim();
+                const csrfToken = $form.find('input[name="csrfmiddlewaretoken"]').val() || $('input[name="csrfmiddlewaretoken"]').first().val();
+
+                if (!name) {
+                    alert('נא להזין שם למפרט');
+                    return;
+                }
+
+                const $btn = $('#btnSubmitSaveSpec');
+                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> שומר...');
+
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        name: name,
+                        description: description,
+                        csrfmiddlewaretoken: csrfToken
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
+                    if (data.status === 'ok') {
+                        const modalEl = document.getElementById('saveSpecificationModal');
+                        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                        modal.hide();
+                        showSuccessNotification('המפרט נשמר בהצלחה!');
+                    } else {
+                        alert(data.message || 'שגיאה בשמירת המפרט');
+                    }
+                })
+                .catch(err => {
+                    $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
+                    console.error('Error saving spec:', err);
+                    alert('שגיאה בשמירת המפרט');
+                });
+            });
+
+            let currentSpecifications = [];
+
+            function renderSpecificationCards(specs, targetGroupId) {
+                const $grid = $('#specCardsGrid');
+                const $empty = $('#specEmptyState');
+                $grid.empty();
+
+                if (!specs || specs.length === 0) {
+                    $empty.removeClass('d-none');
+                    return;
+                }
+                $empty.addClass('d-none');
+
+                specs.forEach(spec => {
+                    let customizersHtml = '';
+                    if (spec.customizers && spec.customizers.length > 0) {
+                        customizersHtml = spec.customizers.map(c => {
+                            let params = [];
+                            if (c.par1) params.push(c.par1);
+                            if (c.par2) params.push(c.par2);
+                            if (c.par3) params.push(c.par3);
+                            if (c.par4) params.push(c.par4);
+                            const paramsStr = params.length ? ` (${params.join(', ')})` : '';
+                            return `<span class="badge bg-secondary-subtle text-secondary border me-1 mb-1">${c.customizer_name}${paramsStr}</span>`;
+                        }).join(' ');
+                    } else {
+                        customizersHtml = '<span class="text-muted small">ללא שדרוגים מיוחדים</span>';
+                    }
+
+                    const isSplitBadge = spec.is_split_installation
+                        ? '<span class="badge bg-info-subtle text-info me-2">התקנה מפוצלת</span>'
+                        : '';
+
+                    let actionButtons = '';
+                    if (targetGroupId) {
+                        actionButtons = `
+                            <div class="d-flex flex-column gap-2 mt-3">
+                                <button type="button" class="btn btn-primary btn-sm btn-apply-spec" data-spec-id="${spec.id}" data-spec-name="${spec.name}">
+                                    <i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו
+                                </button>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control spec-create-qty" value="${spec.quantity || 1}" min="1" placeholder="כמות">
+                                    <button type="button" class="btn btn-outline-success btn-create-from-spec" data-spec-id="${spec.id}">
+                                        <i class="bi bi-plus-circle me-1"></i>הוסף כקבוצה חדשה
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        actionButtons = `
+                            <div class="d-flex gap-2 mt-3">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">כמות</span>
+                                    <input type="number" class="form-control spec-create-qty" value="${spec.quantity || 1}" min="1">
+                                    <button type="button" class="btn btn-success btn-create-from-spec" data-spec-id="${spec.id}">
+                                        <i class="bi bi-plus-circle me-1"></i>הוסף להזמנה
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    const cardHtml = `
+                        <div class="col-md-6 col-xl-4 spec-card-item" data-spec-search="${(spec.name + ' ' + (spec.description || '') + ' ' + (spec.product_name || '') + ' ' + (spec.series_name || '')).toLowerCase()}">
+                            <div class="card h-100 shadow-sm border-0 bg-light">
+                                <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2">
+                                    <div class="text-truncate me-2">
+                                        <strong class="text-primary fs-6" title="${spec.name}">${spec.name}</strong>
+                                        ${isSplitBadge}
+                                    </div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm p-1 py-0 btn-delete-spec" data-spec-id="${spec.id}" title="מחק מפרט זה">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                                <div class="card-body py-2">
+                                    ${spec.description ? `<p class="small text-muted mb-2">${spec.description}</p>` : ''}
+                                    
+                                    <div class="small mb-2">
+                                        <div class="d-flex justify-content-between border-bottom py-1">
+                                            <span class="text-muted">דגם מוצר:</span>
+                                            <span class="fw-bold">${spec.product_name || '-'}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between border-bottom py-1">
+                                            <span class="text-muted">סדרה / חזית:</span>
+                                            <span>${spec.series_name || '-'} / ${spec.front_name || '-'}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between border-bottom py-1">
+                                            <span class="text-muted">משקוף בסיסי:</span>
+                                            <span>${spec.basic_color_frames_name || 'סטנדרט'}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between border-bottom py-1">
+                                            <span class="text-muted">צביעת כנף:</span>
+                                            <span>${spec.panel_paint_option_display || '-'} ${spec.color_panels ? `(${spec.color_panels})` : ''}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between border-bottom py-1">
+                                            <span class="text-muted">צביעת משקוף:</span>
+                                            <span>${spec.frame_paint_option_display || '-'} ${spec.color_frames ? `(${spec.color_frames})` : ''}</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-2">
+                                        <div class="text-muted extra-small mb-1">שינויים ושדרוגים (קסטומייזרים):</div>
+                                        <div>${customizersHtml}</div>
+                                    </div>
+
+                                    ${actionButtons}
+                                </div>
+                                <div class="card-footer bg-white border-top-0 py-1 text-muted extra-small d-flex justify-content-between">
+                                    <span>נוצר: ${spec.created_at_formatted || ''}</span>
+                                    <span>${spec.created_by_name ? `ע"י: ${spec.created_by_name}` : ''}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    $grid.append(cardHtml);
+                });
+            }
+
+            function loadSpecifications(targetGroupId) {
+                $('#specLoadingIndicator').removeClass('d-none');
+                $('#specCardsGrid').empty();
+                $('#specEmptyState').addClass('d-none');
+
+                fetch('/orders/api/specifications/')
+                    .then(res => res.json())
+                    .then(data => {
+                        $('#specLoadingIndicator').addClass('d-none');
+                        currentSpecifications = Array.isArray(data) ? data : (data.results || []);
+                        renderSpecificationCards(currentSpecifications, targetGroupId);
+                    })
+                    .catch(err => {
+                        $('#specLoadingIndicator').addClass('d-none');
+                        console.error('Error fetching specifications:', err);
+                        $('#specEmptyState').removeClass('d-none');
+                    });
+            }
+
+            // Open Load Specification Modal
+            $(document).on('click', '.btn-open-load-spec', function (e) {
+                e.preventDefault();
+                const targetGroupId = $(this).data('group-id') || '';
+                const targetGroupName = $(this).data('group-name') || '';
+
+                $('#loadSpecTargetGroupId').val(targetGroupId);
+                if (targetGroupId) {
+                    $('#loadSpecTargetBadge')
+                        .removeClass('bg-info-subtle text-info border-info')
+                        .addClass('bg-primary-subtle text-primary border-primary')
+                        .html(`<i class="bi bi-layers me-1"></i>פעולה עבור קבוצה: <strong>${targetGroupName || '#' + targetGroupId}</strong>`);
+                } else {
+                    $('#loadSpecTargetBadge')
+                        .removeClass('bg-primary-subtle text-primary border-primary')
+                        .addClass('bg-info-subtle text-info border-info')
+                        .html('<i class="bi bi-plus-circle me-1"></i>הוספת קבוצה חדשה להזמנה');
+                }
+
+                $('#specSearchInput').val('');
+                loadSpecifications(targetGroupId);
+
+                const modal = new bootstrap.Modal(document.getElementById('loadSpecificationModal'));
+                modal.show();
+            });
+
+            // Search in specifications
+            $(document).on('input', '#specSearchInput', function () {
+                const q = $(this).val().trim().toLowerCase();
+                const targetGroupId = $('#loadSpecTargetGroupId').val();
+                if (!q) {
+                    renderSpecificationCards(currentSpecifications, targetGroupId);
+                    return;
+                }
+                const filtered = currentSpecifications.filter(spec => {
+                    const str = (spec.name + ' ' + (spec.description || '') + ' ' + (spec.product_name || '') + ' ' + (spec.series_name || '') + ' ' + (spec.front_name || '')).toLowerCase();
+                    return str.includes(q);
+                });
+                renderSpecificationCards(filtered, targetGroupId);
+            });
+
+            // Apply spec to existing group
+            $(document).on('click', '.btn-apply-spec', function () {
+                const specId = $(this).data('spec-id');
+                const specName = $(this).data('spec-name');
+                const groupId = $('#loadSpecTargetGroupId').val();
+                const csrfToken = $('input[name="csrfmiddlewaretoken"]').first().val();
+
+                if (!groupId || !specId) return;
+
+                if (!confirm(`האם להחיל את מפרט "${specName}" על הקבוצה? פעולה זו תעדכן את הגדרות הקבוצה והשדרוגים.`)) {
+                    return;
+                }
+
+                const $btn = $(this);
+                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> מחיל...');
+
+                fetch(`/orders/groups/${groupId}/apply-specification/${specId}/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        csrfmiddlewaretoken: csrfToken
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        window.location.reload();
+                    } else {
+                        alert(data.message || 'שגיאה בהחלת המפרט');
+                        $btn.prop('disabled', false).html('<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error applying spec:', err);
+                    alert('שגיאה בהחלת המפרט');
+                    $btn.prop('disabled', false).html('<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו');
+                });
+            });
+
+            // Create new group from spec
+            $(document).on('click', '.btn-create-from-spec', function () {
+                const specId = $(this).data('spec-id');
+                const orderId = '{{ order.pk }}';
+                const csrfToken = $('input[name="csrfmiddlewaretoken"]').first().val();
+                const $card = $(this).closest('.card');
+                const qty = $card.find('.spec-create-qty').val() || 1;
+
+                const $btn = $(this);
+                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> מוסיף...');
+
+                fetch(`/orders/${orderId}/groups/create-from-specification/${specId}/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        quantity: qty,
+                        csrfmiddlewaretoken: csrfToken
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        window.location.reload();
+                    } else {
+                        alert(data.message || 'שגיאה ביצירת קבוצה ממפרט');
+                        $btn.prop('disabled', false).html('<i class="bi bi-plus-circle me-1"></i>הוסף');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error creating group from spec:', err);
+                    alert('שגיאה ביצירת קבוצה ממפרט');
+                    $btn.prop('disabled', false).html('<i class="bi bi-plus-circle me-1"></i>הוסף');
+                });
+            });
+
+            // Delete specification
+            $(document).on('click', '.btn-delete-spec', function () {
+                const specId = $(this).data('spec-id');
+                const csrfToken = $('input[name="csrfmiddlewaretoken"]').first().val();
+
+                if (!confirm('האם אתה בטוח שברצונך למחוק מפרט שמור זה לצמיתות?')) {
+                    return;
+                }
+
+                fetch(`/orders/specifications/${specId}/delete/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        csrfmiddlewaretoken: csrfToken
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        const targetGroupId = $('#loadSpecTargetGroupId').val();
+                        loadSpecifications(targetGroupId);
+                    } else {
+                        alert(data.message || 'שגיאה במחיקת המפרט');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error deleting spec:', err);
+                    alert('שגיאה במחיקת המפרט');
+                });
+            });
+
+            function showSuccessNotification(message) {
+                const toastHtml = `
+                    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 11000">
+                        <div class="toast align-items-center text-bg-success border-0 show" role="alert" aria-live="assertive" aria-atomic="true">
+                            <div class="d-flex">
+                                <div class="toast-body">
+                                    <i class="bi bi-check-circle-fill me-2"></i> ${message}
+                                </div>
+                                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                $('body').append(toastHtml);
+                setTimeout(() => {
+                    $('.toast-container').fadeOut(500, function() { $(this).remove(); });
+                }, 3000);
+            }
         });
     </script>
 {% endblock %}

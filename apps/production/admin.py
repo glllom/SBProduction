@@ -1,5 +1,9 @@
 from django.contrib import admin
-from .models import ProductTechnicalData, BOM, LockStandardHeight, HingeStandardHeight
+from .models import (
+    ProductTechnicalData, BOM, LockStandardHeight, HingeStandardHeight, 
+    ProductionStation, ProductionRoute, ProductionRouteStep,
+    CustomizerProductionStation
+)
 
 @admin.register(ProductTechnicalData)
 class ProductTechnicalDataAdmin(admin.ModelAdmin):
@@ -62,3 +66,48 @@ class HingeStandardHeightAdmin(admin.ModelAdmin):
     list_display = ('hinge', 'min_height', 'max_height', 'value1', 'value2', 'value3')
     filter_horizontal = ('product_families',)
     raw_id_fields = ('hinge',)
+
+
+@admin.register(CustomizerProductionStation)
+class CustomizerProductionStationAdmin(admin.ModelAdmin):
+    list_display = ('customizer', 'station')
+    raw_id_fields = ('customizer', 'station')
+
+
+@admin.register(ProductionStation)
+class ProductionStationAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'label', 'has_specification', 'active')
+    list_filter = ('active', 'has_specification')
+    search_fields = ('name', 'code', 'label', 'description')
+    ordering = ('name',)
+
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('name', 'code', 'description', 'active')
+        }),
+        ('Настройка кнопок и отчетов', {
+            'fields': ('label', 'hint', 'template_name', 'has_specification')
+        }),
+    )
+
+
+class ProductionRouteStepInline(admin.TabularInline):
+    model = ProductionRouteStep
+    extra = 3
+    raw_id_fields = ('station',)
+
+
+@admin.register(ProductionRoute)
+class ProductionRouteAdmin(admin.ModelAdmin):
+    list_display = ('__str__', 'product_type', 'product_family', 'series', 'product_model', 'active')
+    list_filter = ('active', 'product_type', 'product_family', 'series', 'product_model')
+    inlines = [ProductionRouteStepInline]
+
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'active')
+        }),
+        ('Привязка к каталогу (заполните только один уровень)', {
+            'fields': ('product_type', 'product_family', 'series', 'product_model')
+        }),
+    )

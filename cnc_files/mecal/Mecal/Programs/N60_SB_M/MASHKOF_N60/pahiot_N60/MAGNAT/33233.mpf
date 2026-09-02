@@ -1,0 +1,34 @@
+;NOME : 33233
+;DESCRIZIONE : N6_SB_xx_Pahit_1_lahchon
+;DXF : N6_SB.dxf
+;DIMENSIONE : 75.2 37.3 2800
+;PIENO : SI
+;SPESSORE : 0
+;FACCIA_ANT : 4
+;FACCIA_ANT_ANGLE : 0.00
+;FACCIA_POST : 4
+;FACCIA_POST_ANGLE : 0.00
+;MIRROR : 0
+;UNIT : mm
+
+PARAM L1 = 350   "makom_look"
+PARAM L2 = 82.9   "orah_Naxt_"
+PARAM L3 = 22.8   "rohav_Naxt"
+PARAM L4 = 1.7   "ovi_naxt"
+PARAM L5 = 34   "orah_pina_lahshon"
+PARAM L6 = 18   "rohav_pina_lahshon"
+PARAM L7 = 26   "rohav_lahshon_Lock"
+PARAM L8 = 20.5   "custam_p"
+PARAM L9 = 28.5   "ovi_profil+3mm"
+PARAM L10 = 42.9   "orah_pina_lahson"
+PARAM L11 = 0   "Parameter"
+
+G30 X0.00 Y0 Z0
+G190 X2800 Y75.2 Z37.3
+G144 X0 Y46.4 Z25.24 I2800 J46.4 K25.24 A2800 B5.4 C25.24 R1 H0
+G1001 T11 W2 S14000 I25 F4 C1 D2 B0 R0
+G1011 P7
+G310 X((L1+L9)-L10/2+0.5+L5/2-1) Y(-4) Z(3) R(2.5) D(L10) H(8) A(0.000) N(1) P(0.000) M(0) U(0) T(11) L(0) O(99) 
+G144 X0 Y46.4 Z14.5 I2800 J46.4 K14.5 A2800 B5.4 C14.5 R1 H0
+G800
+M30

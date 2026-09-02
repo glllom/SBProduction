@@ -1,0 +1,172 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ToolsLibrary Version="1.0">
+  <Tool Index="1" Type="MillingDisk" Name="Disco 150 mm" Description="Disco 150 mm">
+    <ToolParameter Name="LengthF" Units="mm">6.00</ToolParameter>
+    <ToolParameter Name="LengthI" Units="mm">6.00</ToolParameter>
+    <ToolParameter Name="DiameterF" Units="mm">150.00</ToolParameter>
+    <ToolParameter Name="DiameterS" Units="mm">54.00</ToolParameter>
+    <ToolParameter Name="LengthS" Units="mm">44.55</ToolParameter>
+    <ToolParameter Name="DiameterH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="DiameterH2" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH2" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterAngle" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="DiameterE" Units="mm">54.00</ToolParameter>
+    <ToolParameter Name="LengthE" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterSize" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="Pitch" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="WSides" Units="">Top,Front,Back</ToolParameter>
+    <ToolParameter Name="CosDirWSides" Units="">[0.00,0.00,-1.00]</ToolParameter>
+    <ToolParameter Name="Speed" Units="rpm">7000.00</ToolParameter>
+    <ToolParameter Name="EntryFeed" Units="mm/min">1050.00</ToolParameter>
+    <ToolParameter Name="CuttingFeed" Units="mm/min">2450.00</ToolParameter>
+    <ToolParameter Name="ExitFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="Steps" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="AngularHeadTool">0</ToolParameter>
+    <ToolParameter Name="PosInToolStore">0</ToolParameter>
+  </Tool>
+  <Tool Index="13" Type="Mill" Name="Fresa 10 mm" Description="Fresa M.D.">
+    <ToolParameter Name="LengthF" Units="mm">17.00</ToolParameter>
+    <ToolParameter Name="LengthI" Units="mm">17.00</ToolParameter>
+    <ToolParameter Name="DiameterF" Units="mm">10.00</ToolParameter>
+    <ToolParameter Name="DiameterS" Units="mm">10.00</ToolParameter>
+    <ToolParameter Name="LengthS" Units="mm">73.01</ToolParameter>
+    <ToolParameter Name="DiameterH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="DiameterH2" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH2" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterAngle" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="LengthE" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterSize" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="Pitch" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="WSides" Units="">Top,Front,Back</ToolParameter>
+    <ToolParameter Name="CosDirWSides" Units="">[0.00,0.00,-1.00]</ToolParameter>
+    <ToolParameter Name="Speed" Units="rpm">15000.00</ToolParameter>
+    <ToolParameter Name="EntryFeed" Units="mm/min">450.00</ToolParameter>
+    <ToolParameter Name="CuttingFeed" Units="mm/min">975.00</ToolParameter>
+    <ToolParameter Name="ExitFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="Steps" Units="mm">17.00</ToolParameter>
+    <ToolParameter Name="AngularHeadTool">0</ToolParameter>
+    <ToolParameter Name="PosInToolStore">0</ToolParameter>
+  </Tool>
+  <Tool Index="14" Type="Mill" Name="fresa morse" Description="fresa morse">
+    <ToolParameter Name="LengthF" Units="mm">100.00</ToolParameter>
+    <ToolParameter Name="LengthI" Units="mm">100.00</ToolParameter>
+    <ToolParameter Name="DiameterF" Units="mm">20.00</ToolParameter>
+    <ToolParameter Name="DiameterS" Units="mm">20.00</ToolParameter>
+    <ToolParameter Name="LengthS" Units="mm">110.50</ToolParameter>
+    <ToolParameter Name="DiameterH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="DiameterH2" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH2" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterAngle" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="LengthE" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterSize" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="Pitch" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="WSides" Units="">Top,Front,Back</ToolParameter>
+    <ToolParameter Name="CosDirWSides" Units="">[0.00,0.00,-1.00]</ToolParameter>
+    <ToolParameter Name="Speed" Units="rpm">2000.00</ToolParameter>
+    <ToolParameter Name="EntryFeed" Units="mm/min">100.00</ToolParameter>
+    <ToolParameter Name="CuttingFeed" Units="mm/min">800.00</ToolParameter>
+    <ToolParameter Name="ExitFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="Steps" Units="mm">100.00</ToolParameter>
+    <ToolParameter Name="AngularHeadTool">0</ToolParameter>
+    <ToolParameter Name="PosInToolStore">0</ToolParameter>
+  </Tool>
+  <Tool Index="11" Type="Mill" Name="Fresa 5 mm" Description="Fresa HSS">
+    <ToolParameter Name="LengthF" Units="mm">13.00</ToolParameter>
+    <ToolParameter Name="LengthI" Units="mm">13.00</ToolParameter>
+    <ToolParameter Name="DiameterF" Units="mm">5.00</ToolParameter>
+    <ToolParameter Name="DiameterS" Units="mm">5.00</ToolParameter>
+    <ToolParameter Name="LengthS" Units="mm">45.60</ToolParameter>
+    <ToolParameter Name="DiameterH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="DiameterH2" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH2" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterAngle" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="LengthE" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterSize" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="Pitch" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="WSides" Units="">Top,Front,Back</ToolParameter>
+    <ToolParameter Name="CosDirWSides" Units="">[0.00,0.00,-1.00]</ToolParameter>
+    <ToolParameter Name="Speed" Units="rpm">14000.00</ToolParameter>
+    <ToolParameter Name="EntryFeed" Units="mm/min">280.00</ToolParameter>
+    <ToolParameter Name="CuttingFeed" Units="mm/min">560.00</ToolParameter>
+    <ToolParameter Name="ExitFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="Steps" Units="mm">13.00</ToolParameter>
+    <ToolParameter Name="AngularHeadTool">0</ToolParameter>
+    <ToolParameter Name="PosInToolStore">0</ToolParameter>
+  </Tool>
+  <Tool Index="21" Type="Countersink" Name="Punta 6-11.5" Description="Punta 6-11.5">
+    <ToolParameter Name="LengthF" Units="mm">10.50</ToolParameter>
+    <ToolParameter Name="LengthI" Units="mm">10.50</ToolParameter>
+    <ToolParameter Name="DiameterF" Units="mm">6.00</ToolParameter>
+    <ToolParameter Name="DiameterS" Units="mm">11.50</ToolParameter>
+    <ToolParameter Name="LengthS" Units="mm">91.00</ToolParameter>
+    <ToolParameter Name="DiameterH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="DiameterH2" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH2" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterAngle" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="LengthE" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterSize" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="Pitch" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="WSides" Units="">Top,Front,Back</ToolParameter>
+    <ToolParameter Name="CosDirWSides" Units="">[0.00,0.00,-1.00]</ToolParameter>
+    <ToolParameter Name="Speed" Units="rpm">3500.00</ToolParameter>
+    <ToolParameter Name="EntryFeed" Units="mm/min">350.00</ToolParameter>
+    <ToolParameter Name="CuttingFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="ExitFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="Steps" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="AngularHeadTool">0</ToolParameter>
+    <ToolParameter Name="PosInToolStore">0</ToolParameter>
+  </Tool>
+  <Tool Index="12" Type="Mill" Name="Fresa 8 mm" Description="Fresa M.D.">
+    <ToolParameter Name="LengthF" Units="mm">17.00</ToolParameter>
+    <ToolParameter Name="LengthI" Units="mm">17.00</ToolParameter>
+    <ToolParameter Name="DiameterF" Units="mm">8.00</ToolParameter>
+    <ToolParameter Name="DiameterS" Units="mm">8.00</ToolParameter>
+    <ToolParameter Name="LengthS" Units="mm">44.46</ToolParameter>
+    <ToolParameter Name="DiameterH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="DiameterH2" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH2" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterAngle" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="LengthE" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterSize" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="Pitch" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="WSides" Units="">Top,Front,Back</ToolParameter>
+    <ToolParameter Name="CosDirWSides" Units="">[0.00,0.00,-1.00]</ToolParameter>
+    <ToolParameter Name="Speed" Units="rpm">17000.00</ToolParameter>
+    <ToolParameter Name="EntryFeed" Units="mm/min">510.00</ToolParameter>
+    <ToolParameter Name="CuttingFeed" Units="mm/min">1360.00</ToolParameter>
+    <ToolParameter Name="ExitFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="Steps" Units="mm">17.00</ToolParameter>
+    <ToolParameter Name="AngularHeadTool">0</ToolParameter>
+    <ToolParameter Name="PosInToolStore">0</ToolParameter>
+  </Tool>
+  <Tool Index="31" Type="Tap" Name="Maschio M6" Description="Maschio M6">
+    <ToolParameter Name="LengthF" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="LengthI" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="DiameterF" Units="mm">6.00</ToolParameter>
+    <ToolParameter Name="DiameterS" Units="mm">6.00</ToolParameter>
+    <ToolParameter Name="LengthS" Units="mm">70.70</ToolParameter>
+    <ToolParameter Name="DiameterH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="DiameterH2" Units="mm">55.00</ToolParameter>
+    <ToolParameter Name="LengthH2" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterAngle" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="LengthE" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="CutterSize" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="Pitch" Units="mm">1.00</ToolParameter>
+    <ToolParameter Name="WSides" Units="">Top,Front,Back</ToolParameter>
+    <ToolParameter Name="CosDirWSides" Units="">[0.00,0.00,-1.00]</ToolParameter>
+    <ToolParameter Name="Speed" Units="rpm">1000.00</ToolParameter>
+    <ToolParameter Name="EntryFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="CuttingFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="ExitFeed" Units="mm/min">0.00</ToolParameter>
+    <ToolParameter Name="Steps" Units="mm">0.00</ToolParameter>
+    <ToolParameter Name="AngularHeadTool">0</ToolParameter>
+    <ToolParameter Name="PosInToolStore">0</ToolParameter>
+  </Tool>
+</ToolsLibrary>
