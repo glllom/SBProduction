@@ -12,6 +12,7 @@ class OrderStatus(models.TextChoices):
     IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
     IN_PRODUCTION_PHASE1 = 'PHASE1_PRODUCTION', 'ייצור שלב א (משקופים)'
     PHASE1_READY = 'PHASE1_READY', 'שלב א מוכן (ממתין להמשך)'
+    IN_PRODUCTION_PHASE2 = 'PHASE2_PRODUCTION', 'ייצור שלב ב'
     READY = 'READY', 'מוכן למשלוח'
     COMPLETED = 'COMPLETED', 'הושלם'
     CANCELED = 'CANCELED', 'בוטל'
@@ -139,6 +140,7 @@ class Order(models.Model):
         """
         Returns all unique production stations for all items in this order,
         considering their routes and customizers.
+        Also filters based on order status for phased production.
         """
         from apps.production.models import ProductionRoute
         all_stations = []
@@ -151,6 +153,14 @@ class Order(models.Model):
             group_stations = ProductionRoute.get_stations_for_group(group)
             for s in group_stations:
                 if s.id not in seen_ids:
+                    # Filter for staged production
+                    if self.status == OrderStatus.IN_PRODUCTION_PHASE1:
+                        if not s.is_phase1:
+                            continue
+                    elif self.status == OrderStatus.IN_PRODUCTION_PHASE2:
+                        if s.is_phase1:
+                            continue
+                    
                     all_stations.append(s)
                     seen_ids.add(s.id)
 
@@ -383,9 +393,9 @@ class OrderItemsGroup(models.Model):
 
     def duplicate(self):
         """
-        Создает дубликат текущей группы для того же заказа.
-        Копирует параметры группы и ее кастомайзеры.
-        Двери (OrderItem) создаются пустыми через стандартный OrderItemsGroup.save().
+        Creates a duplicate of the current group for the same order.
+        Copies group parameters and its customizers.
+        Doors (OrderItem) are created empty via standard OrderItemsGroup.save().
         """
         with transaction.atomic():
             new_group = OrderItemsGroup.objects.create(

@@ -138,6 +138,28 @@ def order_reset_to_new(request, pk):
     return redirect('order-detail', pk=pk)
 
 
+@login_required
+def order_cancel(request, pk):
+    if not request.user.is_admin_user:
+        raise PermissionDenied("ביטול הזמנה מותר למנהל מערכת בלבד.")
+
+    order = get_object_or_404(Order, pk=pk)
+    if order.status != OrderStatus.CANCELED:
+        old_status = order.status
+        order.status = OrderStatus.CANCELED
+        order.save()
+
+        OrderChangeLog.objects.create(
+            order=order,
+            user=request.user,
+            field_name='status',
+            old_value=old_status,
+            new_value=OrderStatus.CANCELED
+        )
+
+    return redirect('order-detail', pk=pk)
+
+
 class OrderMeasurementsView(LoginRequiredMixin, DetailView):
     model = Order
     template_name = 'orders/order_measurements.html'

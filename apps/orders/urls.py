@@ -15,6 +15,7 @@ urlpatterns = [
     path('<int:pk>/measurements/', views.OrderMeasurementsView.as_view(), name='order-measurements'),
     path('<int:pk>/edit-header/', views.OrderHeaderUpdateView.as_view(), name='order-edit-header'),
     path('<int:pk>/reset-to-new/', views.order_reset_to_new, name='order-reset-to-new'),
+    path('<int:pk>/cancel/', views.order_cancel, name='order-cancel'),
     path('<int:pk>/delete/', views.OrderDeleteView.as_view(), name='order-delete'),
 
     # Order Items Groups

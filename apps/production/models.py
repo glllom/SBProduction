@@ -192,7 +192,7 @@ class HingeStandardHeight(models.Model):
 
 class ProductionStation(models.Model):
     """
-    Production stations or departments (участки / станции / תחנות).
+    Production stations or departments (areas / stations).
     """
     name = models.CharField('שם התחנה', max_length=255)
     code = models.CharField('קוד תחנה', max_length=50, blank=True)
@@ -201,6 +201,7 @@ class ProductionStation(models.Model):
     description = models.TextField('תיאור מפורט', blank=True)
     template_name = models.CharField('שם תבנית HTML', max_length=255, blank=True, help_text='נתיב לקובץ ה-html של הדו"ח')
     has_specification = models.BooleanField('יש מפרט/כפתור', default=True, help_text='האם להציג כפתור להפקת דו"ח עבור תחנה זו')
+    is_phase1 = models.BooleanField('שלב א', default=False, help_text='האם תחנה זו שייכת לשלב א (ייצור מקדים/משקופים)')
     active = models.BooleanField('פעיל', default=True)
 
     class Meta:

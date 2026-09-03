@@ -4,3 +4,4 @@ whitenoise
 djangorestframework
 openpyxl
 holidays
+pydantic

@@ -299,7 +299,7 @@ class GroupDuplicationAndSpecificationTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
-class OrderStatusResetTests(TestCase):
+class OrderStatusManagementTests(TestCase):
     def setUp(self):
         self.client = Client()
         self.admin_user = User.objects.create_user(
@@ -315,7 +315,7 @@ class OrderStatusResetTests(TestCase):
             role=UserRole.USER
         )
         self.order = Order.objects.create(
-            order_number='ORD-RESET-TEST',
+            order_number='ORD-MGMT-TEST',
             status=OrderStatus.IN_PRODUCTION
         )
 
@@ -342,5 +342,31 @@ class OrderStatusResetTests(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 403) # PermissionDenied
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.IN_PRODUCTION)
+
+    def test_admin_can_cancel_order(self):
+        self.client.login(username='adminuser', password='password123')
+        url = reverse('order-cancel', kwargs={'pk': self.order.pk})
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 302)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.CANCELED)
+
+        # Check changelog
+        from apps.orders.models import OrderChangeLog
+        self.assertTrue(OrderChangeLog.objects.filter(
+            order=self.order,
+            field_name='status',
+            new_value=OrderStatus.CANCELED
+        ).exists())
+
+    def test_regular_user_cannot_cancel_order(self):
+        self.client.login(username='regularuser', password='password123')
+        url = reverse('order-cancel', kwargs={'pk': self.order.pk})
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 403)
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, OrderStatus.IN_PRODUCTION)

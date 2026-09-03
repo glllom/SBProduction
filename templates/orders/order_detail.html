@@ -114,13 +114,17 @@
                title="סיום שלב א' של ההזמנה">
                 <i class="bi bi-check-circle me-2"></i>סיום שלב א
             </a>
-            <a href="{% url 'production:order-production-report' order.pk %}?type=PHASE1_PRODUCTION"
-               target="_blank"
-               class="btn btn-outline-info"
-               data-bs-toggle="tooltip"
-               title="הפקת דו''ח ייצור משקופים שלב א">
-                <i class="bi bi-printer me-2"></i>משקופים
-            </a>
+            {% for station in order.get_production_stations %}
+                {% if station.has_specification %}
+                    <a href="{% url 'production:order-production-report' order.pk %}?station={{ station.code }}"
+                       target="_blank"
+                       class="btn btn-outline-info"
+                       data-bs-toggle="tooltip"
+                       title="{{ station.hint|default:station.name }}">
+                        <i class="bi bi-printer me-2"></i>{{ station.label|default:station.name }}
+                    </a>
+                {% endif %}
+            {% endfor %}
         {% elif order.status == 'PHASE1_READY' %}
             <a href="{% url 'production:order-check-validation' order.pk %}"
                class="btn btn-outline-info"
@@ -134,14 +138,24 @@
                title="העברה לייצור מלא / שלב ב">
                 <i class="bi bi-send-check me-2"></i>העברה לשלב ב
             </a>
-            <a href="{% url 'production:order-production-report' order.pk %}?type=PHASE1_PRODUCTION"
-               target="_blank"
-               class="btn btn-outline-info"
+            {% for station in order.get_production_stations %}
+                {% if station.has_specification %}
+                    <a href="{% url 'production:order-production-report' order.pk %}?station={{ station.code }}"
+                       target="_blank"
+                       class="btn btn-outline-info"
+                       data-bs-toggle="tooltip"
+                       title="{{ station.hint|default:station.name }}">
+                        <i class="bi bi-printer me-2"></i>{{ station.label|default:station.name }}
+                    </a>
+                {% endif %}
+            {% endfor %}
+        {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' %}
+            <a href="{% url 'production:order-complete-production' order.pk %}"
+               class="btn btn-success"
                data-bs-toggle="tooltip"
-               title="דו''ח משקופים שלב א">
-                <i class="bi bi-printer me-2"></i>משקופים
+               title="סיום תהליך הייצור והעברה למוכן למשלוח">
+                <i class="bi bi-check-all me-2"></i>סיום ייצור
             </a>
-        {% elif order.status == 'IN_PRODUCTION' %}
             {% for station in order.get_production_stations %}
                 {% if station.has_specification %}
                     <a href="{% url 'production:order-production-report' order.pk %}?station={{ station.code }}"
@@ -170,13 +184,30 @@
             </a>
         {% endif %}
         {% if order.status != 'NEW' and user.is_admin_user %}
-            <a href="{% url 'order-reset-to-new' order.pk %}"
-               class="btn btn-outline-warning ms-auto"
-               onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')"
-               data-bs-toggle="tooltip"
-               title="החזרת ההזמנה לסטטוס חדש לעריכה">
-                <i class="bi bi-arrow-counterclockwise me-2"></i>שינוי הזמנה
-            </a>
+            <div class="dropdown ms-auto">
+                <button class="btn btn-outline-secondary btn-sm"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        title="אפשרויות ניהול הזמנה">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    <li>
+                        <a class="dropdown-item"
+                           href="{% url 'order-reset-to-new' order.pk %}"
+                           onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')">
+                            <i class="bi bi-arrow-counterclockwise me-2 text-warning"></i>שינוי הזמנה
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item text-danger"
+                           href="{% url 'order-cancel' order.pk %}"
+                           onclick="return confirm('האם אתה בטוח שברצונך לבטל את ההזמנה?')">
+                            <i class="bi bi-x-circle me-2"></i>ביטול הזמנה
+                        </a>
+                    </li>
+                </ul>
+            </div>
         {% endif %}
     </div>
     <div class="row">

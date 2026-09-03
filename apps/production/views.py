@@ -64,6 +64,19 @@ def order_complete_phase1(request, pk):
 
 
 @login_required
+def order_complete_production(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+
+    try:
+        OrderProductionService.complete_production(order, user=request.user)
+        messages.success(request, "הייצור הושלם בהצלחה")
+    except ValueError as e:
+        messages.error(request, str(e))
+
+    return redirect('order-detail', pk=pk)
+
+
+@login_required
 def order_production_data(request, pk):
     order = get_object_or_404(Order, pk=pk)
 

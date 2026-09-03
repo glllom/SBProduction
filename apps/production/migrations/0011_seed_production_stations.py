@@ -20,7 +20,7 @@ def seed_stations(apps, schema_editor):
             'code': 'PRESS',
             'label': 'פרס',
             'hint': 'דו"ח עמדת פרס',
-            'template_name': 'production/alum_frames_report.html', # Заглушка
+            'template_name': 'production/alum_frames_report.html', # Placeholder
             'has_specification': True
         },
         {
@@ -28,7 +28,7 @@ def seed_stations(apps, schema_editor):
             'code': 'GLAZING',
             'label': 'זיגוג',
             'hint': 'דו"ח עמדת זיגוג',
-            'template_name': 'production/alum_frames_report.html', # Заглушка
+            'template_name': 'production/alum_frames_report.html', # Placeholder
             'has_specification': True
         },
         {
@@ -36,7 +36,7 @@ def seed_stations(apps, schema_editor):
             'code': 'CARPENTRY',
             'label': 'נגרות',
             'hint': 'דו"ח עמדת נגרות',
-            'template_name': 'production/alum_frames_report.html', # Заглушка
+            'template_name': 'production/alum_frames_report.html', # Placeholder
             'has_specification': True
         },
     ]

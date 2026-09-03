@@ -82,10 +82,10 @@ class ProductionStationAdmin(admin.ModelAdmin):
     ordering = ('name',)
 
     fieldsets = (
-        ('Основная информация', {
+        ('Basic Information', {
             'fields': ('name', 'code', 'description', 'active')
         }),
-        ('Настройка кнопок и отчетов', {
+        ('Buttons and Reports Settings', {
             'fields': ('label', 'hint', 'template_name', 'has_specification')
         }),
     )
@@ -107,7 +107,7 @@ class ProductionRouteAdmin(admin.ModelAdmin):
         (None, {
             'fields': ('name', 'active')
         }),
-        ('Привязка к каталогу (заполните только один уровень)', {
+        ('Catalog Binding (fill only one level)', {
             'fields': ('product_type', 'product_family', 'series', 'product_model')
         }),
     )
