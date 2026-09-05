@@ -218,6 +218,12 @@
     <script>
         const orderSeriesId = "{{ order.series_id|default:'' }}";
         const orderFrontId = "{{ order.front_id|default:'' }}";
+        const $saveSpecGroupName = $('#saveSpecGroupName');
+const $saveSpecGroupDetails = $('#saveSpecGroupDetails');
+const $saveSpecGroupQty = $('#saveSpecGroupQty');
+const $saveSpecNameInput = $('#saveSpecNameInput');
+const $saveSpecDescInput = $('#saveSpecDescInput');
+const $saveSpecForm = $('#saveSpecForm');
 
         /**
          * Configuration for Product Types.
@@ -233,21 +239,35 @@
         };
 
         $(document).ready(function () {
+            // Cache frequently used selectors for performance and to avoid "Duplicated jQuery selector" warnings
+            const $csrfTokenInput = $('input[name="csrfmiddlewaretoken"]');
+            const $loadSpecTargetGroupId = $('#loadSpecTargetGroupId');
+            const $loadSpecTargetBadge = $('#loadSpecTargetBadge');
+            const $specLoadingIndicator = $('#specLoadingIndicator');
+            const $specCardsGrid = $('#specCardsGrid');
+            const $specEmptyState = $('#specEmptyState');
+            const $groupModals = $('.edit-group-modal, #addGroupModal');
+            const $editHeaderForm = $('#editHeaderForm');
+            const $deleteOrderForm = $('#deleteOrderForm');
+
             /**
              * Toggle the visibility of items in a group (Show More/Show Less).
              */
             $('.btn-toggle-items').on('click', function() {
-                const groupId = $(this).data('group-id');
-                const $hiddenRows = $(`.item-row-${groupId}.d-none`);
+                const $btn = $(this);
+                const groupId = $btn.data('group-id');
+                const $allRows = $(`.item-row-${groupId}`);
+                const $hiddenRows = $allRows.filter('.d-none');
+
                 if ($hiddenRows.length) {
                     $hiddenRows.removeClass('d-none');
-                    $(this).text('הצג פחות');
+                    $btn.text('הצג פחות');
                 } else {
-                    $(`.item-row-${groupId}`).each(function(index) {
+                    $allRows.each(function(index) {
                         if (index >= 4) $(this).addClass('d-none');
                     });
-                    const count = $(`.item-row-${groupId}`).length - 4;
-                    $(this).text(`הצג עוד... (${count})`);
+                    const count = $allRows.length - 4;
+                    $btn.text(`הצג עוד... (${count})`);
                 }
             });
 
@@ -306,26 +326,17 @@
 
                 // Show/Hide fields based on Product Type config
                 const config = productTypeConfig[typeId] || { has_door: true, has_frame: true };
+                const $fieldWall = $('.field-wall');
+                const $fieldDoor = $('.field-door');
+                const $fieldDims = $('.field-dims');
+                const $fieldPlace = $('.field-place');
 
-                if (config.has_frame) {
-                    $('.field-wall').show();
-                } else {
-                    $('.field-wall').hide();
-                }
+                $fieldWall.toggle(config.has_frame);
+                $fieldDoor.toggle(config.has_door);
 
-                if (config.has_door) {
-                    $('.field-door').show();
-                } else {
-                    $('.field-door').hide();
-                }
-
-                if (config.has_door || config.has_frame) {
-                    $('.field-dims').show();
-                    $('.field-place').show();
-                } else {
-                    $('.field-dims').hide();
-                    $('.field-place').hide();
-                }
+                const showDims = config.has_door || config.has_frame;
+                $fieldDims.toggle(showDims);
+                $fieldPlace.toggle(showDims);
 
                 // Special case for Opening Lining (משקוף מעבר) - user mentioned it specifically.
                 // If it has a frame but no door, the logic above will hide the field "direction/opening".
@@ -333,13 +344,13 @@
 
             // Ensure Bootstrap classes are applied for modal fields correctly
             $('#editHeaderModal input, #editHeaderModal select, #editHeaderModal textarea').each(function () {
-                if (!$(this).hasClass('form-select') && !$(this).hasClass('select2-hidden-accessible')) {
-                    $(this).addClass('form-control');
+                const $el = $(this);
+                if (!$el.hasClass('form-select') && !$el.hasClass('select2-hidden-accessible')) {
+                    $el.addClass('form-control');
                 }
             });
 
             // Confirmation for saving changes
-            const $editHeaderForm = $('#editHeaderForm');
             if ($editHeaderForm.length) {
                 $editHeaderForm.on('submit', function (e) {
                     if (!confirm('לשמור שינויים?')) {
@@ -349,7 +360,6 @@
             }
 
             // Confirmation for deleting order
-            const $deleteOrderForm = $('#deleteOrderForm');
             if ($deleteOrderForm.length) {
                 $deleteOrderForm.on('submit', function (e) {
                     if (!confirm('האם אתה בטוח שברצונך למחוק את ההזמנה? פעולה זו אינה ניתנת לביטול.')) {
@@ -368,17 +378,19 @@
             }
 
             // Track changes in group modals (Add and Edit)
-            $('.edit-group-modal, #addGroupModal').on('show.bs.modal', function() {
-                const $form = $(this).find('form');
+            $groupModals.on('show.bs.modal', function() {
+                const $modal = $(this);
+                const $form = $modal.find('form');
                 $form.data('initial-state', getGroupFormState($form));
             });
 
-            $('.edit-group-modal, #addGroupModal').on('hide.bs.modal', function(e) {
-                const $form = $(this).find('form');
+            $groupModals.on('hide.bs.modal', function(e) {
+                const $modal = $(this);
+                const $form = $modal.find('form');
                 const initialState = $form.data('initial-state');
                 const currentState = getGroupFormState($form);
 
-                if (initialState !== currentState && !$(this).data('force-close')) {
+                if (initialState !== currentState && !$modal.data('force-close')) {
                     if (!confirm('יש שינויים שלא נשמרו. האם אתה בטוח שברצונך לסגור?')) {
                         e.preventDefault();
                         e.stopPropagation();
@@ -511,6 +523,7 @@
 
                 $custModal.data('group-id', groupId);
                 loadGroupCustomizers(groupId);
+                // noinspection JSUnresolvedFunction
                 $custModal.modal('show');
             }
 
@@ -532,7 +545,9 @@
                         if (window.initTooltips) window.initTooltips($custTableBody[0]);
                     })
                     .catch(err => {
+                        console.error('Error loading group customizers:', err);
                         $custTableBody.html('<tr><td colspan="3" class="text-center text-danger py-4">שגיאה בטעינת נתונים</td></tr>');
+
                     });
             }
 
@@ -630,6 +645,7 @@
                 })
                 .then(r => r.json())
                 .then(item => {
+                    console.log('Successfully saved/added item:', item);
                     $custSearch.val('');
                     $custResults.addClass('d-none');
                     loadGroupCustomizers(groupId);
@@ -755,7 +771,7 @@
                             const isNew = $container.closest('#addGroupModal').length > 0;
                             if (!isNew && currentVal && fronts.some(f => String(f.id) === String(currentVal))) {
                                 $frontSelect.val(currentVal);
-                            } else if (isNew && seriesId == orderSeriesId && orderFrontId && fronts.some(f => String(f.id) === String(orderFrontId))) {
+                            } else if (isNew && seriesId === orderSeriesId && orderFrontId && fronts.some(f => String(f.id) === String(orderFrontId))) {
                                 $frontSelect.val(orderFrontId);
                             }
                             $frontSelect.trigger('change');
@@ -781,7 +797,7 @@
                             let options = '<option value="">---------</option>';
                             const colors = (Array.isArray(data) ? data : data.results) || [];
                             colors.forEach(color => {
-                                const desc = color.sku || color.description || '';
+                                const desc = color?.sku || color.description || '';
                                 options += `<option value="${color.id}" data-description="${desc}" title="${desc}">${color.name}</option>`;
                             });
                             $basicColorFramesSelect.html(options);
@@ -933,12 +949,7 @@
                 });
             }
 
-            const $addGroupModal = $('#addGroupModal');
-            if ($addGroupModal.length) {
-                setupGroupPaintingLogic($addGroupModal);
-            }
-
-            $('.edit-group-modal').each(function() {
+            $groupModals.each(function() {
                 setupGroupPaintingLogic($(this));
             });
 
@@ -949,31 +960,33 @@
             // Open Save Specification Modal
             $(document).on('click', '.btn-open-save-spec', function (e) {
                 e.preventDefault();
-                const groupId = $(this).data('group-id');
-                const groupName = $(this).data('group-name') || '';
-                const groupDetails = $(this).data('group-details') || '';
-                const groupQty = $(this).data('group-qty') || 1;
+                const $btn = $(this);
+                const groupId = $btn.data('group-id');
+                const groupName = $btn.data('group-name') || '';
+                const groupDetails = $btn.data('group-details') || '';
+                const groupQty = $btn.data('group-qty') || 1;
 
-                $('#saveSpecGroupName').text(groupName);
-                $('#saveSpecGroupDetails').text(groupDetails);
-                $('#saveSpecGroupQty').text(groupQty + ' דלתות');
-                $('#saveSpecNameInput').val(groupName ? `מפרט ${groupName}` : '');
-                $('#saveSpecDescInput').val('');
-                $('#saveSpecForm').attr('action', `/orders/groups/${groupId}/save-specification/`);
-                $('#saveSpecForm').data('group-id', groupId);
+                $saveSpecGroupName.text(groupName);
+                $saveSpecGroupDetails.text(groupDetails);
+                $saveSpecGroupQty.text(groupQty + ' דלתות');
+                $saveSpecNameInput.val(groupName ? `מפרט ${groupName}` : '');
+                $saveSpecDescInput.val('');
+                $saveSpecForm.attr('action', `/orders/groups/${groupId}/save-specification/`);
+                $saveSpecForm.data('group-id', groupId);
 
+                // noinspection JSUnresolvedVariable
                 const modal = new bootstrap.Modal(document.getElementById('saveSpecificationModal'));
                 modal.show();
             });
 
             // Handle Submit Save Specification Form
-            $('#saveSpecForm').on('submit', function (e) {
+            $saveSpecForm.on('submit', function (e) {
                 e.preventDefault();
                 const $form = $(this);
                 const url = $form.attr('action');
-                const name = $('#saveSpecNameInput').val().trim();
-                const description = $('#saveSpecDescInput').val().trim();
-                const csrfToken = $form.find('input[name="csrfmiddlewaretoken"]').val() || $('input[name="csrfmiddlewaretoken"]').first().val();
+                const name = $saveSpecNameInput.val().trim();
+                const description = $saveSpecDescInput.val().trim();
+                const csrfToken = $form.find('input[name="csrfmiddlewaretoken"]').val() || $csrfTokenInput.first().val();
 
                 if (!name) {
                     alert('נא להזין שם למפרט');
@@ -1001,6 +1014,7 @@
                     $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
                     if (data.status === 'ok') {
                         const modalEl = document.getElementById('saveSpecificationModal');
+                        // noinspection JSUnresolvedVariable
                         const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
                         modal.hide();
                         showSuccessNotification('המפרט נשמר בהצלחה!');
@@ -1029,7 +1043,7 @@
                 $empty.addClass('d-none');
 
                 specs.forEach(spec => {
-                    let customizersHtml = '';
+                    let customizersHtml;
                     if (spec.customizers && spec.customizers.length > 0) {
                         customizersHtml = spec.customizers.map(c => {
                             let params = [];
@@ -1044,11 +1058,11 @@
                         customizersHtml = '<span class="text-muted small">ללא שדרוגים מיוחדים</span>';
                     }
 
-                    const isSplitBadge = spec.is_split_installation
+                    const isSplitBadge = spec?.is_split_installation
                         ? '<span class="badge bg-info-subtle text-info me-2">התקנה מפוצלת</span>'
                         : '';
 
-                    let actionButtons = '';
+                    let actionButtons;
                     if (targetGroupId) {
                         actionButtons = `
                             <div class="d-flex flex-column gap-2 mt-3">
@@ -1068,8 +1082,8 @@
                             <div class="d-flex gap-2 mt-3">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text">כמות</span>
-                                    <input type="number" class="form-control spec-create-qty" value="${spec.quantity || 1}" min="1">
-                                    <button type="button" class="btn btn-success btn-create-from-spec" data-spec-id="${spec.id}">
+                                    <input type="number" class="form-control spec-create-qty" value="${spec?.quantity || 1}" min="1">
+                                    <button type="button" class="btn btn-success btn-create-from-spec" data-spec-id="${spec?.id}">
                                         <i class="bi bi-plus-circle me-1"></i>הוסף להזמנה
                                     </button>
                                 </div>
@@ -1078,7 +1092,7 @@
                     }
 
                     const cardHtml = `
-                        <div class="col-md-6 col-xl-4 spec-card-item" data-spec-search="${(spec.name + ' ' + (spec.description || '') + ' ' + (spec.product_name || '') + ' ' + (spec.series_name || '')).toLowerCase()}">
+                        <div class="col-md-6 col-xl-4 spec-card-item">
                             <div class="card h-100 shadow-sm border-0 bg-light">
                                 <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2">
                                     <div class="text-truncate me-2">
@@ -1134,38 +1148,39 @@
             }
 			// noinspection JSUnresolvedVariable
             function loadSpecifications(targetGroupId) {
-                $('#specLoadingIndicator').removeClass('d-none');
-                $('#specCardsGrid').empty();
-                $('#specEmptyState').addClass('d-none');
+                $specLoadingIndicator.removeClass('d-none');
+                $specCardsGrid.empty();
+                $specEmptyState.addClass('d-none');
 
                 fetch('/orders/api/specifications/')
                     .then(res => res.json())
                     .then(data => {
-                        $('#specLoadingIndicator').addClass('d-none');
+                        $specLoadingIndicator.addClass('d-none');
                         currentSpecifications = Array.isArray(data) ? data : (data.results || []);
                         renderSpecificationCards(currentSpecifications, targetGroupId);
                     })
                     .catch(err => {
-                        $('#specLoadingIndicator').addClass('d-none');
+                        $specLoadingIndicator.addClass('d-none');
                         console.error('Error fetching specifications:', err);
-                        $('#specEmptyState').removeClass('d-none');
+                        $specEmptyState.removeClass('d-none');
                     });
             }
 
             // Open Load Specification Modal
             $(document).on('click', '.btn-open-load-spec', function (e) {
                 e.preventDefault();
-                const targetGroupId = $(this).data('group-id') || '';
-                const targetGroupName = $(this).data('group-name') || '';
+                const $btn = $(this);
+                const targetGroupId = $btn.data('group-id') || '';
+                const targetGroupName = $btn.data('group-name') || '';
 
-                $('#loadSpecTargetGroupId').val(targetGroupId);
+                $loadSpecTargetGroupId.val(targetGroupId);
                 if (targetGroupId) {
-                    $('#loadSpecTargetBadge')
+                    $loadSpecTargetBadge
                         .removeClass('bg-info-subtle text-info border-info')
                         .addClass('bg-primary-subtle text-primary border-primary')
                         .html(`<i class="bi bi-layers me-1"></i>פעולה עבור קבוצה: <strong>${targetGroupName || '#' + targetGroupId}</strong>`);
                 } else {
-                    $('#loadSpecTargetBadge')
+                    $loadSpecTargetBadge
                         .removeClass('bg-primary-subtle text-primary border-primary')
                         .addClass('bg-info-subtle text-info border-info')
                         .html('<i class="bi bi-plus-circle me-1"></i>הוספת קבוצה חדשה להזמנה');
@@ -1174,7 +1189,7 @@
                 $('#specSearchInput').val('');
                 loadSpecifications(targetGroupId);
 
-				// noinspection JSUnresolvedVariable
+                // noinspection JSUnresolvedVariable
                 const modal = new bootstrap.Modal(document.getElementById('loadSpecificationModal'));
                 modal.show();
             });
@@ -1182,7 +1197,7 @@
             // Search in specifications
             $(document).on('input', '#specSearchInput', function () {
                 const q = $(this).val().trim().toLowerCase();
-                const targetGroupId = $('#loadSpecTargetGroupId').val();
+                const targetGroupId = $loadSpecTargetGroupId.val();
                 if (!q) {
                     renderSpecificationCards(currentSpecifications, targetGroupId);
                     return;
@@ -1196,10 +1211,11 @@
 
             // Apply spec to existing group
             $(document).on('click', '.btn-apply-spec', function () {
-                const specId = $(this).data('spec-id');
-                const specName = $(this).data('spec-name');
-                const groupId = $('#loadSpecTargetGroupId').val();
-                const csrfToken = $('input[name="csrfmiddlewaretoken"]').first().val();
+                const $btn = $(this);
+                const specId = $btn.data('spec-id');
+                const specName = $btn.data('spec-name');
+                const groupId = $loadSpecTargetGroupId.val();
+                const csrfToken = $csrfTokenInput.first().val();
 
                 if (!groupId || !specId) return;
 
@@ -1207,7 +1223,6 @@
                     return;
                 }
 
-                const $btn = $(this);
                 $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> מחיל...');
 
                 fetch(`/orders/groups/${groupId}/apply-specification/${specId}/`, {
@@ -1239,13 +1254,13 @@
 
             // Create new group from spec
             $(document).on('click', '.btn-create-from-spec', function () {
-                const specId = $(this).data('spec-id');
+                const $btn = $(this);
+                const specId = $btn.data('spec-id');
                 const orderId = '{{ order.pk }}';
-                const csrfToken = $('input[name="csrfmiddlewaretoken"]').first().val();
-                const $card = $(this).closest('.card');
+                const csrfToken = $csrfTokenInput.first().val();
+                const $card = $btn.closest('.card');
                 const qty = $card.find('.spec-create-qty').val() || 1;
 
-                const $btn = $(this);
                 $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> מוסיף...');
 
                 fetch(`/orders/${orderId}/groups/create-from-specification/${specId}/`, {
@@ -1278,8 +1293,9 @@
 
             // Delete specification
             $(document).on('click', '.btn-delete-spec', function () {
-                const specId = $(this).data('spec-id');
-                const csrfToken = $('input[name="csrfmiddlewaretoken"]').first().val();
+                const $btn = $(this);
+                const specId = $btn.data('spec-id');
+                const csrfToken = $csrfTokenInput.first().val();
 
                 if (!confirm('האם אתה בטוח שברצונך למחוק מפרט שמור זה לצמיתות?')) {
                     return;
@@ -1299,7 +1315,7 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'ok') {
-                        const targetGroupId = $('#loadSpecTargetGroupId').val();
+                        const targetGroupId = $loadSpecTargetGroupId.val();
                         loadSpecifications(targetGroupId);
                     } else {
                         alert(data.message || 'שגיאה במחיקת המפרט');
@@ -1324,9 +1340,11 @@
                         </div>
                     </div>
                 `;
-                $('body').append(toastHtml);
+                const $toast = $(toastHtml);
+                $('body').append($toast);
+
                 setTimeout(() => {
-                    $('.toast-container').fadeOut(500, function() { $(this).remove(); });
+                    $toast.fadeOut(500, function() { $(this).remove(); });
                 }, 3000);
             }
         });
