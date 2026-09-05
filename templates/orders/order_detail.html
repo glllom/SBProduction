@@ -218,17 +218,6 @@
     <script>
         const orderSeriesId = "{{ order.series_id|default:'' }}";
         const orderFrontId = "{{ order.front_id|default:'' }}";
-        const $saveSpecGroupName = $('#saveSpecGroupName');
-const $saveSpecGroupDetails = $('#saveSpecGroupDetails');
-const $saveSpecGroupQty = $('#saveSpecGroupQty');
-const $saveSpecNameInput = $('#saveSpecNameInput');
-const $saveSpecDescInput = $('#saveSpecDescInput');
-const $saveSpecForm = $('#saveSpecForm');
-
-        /**
-         * Configuration for Product Types.
-         * Used to show/hide fields based on door/frame characteristics.
-         */
         const productTypeConfig = {
             {% for pt in product_types %}
                 "{{ pt.id }}": {
@@ -240,6 +229,12 @@ const $saveSpecForm = $('#saveSpecForm');
 
         $(document).ready(function () {
             // Cache frequently used selectors for performance and to avoid "Duplicated jQuery selector" warnings
+            const $saveSpecGroupName = $('#saveSpecGroupName');
+            const $saveSpecGroupDetails = $('#saveSpecGroupDetails');
+            const $saveSpecGroupQty = $('#saveSpecGroupQty');
+            const $saveSpecNameInput = $('#saveSpecNameInput');
+            const $saveSpecDescInput = $('#saveSpecDescInput');
+            const $saveSpecForm = $('#saveSpecForm');
             const $csrfTokenInput = $('input[name="csrfmiddlewaretoken"]');
             const $loadSpecTargetGroupId = $('#loadSpecTargetGroupId');
             const $loadSpecTargetBadge = $('#loadSpecTargetBadge');
@@ -897,11 +892,10 @@ const $saveSpecForm = $('#saveSpecForm');
             });
 
             // Painting logic for Order Header
-            const $headerForm = $('#editHeaderForm');
-            if ($headerForm.length) {
-                const $colorPanels = $headerForm.find('input[name="color_panels"]');
-                const $colorFrames = $headerForm.find('input[name="color_frames"]');
-                const $isFramesToPaint = $headerForm.find('input[name="is_frames_to_paint"]');
+            if ($editHeaderForm.length) {
+                const $colorPanels = $editHeaderForm.find('input[name="color_panels"]');
+                const $colorFrames = $editHeaderForm.find('input[name="color_frames"]');
+                const $isFramesToPaint = $editHeaderForm.find('input[name="is_frames_to_paint"]');
 
                 function updateHeaderFramesState() {
                     const isChecked = $isFramesToPaint.is(':checked');
@@ -915,7 +909,7 @@ const $saveSpecForm = $('#saveSpecForm');
                 updateHeaderFramesState();
 
                 // Enable disabled fields before submit so they are sent
-                $headerForm.on('submit', function() {
+                $editHeaderForm.on('submit', function() {
                     $colorFrames.prop('disabled', false);
                 });
             }
@@ -1032,15 +1026,13 @@ const $saveSpecForm = $('#saveSpecForm');
             let currentSpecifications = [];
 
             function renderSpecificationCards(specs, targetGroupId) {
-                const $grid = $('#specCardsGrid');
-                const $empty = $('#specEmptyState');
-                $grid.empty();
+                $specCardsGrid.empty();
 
                 if (!specs || specs.length === 0) {
-                    $empty.removeClass('d-none');
+                    $specEmptyState.removeClass('d-none');
                     return;
                 }
-                $empty.addClass('d-none');
+                $specEmptyState.addClass('d-none');
 
                 specs.forEach(spec => {
                     let customizersHtml;
@@ -1143,7 +1135,7 @@ const $saveSpecForm = $('#saveSpecForm');
                             </div>
                         </div>
                     `;
-                    $grid.append(cardHtml);
+                    $specCardsGrid.append(cardHtml);
                 });
             }
 			// noinspection JSUnresolvedVariable
@@ -1340,11 +1332,16 @@ const $saveSpecForm = $('#saveSpecForm');
                         </div>
                     </div>
                 `;
+                /** @type {jQuery} */
                 const $toast = $(toastHtml);
                 $('body').append($toast);
 
                 setTimeout(() => {
-                    $toast.fadeOut(500, function() { $(this).remove(); });
+                    // noinspection JSUnresolvedFunction
+                    $toast.fadeOut(500, function() {
+                        // noinspection JSUnresolvedFunction
+                        $toast.remove();
+                    });
                 }, 3000);
             }
         });
