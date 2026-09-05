@@ -54,6 +54,10 @@ class ProductDataStep(SpecStep):
                 spec.product_family = product.product_family.name
                 if not spec.series and product.series:
                     spec.series = product.series.name
+                
+                if product.product_family.product_type:
+                    spec.has_door = product.product_family.product_type.has_door
+                    spec.has_frame = product.product_family.product_type.has_frame
 
 class AppearanceStep(SpecStep):
     def process(self, context: SpecContext):
@@ -289,11 +293,12 @@ class SpecPipeline:
 
 
 class OrderSpecContext:
-    def __init__(self, order, items=None):
+    def __init__(self, order, items=None, phase='phase1'):
         self.order = order
+        self.phase = phase
         # If items are not provided, we might want to take all items from the order groups
         if items is None:
-            from .models import OrderItem
+            from apps.orders.models import OrderItem
             self.items = OrderItem.objects.filter(group__order=order)
         else:
             self.items = items
@@ -352,8 +357,17 @@ class OrderSpecPipeline:
             OrderItemsStep(),
         ]
 
-    def execute(self, order, items=None) -> OrderSpec:
-        context = OrderSpecContext(order, items)
+    def execute(self, order, items=None, phase='phase1') -> OrderSpec:
+        context = OrderSpecContext(order, items, phase=phase)
         for step in self.steps:
             step.process(context)
         return context.spec
+
+    def execute_for_order(self, order, phase='phase1') -> OrderSpec:
+        """Alias for execute to match architectural specification."""
+        return self.execute(order, phase=phase)
+
+
+# Alias to match architectural naming if needed, 
+# but be careful as there's already a SpecPipeline for items.
+# We'll keep OrderSpecPipeline as the main class and use it in services.

@@ -49,6 +49,8 @@ class ProductionSpec(BaseModel):
     product_code: str = Field("", alias="model")
     product_family: str = ""
     series: str = ""
+    has_door: bool = True
+    has_frame: bool = True
 
     # Geometry
     height: float = 0.0

@@ -94,112 +94,117 @@
         </div>
         <div class="page">
             <div style="display: flex; justify-content: space-between;">
-                <h4 class="my-1">משקופים אלומימיום <span class="text-danger">{% if order.status == 'PHASE1_PRODUCTION' %}
+                <h4 class="my-1">משקופים אלומימיום <span class="text-danger">{% if order_spec.order.status == 'PHASE1_PRODUCTION' %}
                     שלב א' {% else %} קומפלט {% endif %}</span>
             </h4>
             <div>
-                <p class="fs-5">הזמנה:<span class="fw-bold">{{ order.order_number }}</span></p>
+                <p class="fs-5">הזמנה:<span class="fw-bold">{{ order_spec.order.number }}</span></p>
             </div>
             <div class="">
-                <p>לקוח: {{ order.customer }}</p>
+                <p>לקוח: {{ order_spec.order.customer }}</p>
             </div>
             <div>
                 <p><strong>תאריך:</strong> {{ now|date:"d/m/Y" }}</p>
             </div>
         </div>
-        {% for g_data in groups_data %}
-            <div class="group-section">
-                <div class="group-header bg-light px-2 border">
-                    <div class="row g-1">
-                        <div class="col-8">
-                            <h4 class="">
-                                דגם: <span class="text-decoration-underline">{{ g_data.group_spec.product_family }}</span>
-                            </h4>
-                        </div>
-                        <div class="col-3">
-                            <h5 class="">
-                                סדרה: <span class="text-decoration-underline">{{ g_data.group_spec.series }}</span>
-                            </h5>
-                        </div>
-                        <div class="col-1">
-                            <div class="badge text-bg-info">{{ g_data.group_spec.code }}</div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col">
-                            <strong>פרופיל:</strong>
-                            <span class="fs-5">{{ g_data.group_spec.basic_color_frames }}
-                                {% if g_data.group_spec.frame_paint_option != "NO_PAINT" %}
-                                    <span class="badge rounded-pill text-bg-dark">לצבע</span>
-                                {% endif %}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                <table class="table table-sm table-bordered mt-0">
-                    <thead>
-                        <tr class="table-secondary">
-                            <th style="width: 5%;">#</th>
-                            <th style="width: 15%;">מידות</th>
-                            <th style="width: 7%;">פתיחה</th>
-                            <th style="width: 12%;">מנעול</th>
-                            <th style="width: 30%;">צירים</th>
-                            <th>תוספות</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for spec in g_data.items_specs %}
-                            <tr>
-                                <td class="fw-bolder fs-5">{{ spec.mark }}</td>
-                                <td class="fw-bolder fs-5">{{ spec.width|floatformat }} \ {{ spec.height|floatformat }}</td>
-                                <td class="fs-5">{{ spec.direction }} | {{ spec.opening | first }}</td>
-                                <td class="fs-5 text-center">
-                                    <span class="text-decoration-underline">{{ spec.lock_name }}</span>: {{ spec.lock_height|floatformat }}
-                                </td>
-                                <td class="fs-5 text-center">
-                                    <span class="text-decoration-underline">{{ spec.hinge_name }}</span>:
-                                    <span>
-                                        {% for h in spec.hinge_heights %}{{ h|floatformat }}{% if not forloop.last %} \
+        {% regroup order_spec.items by product_family as family_list %}
+        {% for family in family_list %}
+            {% regroup family.list by series as series_list %}
+            {% for series in series_list %}
+                {% with first_item=series.list.0 %}
+                    <div class="group-section">
+                        <div class="group-header bg-light px-2 border">
+                            <div class="row g-1">
+                                <div class="col-8">
+                                    <h4 class="">
+                                        דגם: <span class="text-decoration-underline">{{ family.grouper }}</span>
+                                    </h4>
+                                </div>
+                                <div class="col-3">
+                                    <h5 class="">
+                                        סדרה: <span class="text-decoration-underline">{{ series.grouper }}</span>
+                                    </h5>
+                                </div>
+                                <div class="col-1">
+                                    <div class="badge text-bg-info">{{ first_item.product_code }}</div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col">
+                                    <strong>פרופיל:</strong>
+                                    <span class="fs-5">{{ first_item.basic_color_frames }}
+                                        {% if first_item.frame_paint_option != "NO_PAINT" %}
+                                            <span class="badge rounded-pill text-bg-dark">לצבע</span>
                                         {% endif %}
-                        {% endfor %}
-                    </span>
-                </td>
-                <td class="py-1 border-top-0">
-                    {% if spec.frames_report_customizers %}
-                        {% for cmz in spec.frames_report_customizers %}
-                            <div class="">
-                                {{ cmz.name }}
-                                {% if cmz.params %}
-                                    ({% for p in cmz.params %}
-                                        {{ p.label }}:
-                                        <span class="{% if p.is_custom %}text-danger{% endif %}">{{ p.value }}</span>
-                                        {% if not forloop.last %},{% endif %}
-                                {% endfor %})
-                        {% endif %}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                    {% endfor %}
-        {% endif %}
-    </td>
-</tr>
-{% if spec.comment %}
-    <tr>
-        <td colspan="3"></td>
-        <td colspan="3" class="pt-0 pb-2 fst-italic text-secondary">{{ spec.comment }}</td>
-    </tr>
-    <tr>
-        <td colspan="6"></td>
-        {#                            <td colspan="3"></td>#}
-    </tr>
-{% endif %}
-{% endfor %}
-</tbody>
-</table>
-</div>
+                        <table class="table table-sm table-bordered mt-0">
+                            <thead>
+                                <tr class="table-secondary">
+                                    <th style="width: 5%;">#</th>
+                                    <th style="width: 15%;">מידות</th>
+                                    <th style="width: 7%;">פתיחה</th>
+                                    <th style="width: 12%;">מנעול</th>
+                                    <th style="width: 30%;">צירים</th>
+                                    <th>תוספות</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for spec in series.list %}
+                                    <tr>
+                                        <td class="fw-bolder fs-5">{{ spec.mark }}</td>
+                                        <td class="fw-bolder fs-5">{{ spec.width|floatformat }} \ {{ spec.height|floatformat }}</td>
+                                        <td class="fs-5">{{ spec.direction }} | {{ spec.opening | first }}</td>
+                                        <td class="fs-5 text-center">
+                                            <span class="text-decoration-underline">{{ spec.lock_name }}</span>: {{ spec.lock_height|floatformat }}
+                                        </td>
+                                        <td class="fs-5 text-center">
+                                            <span class="text-decoration-underline">{{ spec.hinge_name }}</span>:
+                                            <span>
+                                                {% for h in spec.hinge_heights %}{{ h|floatformat }}{% if not forloop.last %} \
+                                                {% endif %}
+                                {% endfor %}
+                            </span>
+                        </td>
+                        <td class="py-1 border-top-0">
+                            {% if spec.frames_report_customizers %}
+                                {% for cmz in spec.frames_report_customizers %}
+                                    <div class="">
+                                        {{ cmz.name }}
+                                        {% if cmz.params %}
+                                            ({% for p in cmz.params %}
+                                                {{ p.label }}:
+                                                <span class="{% if p.is_custom %}text-danger{% endif %}">{{ p.value }}</span>
+                                                {% if not forloop.last %},{% endif %}
+                                        {% endfor %})
+                                {% endif %}
+                                </div>
+                            {% endfor %}
+                {% endif %}
+                </td>
+                </tr>
+                {% if spec.comment %}
+                    <tr>
+                        <td colspan="3"></td>
+                        <td colspan="3" class="pt-0 pb-2 fst-italic text-secondary">{{ spec.comment }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="6"></td>
+                    </tr>
+                {% endif %}
+            {% endfor %}
+            </tbody>
+            </table>
+            </div>
+        {% endwith %}
+    {% endfor %}
 {% empty %}
-<div class="alert alert-info text-center mt-5">
-    <h4>אין נתונים להצגה בדוח זה</h4>
-    <p>הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
-</div>
+    <div class="alert alert-info text-center mt-5">
+        <h4>אין נתונים להצגה בדוח זה</h4>
+        <p>הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
+    </div>
 {% endfor %}
 </div>
 </body>

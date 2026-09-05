@@ -1,0 +1,164 @@
+<div class="modal fade" id="addGroupModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">הוספת קבוצת דלתות</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{% url 'group-add' order.pk %}" method="post">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <!-- Row 1: Series, Front & Basic Color -->
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ group_form.series.help_text|default:'סדרת הדלתות לקבוצה זו' }}">
+                                סדרה <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ group_form.series }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ group_form.front.help_text|default:'חזית או גימור הכנף' }}">
+                                חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ group_form.front }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ group_form.basic_color_frames.help_text|default:'צבע משקוף בסיסי לקבוצה זו' }}">
+                                צבע משקוף (בסיס) <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ group_form.basic_color_frames }}
+                        </div>
+                        <!-- Row 2: Product Type & Product Family -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ group_form.product_type.help_text|default:'סוג המוצר' }}">
+                                סוג מוצר <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ group_form.product_type }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ group_form.product_family.help_text|default:'משפחת המוצרים' }}">
+                                משפחת מוצרים <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ group_form.product_family }}
+                        </div>
+                        <!-- Row 3: Info & Quantity -->
+                        <div class="col-md-10">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="דגם המוצר שנמצא במערכת לפי הסדרה והמשפחה">
+                                מוצר שנמצא <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <div class="product-info-display alert alert-info py-2 mb-0"
+                                 style="min-height: 38px">
+                                <small class="text-secondry">בחר סדרה ומשפחה לחיפוש מוצר...</small>
+                            </div>
+                            <div class="d-none">{{ group_form.product }}</div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ group_form.quantity.help_text|default:'כמות פריטים זהים בקבוצה' }}">
+                                כמות <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ group_form.quantity }}
+                        </div>
+                        <hr class="my-3">
+                        <!-- Painting Options: Panel & Frame side-by-side -->
+                        <div class="col-md-6 border-end">
+                            <label class="form-label fw-bold d-block"
+                                   data-bs-toggle="tooltip"
+                                   title="בחירת אופן צביעת כנפי הדלתות">
+                                אופציית צביעת פנל (דלת) <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <div class="d-flex gap-4 mb-2">
+                                {% for radio in group_form.panel_paint_option %}
+                                    <div class="form-check"
+                                         data-bs-toggle="tooltip"
+                                         title="{{ radio.choice_label }}">
+                                        {{ radio.tag }}
+                                        <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold"
+                                       data-bs-toggle="tooltip"
+                                       title="קוד או שם הגוון המיוחד לכנפיים">
+                                    צבע פנלים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                {{ group_form.color_panels }}
+                            </div>
+                        </div>
+                        <div class="col-md-6 ps-md-4">
+                            <label class="form-label fw-bold d-block"
+                                   data-bs-toggle="tooltip"
+                                   title="בחירת אופן צביעת המשקופים">
+                                אופציית צביעת משקוף <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <div class="d-flex gap-4 mb-2">
+                                {% for radio in group_form.frame_paint_option %}
+                                    <div class="form-check"
+                                         data-bs-toggle="tooltip"
+                                         title="{{ radio.choice_label }}">
+                                        {{ radio.tag }}
+                                        <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold"
+                                       data-bs-toggle="tooltip"
+                                       title="קוד או שם הגוון המיוחד למשקופים">
+                                    צבע משקופים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                                {{ group_form.color_frames }}
+                            </div>
+                        </div>
+                        <hr class="my-3">
+                        <div class="col-md-6">
+                            <div class="form-check pt-2"
+                                 data-bs-toggle="tooltip"
+                                 title="{{ group_form.is_split_installation.help_text|default:'התקנה מפוצלת: שלב א משקופים, שלב ב דלתות' }}">
+                                {{ group_form.is_split_installation }}
+                                <label class="form-check-label fw-bold"
+                                       for="{{ group_form.is_split_installation.id_for_label }}">
+                                    התקנה מפוצלת <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6"
+                             data-bs-toggle="tooltip"
+                             title="הערות והנחיות מיוחדות לקבוצה">{{ group_form.comments }}</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-light"
+                            data-bs-dismiss="modal"
+                            data-bs-toggle="tooltip"
+                            title="סגירה ללא הוספה">ביטול</button>
+                    <button type="submit"
+                            name="action"
+                            value="customize"
+                            class="btn btn-outline-primary px-4"
+                            data-bs-toggle="tooltip"
+                            title="הוספה ומעבר ישיר להגדרת שינויים ושדרוגים">שינוי\שדרוג</button>
+                    <button type="submit"
+                            class="btn btn-primary px-4"
+                            data-bs-toggle="tooltip"
+                            title="הוספת הקבוצה להזמנה">הוסף קבוצה</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

@@ -1,10 +1,9 @@
 import io
-import math
 import os
 import shutil
 import zipfile
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 
 from django.conf import settings
 from django.db import models
@@ -14,10 +13,16 @@ from django.utils import timezone
 
 from apps.orders.models import OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
 from .models import (
-    LockStandardHeight, HingeStandardHeight, BOM,
-    ProductionStation, ProductionRoute
+    ProductionStation
 )
-from .pipeline import SpecPipeline
+
+
+class OrderValidationError(Exception):
+    """Custom error for order validation failures."""
+
+    def __init__(self, message, errors=None):
+        super().__init__(message)
+        self.errors = errors or []
 
 
 class ValidationType(models.TextChoices):
@@ -113,20 +118,18 @@ class OrderValidationService:
             # If station doesn't require specification but we are here, do full validation
             return cls.validate_full(order)
 
-        p1_values = [
-            'PHASE1_PRODUCTION',
-            'PHASE1_FRAMES',
-            str(ProductionDataService.ReportType.PHASE1_FRAMES)
-        ]
-
-        # If station code is provided, check if it's the Phase A frames station
-        # For simplicity, assume that if report_type or station code contains PHASE1, it's PARTIAL
-        r_type_str = str(report_type).upper() if report_type else ""
-        s_code_str = station.code.upper() if station else ""
-
-        if r_type_str in p1_values or 'PHASE1' in s_code_str:
+        # Determine based on phase
+        if report_type == 'PHASE1_FRAMES':
             return cls.validate_partial(order)
+        return cls.validate_full(order)
 
+    @classmethod
+    def validate_for_phase(cls, order, phase: str) -> ValidationResult:
+        """
+        Validation for specific phase.
+        """
+        if phase == 'phase1':
+            return cls.validate_partial(order)
         return cls.validate_full(order)
 
     @classmethod
@@ -135,7 +138,6 @@ class OrderValidationService:
         Appropriate validation before production file (ZIP) generation.
         """
         has_split = getattr(order, 'has_split_installation', False)
-        print(order.status)
         if has_split and getattr(order, 'status', None) == OrderStatus.IN_PRODUCTION_PHASE1:
             return cls.validate_partial(order)
         return cls.validate_full(order)
@@ -231,8 +233,52 @@ class OrderValidationService:
 
 class TechnicalSpecService:
     """
-    Service for building and validating item technical specification.
+    Service for generating and managing technical specifications.
+    Single point of entry for all specification requests.
     """
+
+    @staticmethod
+    def get_or_build_spec(order, phase='phase1'):
+        """
+        Gets the specification from cache or builds it if invalid/missing.
+        """
+        from .schemas import OrderSpec
+        from .pipeline import OrderSpecPipeline
+
+        # a. Check if the specified phase is validated AND a non-empty spec_cache exists.
+        is_validated = order.phase1_validated if phase == 'phase1' else order.phase2_validated
+        cache = order.phase1_spec_cache if phase == 'phase1' else order.phase2_spec_cache
+
+        if is_validated and cache:
+            # Return both deserialized Pydantic model and raw JSON dict
+            spec_obj = OrderSpec.model_validate(cache)
+            return spec_obj, cache
+
+        # b. If invalid or missing cache:
+        # Invoke OrderValidationService.validate_for_phase
+        res = OrderValidationService.validate_for_phase(order, phase)
+        if not res.is_valid:
+            raise OrderValidationError(f"Validation failed for {phase}", errors=res.errors)
+
+        # Run SpecPipeline().execute_for_order(order, phase)
+        # Note: SpecPipeline in architect's note refers to the order-level pipeline
+        pipeline = OrderSpecPipeline()
+        spec_obj = pipeline.execute_for_order(order, phase=phase)
+
+        # Serialize using .model_dump() and save to order.spec_cache
+        spec_json = spec_obj.model_dump()
+
+        # Update validation flag and cache in DB
+        if phase == 'phase1':
+            order.phase1_validated = True
+            order.phase1_spec_cache = spec_json
+            order.save(update_fields=['phase1_validated', 'phase1_spec_cache'])
+        else:
+            order.phase2_validated = True
+            order.phase2_spec_cache = spec_json
+            order.save(update_fields=['phase2_validated', 'phase2_spec_cache'])
+
+        return spec_obj, spec_json
 
     @staticmethod
     def validate(item: OrderItem) -> List[str]:
@@ -333,22 +379,23 @@ class ProductionDataService:
     def _add_cnc_files_to_zip(self, zip_file):
         """Internal helper to add CNC files to the zip buffer"""
         is_phase_a = self.order.status == OrderStatus.IN_PRODUCTION_PHASE1
-        order_data = self._get_order_data()  # Gets all for CNC
+        phase = 'phase1' if is_phase_a else 'phase2'
+        order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
 
-        for group_data in order_data:
-            for spec in group_data['items_specs']:
-                folder_name = f"{self.order.order_number}/{spec.mark}"
-                for i in range(1, 5):
-                    xml_content = f"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <order_number>{self.order.order_number}</order_number>\n  <item_mark>{spec.mark}</item_mark>\n  <file_number>{i}</file_number>\n  <status>{'Phase A' if is_phase_a else 'Full Production'}</status>\n</root>"
-                    zip_file.writestr(f"{folder_name}/file_{i}.xml", xml_content)
+        for spec in order_spec.items:
+            folder_name = f"{self.order.order_number}/{spec.mark}"
+            for i in range(1, 5):
+                xml_content = f"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <order_number>{self.order.order_number}</order_number>\n  <item_mark>{spec.mark}</item_mark>\n  <file_number>{i}</file_number>\n  <status>{'Phase A' if is_phase_a else 'Full Production'}</status>\n</root>"
+                zip_file.writestr(f"{folder_name}/file_{i}.xml", xml_content)
 
     def generate_cnc_files(self):
         """
         Standalone method to generate CNC files on the server filesystem.
         Creates folder structure cnc_files/mecal/<order_number>/ and fills it with XML files.
         """
-        val_res = OrderValidationService.validate_for_zip(self.order)
-        val_res.raise_if_invalid()
+        is_phase_a = self.order.status == OrderStatus.IN_PRODUCTION_PHASE1
+        phase = 'phase1' if is_phase_a else 'phase2'
+        order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
 
         # Paths
         cnc_root = os.path.join(settings.BASE_DIR, 'cnc_files')
@@ -369,60 +416,55 @@ class ProductionDataService:
         os.makedirs(frames_root)
         os.makedirs(doors_root)
 
-        # Iterate through all groups and items in the order
-        for group in self.order.groups.all():
-            product_type = None
-            if group.product and group.product.product_family and group.product.product_family.product_type:
-                product_type = group.product.product_family.product_type
+        # Iterate through items in the order specification
+        for spec in order_spec.items:
+            mark = spec.mark
 
-            has_frame = product_type.has_frame if product_type else True
-            has_door = product_type.has_door if product_type else True
+            if spec.has_frame:
+                item_frame_dir = os.path.join(frames_root, f"frame_{mark}")
+                os.makedirs(item_frame_dir, exist_ok=True)
+                self._write_xml_files(item_frame_dir, spec, "frame")
 
-            for item in group.items.all():
-                mark = item.mark or str(item.id)
+            if spec.has_door:
+                item_door_dir = os.path.join(doors_root, f"door_{mark}")
+                os.makedirs(item_door_dir, exist_ok=True)
+                self._write_xml_files(item_door_dir, spec, "door")
 
-                if has_frame:
-                    item_frame_dir = os.path.join(frames_root, f"frame_{mark}")
-                    os.makedirs(item_frame_dir, exist_ok=True)
-                    self._write_xml_files(item_frame_dir, item, "frame")
-
-                if has_door:
-                    item_door_dir = os.path.join(doors_root, f"door_{mark}")
-                    os.makedirs(item_door_dir, exist_ok=True)
-                    self._write_xml_files(item_door_dir, item, "door")
-
-    def _write_xml_files(self, target_dir, item, item_type):
+    def _write_xml_files(self, target_dir, spec, item_type):
         """
         Helper method for writing XML files to the specified directory.
         Designed for future expansion of XML generation logic.
         """
         # Generate hinges.xml
-        hinges_content = self._generate_hinges_xml(item, item_type)
+        hinges_content = self._generate_hinges_xml(spec, item_type)
         with open(os.path.join(target_dir, 'hinges.xml'), 'w', encoding='utf-8') as f:
             f.write(hinges_content)
 
         # Generate lock.xml
-        lock_content = self._generate_lock_xml(item, item_type)
+        lock_content = self._generate_lock_xml(spec, item_type)
         with open(os.path.join(target_dir, 'lock.xml'), 'w', encoding='utf-8') as f:
             f.write(lock_content)
 
-    def _generate_hinges_xml(self, item, item_type):
+    def _generate_hinges_xml(self, spec, item_type):
         """
         Generates content for hinges.xml.
         Currently a placeholder, rules will be added in the future.
         """
-        return '<?xml version="1.0" encoding="UTF-8"?>\n<hinges>\n  <status>placeholder</status>\n</hinges>'
+        return '<?xml version="1.0" encoding="UTF-8"?>\n<hinges>\n  <status>placeholder</status>\n  <item_id>' + str(
+            spec.item_id) + '</item_id>\n</hinges>'
 
-    def _generate_lock_xml(self, item, item_type):
+    def _generate_lock_xml(self, spec, item_type):
         """
         Generates content for lock.xml.
         Currently a placeholder, rules will be added in the future.
         """
-        return '<?xml version="1.0" encoding="UTF-8"?>\n<lock>\n  <status>placeholder</status>\n</lock>'
+        return '<?xml version="1.0" encoding="UTF-8"?>\n<lock>\n  <status>placeholder</status>\n  <item_id>' + str(
+            spec.item_id) + '</item_id>\n</lock>'
 
     def change_material(self):
-        for group in self.order.groups.all():
-            print(group.basic_color_frames)
+        # for group in self.order.groups.all():
+        #     print(group.basic_color_frames)
+        pass
 
     def generate_report_html(self, report_type=None, station_code=None, validate=True):
         """
@@ -433,20 +475,13 @@ class ProductionDataService:
         if station_code:
             station = ProductionStation.objects.filter(code=station_code).first()
 
-        # Normalize report_type if it's a string name of the member
-        if report_type and isinstance(report_type, str) and report_type not in self.ReportType.values:
-            try:
-                report_type = self.ReportType[report_type.upper()].value
-            except (KeyError, AttributeError):
-                pass
-
         if validate:
             val_res = OrderValidationService.validate_for_report(self.order, report_type, station=station)
             val_res.raise_if_invalid()
 
         if station:
             label = station.label or station.name
-            template = station.template_name or 'production/alum_frames_report.html'
+            template = station.template_name
         else:
             label = self.ReportType(report_type).label
             template = 'production/alum_frames_report.html'
@@ -456,18 +491,27 @@ class ProductionDataService:
                 if report_type == self.ReportType.PHASE2_DOORS:
                     label = 'Doors'
 
-        # Build the new full OrderSpec structure
+        # Use TechnicalSpecService as the single point of entry
+        phase = 'phase1' if (
+                report_type == self.ReportType.PHASE1_FRAMES or (station and station.is_phase1)) else 'phase2'
+        order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
+
+        # Filter items if report_type or station is specified
         filtered_items = self.get_filtered_items(report_type, station=station)
-        order_spec = TechnicalSpecService.build_order_spec(self.order, items=filtered_items)
+        filtered_item_ids = [item.id for item in filtered_items]
+
+        # Clone order_spec to avoid modifying the cached version if it's still in memory
+        order_spec_for_report = order_spec.model_copy()
+        order_spec_for_report.items = [item for item in order_spec.items if item.item_id in filtered_item_ids]
 
         context = {
             'order': self.order,
-            'order_spec': order_spec,
-            'order_spec_json': order_spec.model_dump_json(by_alias=True),
+            'order_spec': order_spec_for_report,
+            'order_spec_json': order_spec_for_report.model_dump_json(by_alias=True),
             'report_type': report_type,
             'station': station,
             'report_label': label,
-            'groups_data': self._prepare_grouped_data(order_spec),
+            'groups_data': self.prepare_grouped_data(order_spec_for_report),
             'now': timezone.now(),
         }
         return render_to_string(template, context)
@@ -503,7 +547,7 @@ class ProductionDataService:
             elif report_type == self.ReportType.PHASE2_FRAMES:
                 if not has_frame:
                     continue
-            
+
             for item in group.items.all():
                 items.append(item)
         return items
@@ -513,11 +557,19 @@ class ProductionDataService:
         Legacy method for backward compatibility (primarily for tests).
         Internally builds the full OrderSpec and groups it.
         """
-        filtered_items = self.get_filtered_items(report_type, station=station)
-        order_spec = TechnicalSpecService.build_order_spec(self.order, items=filtered_items)
-        return self._prepare_grouped_data(order_spec)
+        phase = 'phase1' if (
+                report_type == self.ReportType.PHASE1_FRAMES or (station and station.is_phase1)) else 'phase2'
+        order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
 
-    def _prepare_grouped_data(self, order_spec):
+        filtered_items = self.get_filtered_items(report_type, station=station)
+        filtered_item_ids = [item.id for item in filtered_items]
+
+        order_spec_filtered = order_spec.model_copy()
+        order_spec_filtered.items = [item for item in order_spec.items if item.item_id in filtered_item_ids]
+
+        return self.prepare_grouped_data(order_spec_filtered)
+
+    def prepare_grouped_data(self, order_spec):
         """
         Converts OrderSpec items into a grouped structure for legacy templates.
         """
@@ -713,7 +765,8 @@ class OrderProductionService:
         Completes order production and transitions it to READY status.
         """
         if order.status not in [OrderStatus.IN_PRODUCTION, OrderStatus.IN_PRODUCTION_PHASE2]:
-            raise ValueError("Production completion is only possible for orders in 'In Production' or 'Phase B Production' status")
+            raise ValueError(
+                "Production completion is only possible for orders in 'In Production' or 'Phase B Production' status")
 
         old_status = order.status
         with transaction.atomic():

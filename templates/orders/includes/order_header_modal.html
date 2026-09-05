@@ -1,0 +1,114 @@
+<div class="modal fade" id="editHeaderModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">עריכת פרטי הזמנה</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <!-- Hidden form for deletion -->
+            <form action="{% url 'order-delete' order.pk %}"
+                  method="post"
+                  id="deleteOrderForm">
+                {% csrf_token %}
+            </form>
+            <form action="{% url 'order-edit-header' order.pk %}"
+                  method="post"
+                  id="editHeaderForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ header_form.customer.help_text|default:'שם הלקוח או הפרויקט' }}">
+                                לקוח <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ header_form.customer }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ header_form.series.help_text|default:'סדרת הדלתות (פרופיל / מבנה)' }}">
+                                סדרה <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ header_form.series }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ header_form.front.help_text|default:'חזית או גימור הכנף' }}">
+                                חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ header_form.front }}
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ header_form.color_panels.help_text|default:'גוון צבע עבור כנפי הדלתות' }}">
+                                צבע פנלים (כנף) <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ header_form.color_panels }}
+                        </div>
+                        <div class="col-md-3 d-flex align-items-center pt-4">
+                            <div class="form-check"
+                                 data-bs-toggle="tooltip"
+                                 title="{{ header_form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים בצבע ייעודי' }}">
+                                {{ header_form.is_frames_to_paint }}
+                                <label class="form-check-label fw-bold"
+                                       for="{{ header_form.is_frames_to_paint.id_for_label }}">
+                                    לצבוע משקופים? <i class="bi bi-info-circle help-hint-icon"></i>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ header_form.color_frames.help_text|default:'גוון צבע עבור המשקופים' }}">
+                                צבע משקופים <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ header_form.color_frames }}
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ header_form.handle.help_text|default:'דגם ידית נבחר' }}">
+                                ידית <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ header_form.handle }}
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ header_form.comments.help_text|default:'הערות והנחיות מיוחדות להזמנה' }}">
+                                הערות <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ header_form.comments }}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="d-flex justify-content-between w-100">
+                        <button type="submit"
+                                form="deleteOrderForm"
+                                class="btn btn-outline-danger"
+                                data-bs-toggle="tooltip"
+                                title="מחיקת ההזמנה לצמיתות">
+                            <i class="bi bi-trash me-1"></i>מחק
+                        </button>
+                        <div class="d-flex gap-2">
+                            <button type="button"
+                                    class="btn btn-light"
+                                    data-bs-dismiss="modal"
+                                    data-bs-toggle="tooltip"
+                                    title="סגירה ללא שמירה">ביטול</button>
+                            <button type="submit"
+                                    class="btn btn-primary px-4"
+                                    data-bs-toggle="tooltip"
+                                    title="שמירת שינויים בפרטי ההזמנה">שמור שינויים</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

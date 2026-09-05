@@ -1,0 +1,313 @@
+<div class="card shadow-sm border-0 mb-4 group-card"
+     data-group-id="{{ group.id }}"
+     data-group-name="{{ group.product.name }}"
+     data-group-qty="{{ group.quantity }}"
+     data-group-details="{{ group.product.product_family.name }} / {{ group.series.name }}">
+    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
+        <div>
+            <h5 class="mb-0 fw-bold text-primary">
+                {{ group.product.name }}
+                {% if group.is_split_installation %}
+                    <span class="badge bg-info-subtle text-info ms-2" style="font-size: 0.7rem">התקנה מפוצלת (שלב א)</span>
+                {% endif %}
+            </h5>
+            <small class="text-muted">כמות דלתות: {{ group.quantity }}</small>
+        </div>
+        {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
+            <div class="dropdown">
+                <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    <li>
+                        <button class="dropdown-item btn-edit-group"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editGroupModal-{{ group.id }}">
+                            <i class="bi bi-pencil me-2 text-primary"></i>ערוך קבוצה
+                        </button>
+                    </li>
+                    <li>
+                        <form action="{% url 'group-duplicate' group.id %}" method="post">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item">
+                                <i class="bi bi-copy me-2 text-info"></i>לשכפל קבוצה
+                            </button>
+                        </form>
+                    </li>
+                    <li>
+                        <hr class="dropdown-divider">
+                    </li>
+                    <li>
+                        <button type="button"
+                                class="dropdown-item btn-open-save-spec"
+                                data-group-id="{{ group.id }}"
+                                data-group-name="{{ group.product.name }}"
+                                data-group-details="{{ group.product.product_family.name }} / {{ group.series.name|default:'סטנדרט' }}"
+                                data-group-qty="{{ group.quantity }}">
+                            <i class="bi bi-bookmark-plus me-2 text-success"></i>לשמור מפרט
+                        </button>
+                    </li>
+                    <li>
+                        <button type="button"
+                                class="dropdown-item btn-open-load-spec"
+                                data-group-id="{{ group.id }}"
+                                data-group-name="{{ group.product.name }}">
+                            <i class="bi bi-box-arrow-in-down me-2 text-warning"></i>טען מפרט
+                        </button>
+                    </li>
+                    <li>
+                        <hr class="dropdown-divider">
+                    </li>
+                    <li>
+                        <form action="{% url 'group-delete' group.id %}"
+                              method="post"
+                              onsubmit="return confirm('האם אתה בטוח שברצונך למחוק קבוצה זו?');">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item text-danger">
+                                <i class="bi bi-trash me-2"></i>מחק קבוצה
+                            </button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+    <!-- Modal Edit Group -->
+    {% include "orders/includes/edit_group_modal.html" %}
+    <div class="card-body p-0">
+        <!-- Nav tabs -->
+        <ul class="nav nav-tabs nav-fill border-0 bg-light" role="tablist">
+            <li class="nav-item"
+                data-bs-toggle="tooltip"
+                title="צפייה ברשימת הדלתות והמידות בקבוצה">
+                <a class="nav-link active py-3 border-0 rounded-0"
+                   data-bs-toggle="tab"
+                   href="#doors-{{ group.id }}">
+                    <i class="bi bi-door-closed me-2"></i>פירוט מוצרים
+                </a>
+            </li>
+            <li class="nav-item"
+                data-bs-toggle="tooltip"
+                title="צפייה וניהול קסטומייזרים ושדרוגים לקבוצה">
+                <a class="nav-link py-3 border-0 rounded-0"
+                   data-bs-toggle="tab"
+                   href="#custom-{{ group.id }}">
+                    <i class="bi bi-sliders me-2"></i>מאפיינים
+                </a>
+            </li>
+            <li class="nav-item"
+                data-bs-toggle="tooltip"
+                title="הגדרות צבע וגוון לכנפיים ולמשקופים">
+                <a class="nav-link py-3 border-0 rounded-0"
+                   data-bs-toggle="tab"
+                   href="#paint-{{ group.id }}">
+                    <i class="bi bi-palette me-2"></i>צביעה
+                </a>
+            </li>
+        </ul>
+        <!-- Tab panes -->
+        <div class="tab-content">
+            <div id="doors-{{ group.id }}" class="tab-pane active">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 align-middle">
+                        <thead class="small text-muted bg-white">
+                            <tr>
+                                <th class="ps-2"
+                                    style="width: 5%"
+                                    data-bs-toggle="tooltip"
+                                    title="סימון פריט">#</th>
+                                <th class=""
+                                    style="width: 9%"
+                                    data-bs-toggle="tooltip"
+                                    title="מיקום ההתקנה">מיקום</th>
+                                <th class=""
+                                    style="width: 12%"
+                                    data-bs-toggle="tooltip"
+                                    title="מידות רוחב × גובה (מ''מ)">מידות</th>
+                                <th class="" style="width: 5%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in group.items.all %}
+                                <tr class="item-row-{{ group.id }} {% if group.items.count > 5 and forloop.counter > 4 %}d-none{% endif %}">
+                                    <td class="ps-2">
+                                        <span class="fw-medium text-dark">{{ item.mark }}</span>
+                                    </td>
+                                    <td class="ps-2">
+                                        <span class="">{{ item.place|default:"" }}</span>
+                                    </td>
+                                    <td>{{ item.w_fmt|default:"-" }}×{{ item.h_fmt|default:"-" }}</td>
+                                    <td>{{ item.wall_fmt|default:"" }}{{ item.get_direction_display|default:"" }}</td>
+                                    <td></td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted small">דלתות טרם נוצרו</td>
+                                </tr>
+                            {% endfor %}
+                            {% if group.items.count > 5 %}
+                                <tr id="toggle-row-{{ group.id }}">
+                                    <td colspan="4" class="text-center py-1 bg-light">
+                                        <button class="btn btn-sm btn-link text-decoration-none btn-toggle-items"
+                                                data-group-id="{{ group.id }}"
+                                                data-bs-toggle="tooltip"
+                                                title="הצגת כל הפריטים בקבוצה">
+                                            הצג עוד... ({{ group.items.count|add:"-4" }})
+                                        </button>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="custom-{{ group.id }}" class="tab-pane fade p-4">
+                <div class="row row-cols-1 row-cols-md-2 g-3">
+                    {% for cust in group.customizers.all %}
+                        <div class="col">
+                            <div class="p-2 border rounded bg-white shadow-sm h-100"
+                                 data-bs-toggle="tooltip"
+                                 title="{{ cust.customizer.description|default:cust.customizer.name }}">
+                                <div class="d-flex align-items-center mb-2">
+                                    <div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">
+                                        <i class="bi bi-check2-circle"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold small text-primary">{{ cust.customizer.name }}</div>
+                                        <div class="text-muted extra-small">{{ cust.customizer.code }}</div>
+                                    </div>
+                                </div>
+                                <div class="ps-5">
+                                    <div class="row g-1">
+                                        {% if cust.customizer.par1_label %}
+                                            <div class="col-6 extra-small"
+                                                 {% if cust.customizer.par1_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par1_hint }}"{% endif %}>
+                                                <span class="text-muted">{{ cust.customizer.par1_label }}:</span>
+                                                <span class="fw-medium">{{ cust.par1|default:"-" }}</span>
+                                            </div>
+                                        {% endif %}
+                                        {% if cust.customizer.par2_label %}
+                                            <div class="col-6 extra-small"
+                                                 {% if cust.customizer.par2_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par2_hint }}"{% endif %}>
+                                                <span class="text-muted">{{ cust.customizer.par2_label }}:</span>
+                                                <span class="fw-medium">{{ cust.par2|default:"-" }}</span>
+                                            </div>
+                                        {% endif %}
+                                        {% if cust.customizer.par3_label %}
+                                            <div class="col-6 extra-small"
+                                                 {% if cust.customizer.par3_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par3_hint }}"{% endif %}>
+                                                <span class="text-muted">{{ cust.customizer.par3_label }}:</span>
+                                                <span class="fw-medium">{{ cust.par3|default:"-" }}</span>
+                                            </div>
+                                        {% endif %}
+                                        {% if cust.customizer.par4_label %}
+                                            <div class="col-6 extra-small"
+                                                 {% if cust.customizer.par4_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par4_hint }}"{% endif %}>
+                                                <span class="text-muted">{{ cust.customizer.par4_label }}:</span>
+                                                <span class="fw-medium">{{ cust.par4|default:"-" }}</span>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% empty %}
+                        <div class="col-12 text-center text-muted py-4 small">
+                            <i class="bi bi-info-circle me-1"></i> לא יושמו קסטומייזרים לקבוצה זו
+                        </div>
+                    {% endfor %}
+                </div>
+                {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
+                    <div class="mt-4 text-end">
+                        <button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn"
+                                data-group-id="{{ group.id }}"
+                                data-bs-toggle="tooltip"
+                                title="ניהול והגדרת שינויים ושדרוגים לקבוצה זו">
+                            <i class="bi bi-gear me-1"></i> ניהול קסטומייזרים
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+            <div id="paint-{{ group.id }}" class="tab-pane fade p-4">
+                <div class="row">
+                    <div class="col-md-6 border-end">
+                        <h6 class="fw-bold text-primary mb-3">צביעת פנל (דלת)</h6>
+                        <div class="mb-2" data-bs-toggle="tooltip" title="אופציית צביעת כנף הדלת">
+                            <span class="text-muted small">אופציית צביעה:</span>
+                            <span class="fw-medium">{{ group.get_panel_paint_option_display }}</span>
+                        </div>
+                        <div data-bs-toggle="tooltip" title="קוד או שם הגוון לכנפיים">
+                            <span class="text-muted small">גוון:</span>
+                            <span class="fw-bold">{{ group.color_panels|default:"ללא / ירושה" }}</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6 ps-md-4">
+                        <h6 class="fw-bold text-primary mb-3">צביעת משקוף</h6>
+                        <div class="mb-2" data-bs-toggle="tooltip" title="צבע משקוף בסיסי (חומר)">
+                            <span class="text-muted small">צבע בסיס:</span>
+                            <span class="fw-bold text-success">{{ group.basic_color_frames.name|default:"סטנדרט" }}</span>
+                        </div>
+                        <div class="mb-2" data-bs-toggle="tooltip" title="אופציית צביעת המשקוף">
+                            <span class="text-muted small">אופציית צביעה:</span>
+                            <span class="fw-medium">{{ group.get_frame_paint_option_display }}</span>
+                        </div>
+                        <div data-bs-toggle="tooltip" title="קוד או שם הגוון למשקופים">
+                            <span class="text-muted small">גוון:</span>
+                            <span class="fw-bold">{{ group.color_frames|default:"ללא / ירושה" }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="card shadow-sm border-0 m-1">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
+        <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
+        <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
+        <div class="d-flex justify-content-center gap-2 mt-3">
+            <button class="btn btn-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#addGroupModal">
+                <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
+            </button>
+            <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
+                <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
+            </button>
+        </div>
+    </div>
+</div>
+{% endfor %}
+</div>
+</div>
+<!-- Modal Edit Header -->
+<div class="modal fade" id="editHeaderModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">עריכת פרטי הזמנה</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <!-- Hidden form for deletion -->
+            <form action="{% url 'order-delete' order.pk %}"
+                  method="post"
+                  id="deleteOrderForm">
+                {% csrf_token %}
+            </form>
+            <form action="{% url 'order-edit-header' order.pk %}"
+                  method="post"
+                  id="editHeaderForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ header_form.customer.help_text|default:'שם הלקוח או הפרויקט' }}">
+                                לקוח <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ header_form.customer }}
+                        </div>
+                        <div class="col-md-4">
