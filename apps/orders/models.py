@@ -210,7 +210,7 @@ class Order(models.Model):
                     elif self.status == OrderStatus.IN_PRODUCTION_PHASE2:
                         if s.is_phase1:
                             continue
-                    
+
                     all_stations.append(s)
                     seen_ids.add(s.id)
 
@@ -516,6 +516,7 @@ class OrderItemsGroupCustomizer(models.Model):
     par2 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 2")
     par3 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 3")
     par4 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 4")
+    par5 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 5")
 
     class Meta:
         verbose_name = 'קסטומייזר לקבוצה'
@@ -716,7 +717,7 @@ class OrderItem(models.Model):
                 f_val = float(val)
                 truncated = math.floor(f_val * 10) / 10.0
                 setattr(self, field, truncated)
-        
+
         super().save(*args, **kwargs)
 
         # Approach 1: Reset parent order validation
@@ -947,6 +948,7 @@ class GroupSpecificationCustomizer(models.Model):
     par2 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 2")
     par3 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 3")
     par4 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 4")
+    par5 = models.CharField(max_length=255, blank=True, null=True, verbose_name="5")
 
     class Meta:
         db_table = "group_specification_customizers"

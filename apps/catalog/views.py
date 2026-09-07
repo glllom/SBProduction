@@ -109,7 +109,7 @@ class CustomizerViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(
                 models.Q(name__icontains=search) | models.Q(code__icontains=search)
             )
-        return queryset.order_by('priority', 'code')
+        return queryset.order_by('tag', 'code')
 
 
 class FamilyListView(LoginRequiredMixin, ListView):

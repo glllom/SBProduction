@@ -13,7 +13,7 @@
             </h5>
             <small class="text-muted">כמות דלתות: {{ group.quantity }}</small>
         </div>
-        {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
+        {% if order.status == 'NEW' or user.is_admin_user %}
             <div class="dropdown">
                 <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
                     <i class="bi bi-three-dots-vertical"></i>
@@ -217,7 +217,7 @@
                         </div>
                     {% endfor %}
                 </div>
-                {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
+                {% if order.status == 'NEW' or user.is_admin_user %}
                     <div class="mt-4 text-end">
                         <button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn"
                                 data-group-id="{{ group.id }}"

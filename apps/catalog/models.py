@@ -67,7 +67,7 @@ class Series(models.Model):
             id__in=products.filter(bom__frame__isnull=False).values_list('bom__frame_id', flat=True)
         )
         common_names = frames.exclude(common_name='').values_list('common_name', flat=True).distinct()
-        
+
         material_ids = set(frames.values_list('id', flat=True))
         if common_names:
             c_mats = Material.objects.filter(
@@ -82,7 +82,9 @@ class Series(models.Model):
     @property
     def frame_colors(self):
         """Deprecated: use available_frames instead"""
-        return Color.objects.filter(id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(), active=True)
+        return Color.objects.filter(
+            id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(),
+            active=True)
 
 
 class Front(models.Model):
@@ -247,7 +249,9 @@ class ProductModel(models.Model):
     @property
     def frame_colors(self):
         """Deprecated: use available_frames instead"""
-        return Color.objects.filter(id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(), active=True)
+        return Color.objects.filter(
+            id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(),
+            active=True)
 
 
 class Customizer(models.Model):
@@ -294,37 +298,11 @@ class Customizer(models.Model):
     )
 
     # --- Engine/Pipeline settings (Strategy & Chain of Responsibility) ---
-    class Strategy(models.IntegerChoices):
-        NONE = 0, 'ללא אסטרטגיה'
-        STRATEGY_1 = 1, 'אסטרטגיה 1'
-        STRATEGY_2 = 2, 'אסטרטגיה 2'
-        STRATEGY_3 = 3, 'אסטרטגיה 3'
-        STRATEGY_4 = 4, 'אסטרטגיה 4'
-        STRATEGY_5 = 5, 'אסטרטגיה 5'
-        STRATEGY_6 = 6, 'אסטרטגיה 6'
-        STRATEGY_7 = 7, 'אסטרטגיה 7'
-        STRATEGY_8 = 8, 'אסטרטגיה 8'
-        STRATEGY_9 = 9, 'אסטרטגיה 9'
-        STRATEGY_10 = 10, 'אסטרטגיה 10 (Frames Report)'
-
-    strategy = models.IntegerField(
-        choices=Strategy.choices,
-        default=Strategy.NONE,
-        verbose_name="אסטרטגיה",
-        help_text="שלב עיבוד שבו התוספת משתתפת"
-    )
     tag = models.CharField(
         max_length=100,
-        blank=True,
-        null=True,
         db_index=True,
         verbose_name="תג / אלגוריתם",
-        help_text="מזהה אסטרטגיית עיבוד בקוד (למשל LOCK_SELECTION)",
-    )
-    priority = models.IntegerField(
-        default=100,
-        verbose_name="עדיפות",
-        help_text="סדר ביצוע בתוך השלב (מספר קטן יותר מבוצע מוקדם יותר)",
+        help_text="מזהה אסטרטגיית עיבוד בקוד",
     )
 
     # --- Parameters 1..4 (Labels, Default Values, Hints) ---
@@ -404,11 +382,46 @@ class Customizer(models.Model):
         verbose_name="פרמטר 4: רמז",
     )
 
+    par5_label = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 5: תווית",
+    )
+    par5_value = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 5: ערך ברירת מחדל",
+    )
+    par5_hint = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="פרמטר5: רמז",
+    )
+
+    # --- Replacement/Addition components ---
+    hardware_list = models.ManyToManyField(
+        Hardware,
+        blank=True,
+        related_name="customizers",
+        verbose_name='פרזול (Hardware)',
+        help_text="רכיבי פרזול להחלפה או הוספה במפרט הטכני",
+    )
+    materials = models.ManyToManyField(
+        Material,
+        blank=True,
+        related_name="customizers",
+        verbose_name='חומרים (Material)',
+        help_text="חומרים להחלפה או הוספה במפרט הטכני",
+    )
+
     class Meta:
         db_table = "customizers"
         verbose_name = "קסטומייזר / אפשרות"
         verbose_name_plural = "קסטומייזרים / אפשרויות"
-        ordering = ["priority", "code"]
+        ordering = ["tag", "code"]
 
     def __str__(self):
         return f"[{self.code}] {self.name}"

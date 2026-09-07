@@ -35,7 +35,7 @@ class CatalogTooltipTests(TestCase):
             description='Standard door model 1'
         )
         self.cust = Customizer.objects.create(
-            code='CUST-H1', name='Concealed Hinges', tag='hinge', priority=100,
+            code='CUST-H1', name='Concealed Hinges', tag='hinge',
             description='Premium 3D adjustable concealed hinges',
             par1_label='Hinge Count', par1_hint='Number of hinges from 2 to 5', par1_value='3'
         )

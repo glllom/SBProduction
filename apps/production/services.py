@@ -176,7 +176,7 @@ class OrderValidationService:
             if not effective_front:
                 errors.append(f"{group_label}: Front / finish not selected")
 
-            # 3. Colors in full validation (if special shade selected)
+            # 3. Colors in full validation (if a special shade is selected)
             if is_full:
                 if group.panel_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
                     if not group.color_panels and not getattr(order, 'color_panels', None):
@@ -185,7 +185,7 @@ class OrderValidationService:
                     if not group.basic_colormes and not getattr(order, 'color_frames', None):
                         errors.append(f"{group_label}: Special frame color selected but no frame color defined")
 
-            # 4. Items in group
+            # 4. Items in a group
             items = list(group.items.all())
             if not items:
                 errors.append(f"{group_label}: No items in group")

@@ -8,7 +8,7 @@
     <div class="mb-4 align-items-end">
         <div class="d-flex align-items-center mb-2">
             <h2 class="h3 mb-0 mx-3 fw-bolder">{{ order.customer }}</h2>
-            {% if not order.status == 'IN_PRODUCTION' or user.is_admin_user %}
+            {% if order.status == 'NEW' or user.is_admin_user %}
                 <button class="btn btn-sm btn-outline-primary ms-3"
                         data-bs-toggle="modal"
                         data-bs-target="#editHeaderModal"
@@ -192,14 +192,16 @@
                         <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
                         <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
                         <div class="d-flex justify-content-center gap-2 mt-3">
-                            <button class="btn btn-primary"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#addGroupModal">
-                                <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
-                            </button>
-                            <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
-                                <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
-                            </button>
+                            {% if order.status == 'NEW' or user.is_admin_user %}
+                                <button class="btn btn-primary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#addGroupModal">
+                                    <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
+                                </button>
+                                <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
+                                    <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
+                                </button>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -216,6 +218,7 @@
 {% endblock %}
 {% block extra_js %}
     <script>
+        const canEdit = {% if order.status == 'NEW' or user.is_admin_user %}true{% else %}false{% endif %};
         const orderSeriesId = "{{ order.series_id|default:'' }}";
         const orderFrontId = "{{ order.front_id|default:'' }}";
         const productTypeConfig = {
@@ -430,11 +433,13 @@
                                 <div class="col-12 text-center text-muted py-4 small">
                                     <i class="bi bi-info-circle me-1"></i> לא יושמו קסטומייזרים לקבוצה זו
                                 </div>
+                                ${canEdit ? `
                                 <div class="mt-4 text-end">
                                     <button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn" data-group-id="${groupId}">
                                         <i class="bi bi-gear me-1"></i> ניהול קסטומייזרים
                                     </button>
                                 </div>
+                                ` : ''}
                             `);
                             return;
                         }
@@ -443,11 +448,13 @@
                         if ($container.length === 0) {
                            $tab.html(`
                                 <div class="row row-cols-1 row-cols-md-2 g-3"></div>
+                                ${canEdit ? `
                                 <div class="mt-4 text-end">
                                     <button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn" data-group-id="${groupId}">
                                         <i class="bi bi-gear me-1"></i> ניהול קסטומייזרים
                                     </button>
                                 </div>
+                                ` : ''}
                            `);
                            $container = $tab.find('.row-cols-1');
                         }

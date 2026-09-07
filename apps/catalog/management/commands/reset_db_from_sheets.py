@@ -178,7 +178,6 @@ class Command(BaseCommand):
                 product_family_id=row.get('product_family_id') or None,
                 product_model_id=row.get('product_model_id') or None,
                 tag=row.get('tag', ''),
-                priority=int(row.get('priority', 100)) if row.get('priority') else 100,
                 par1_label=row.get('par1_label', ''),
                 par1_value=row.get('par1_value', ''),
                 par1_hint=row.get('par1_hint', ''),

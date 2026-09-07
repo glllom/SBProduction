@@ -1,21 +1,11 @@
 {% for station in order.get_production_stations %}
     {% if station.has_specification %}
-        {% if use_special and station.code == '100' %}
-            <a href="{% url 'production:alum-frames-report' order.pk %}"
-               target="_blank"
-               class="btn btn-outline-info"
-               data-bs-toggle="tooltip"
-               title="{{ station.hint|default:station.name }}">
-                <i class="bi bi-printer me-2"></i>{{ station.label|default:station.name }}
-            </a>
-        {% else %}
-            <a href="{% url 'production:station-report' order.pk %}?station={{ station.code }}"
-               target="_blank"
-               class="btn btn-outline-info"
-               data-bs-toggle="tooltip"
-               title="{{ station.hint|default:station.name }}">
-                <i class="bi bi-printer me-2"></i>{{ station.label|default:station.name }}
-            </a>
-        {% endif %}
+        <a href="{% url 'production:station-report' order.pk %}?station={{ station.code }}"
+           target="_blank"
+           class="btn btn-outline-info"
+           data-bs-toggle="tooltip"
+           title="{{ station.hint|default:station.name }}">
+            <i class="bi bi-printer me-2"></i>{{ station.label|default:station.name }}
+        </a>
     {% endif %}
 {% endfor %}

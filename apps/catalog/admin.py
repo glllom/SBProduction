@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.production.models import ProductTechnicalData, BOM, ProductionStation, ProductionRoute
+from apps.production.models import ProductTechnicalData, BOM, ProductionRoute
 from .models import (
     ProductType,
     ProductFamily,
@@ -13,20 +13,24 @@ from .models import (
     Hardware,
 )
 
+
 class ProductionRouteTypeInline(admin.TabularInline):
     model = ProductionRoute
     fk_name = 'product_type'
     extra = 1
+
 
 class ProductionRouteFamilyInline(admin.TabularInline):
     model = ProductionRoute
     fk_name = 'product_family'
     extra = 1
 
+
 class ProductionRouteSeriesInline(admin.TabularInline):
     model = ProductionRoute
     fk_name = 'series'
     extra = 1
+
 
 class ProductionRouteModelInline(admin.TabularInline):
     model = ProductionRoute
@@ -165,7 +169,6 @@ class CustomizerAdmin(admin.ModelAdmin):
         "code",
         "name",
         "tag",
-        "priority",
         "active",
         "product_type",
         "product_family",
@@ -184,8 +187,11 @@ class CustomizerAdmin(admin.ModelAdmin):
     # Search by code and name
     search_fields = ("code", "name", "description", "tag")
 
+    # Filter horizontal for M2M
+    filter_horizontal = ("hardware_list", "materials")
+
     # Default ordering
-    ordering = ("priority", "code")
+    ordering = ("tag", "code")
 
     # Grouping fields in the edit form
     fieldsets = (
@@ -206,8 +212,14 @@ class CustomizerAdmin(admin.ModelAdmin):
         (
             "Настройки движка (Pipeline)",
             {
-                "fields": ("tag", "priority"),
+                "fields": ("tag",),
                 "classes": ("collapse",),  # Can be collapsed
+            },
+        ),
+        (
+            "Комплектующие и материалы (Replacement/Addition)",
+            {
+                "fields": ("hardware_list", "materials"),
             },
         ),
         (
@@ -235,6 +247,13 @@ class CustomizerAdmin(admin.ModelAdmin):
             "Параметр 4",
             {
                 "fields": ("par4_label", "par4_value", "par4_hint"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Параметр 5",
+            {
+                "fields": ("par5_label", "par5_value", "par5_hint"),
                 "classes": ("collapse",),
             },
         ),
