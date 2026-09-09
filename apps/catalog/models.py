@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator
 from django.db import models
 
 
@@ -35,6 +36,18 @@ class ProductFamily(models.Model):
     active = models.BooleanField('פעיל', default=True)
     default_value_for_frame = models.CharField('עובי משקוף ברירת מחדל', max_length=255, blank=True, default='')
 
+    thickness = models.FloatField('עובי (Толщина)', default=0.0)
+    leaf_height_adjustment = models.FloatField(
+        'תיקון גובה כנף (Корректировка высоты полотна)',
+        default=0.0,
+        validators=[MaxValueValidator(0)]
+    )
+    leaf_width_adjustment = models.FloatField(
+        'תיקון רוחב כנף (Корректировка ширины полотна)',
+        default=0.0,
+        validators=[MaxValueValidator(0)]
+    )
+
     class Meta:
         verbose_name = 'משפחת מוצרים'
         verbose_name_plural = 'משפחות מוצרים'
@@ -64,6 +77,7 @@ class Series(models.Model):
     @property
     def available_frames(self):
         products = self.products.all()
+
         frames = Material.objects.filter(
             id__in=products.filter(bom__frame__isnull=False).values_list('bom__frame_id', flat=True)
         )
@@ -199,8 +213,12 @@ class Hardware(models.Model):
         if not (has_types or has_families or has_models):
             return True
 
-        if has_models and self.product_models.filter(id=product_model.id).exists():
-            return True
+        if has_models:
+            if self.product_models.filter(id=product_model.id).exists():
+                return True
+            if product_model.parent_model and self.product_models.filter(id=product_model.parent_model.id).exists():
+                return True
+
         if has_families and self.product_families.filter(id=product_model.product_family_id).exists():
             return True
         if has_types and self.product_types.filter(id=product_model.product_family.product_type_id).exists():
@@ -209,14 +227,18 @@ class Hardware(models.Model):
         return False
 
 
-# ==========================================
-# 3. MATERIALS & COMPONENTS
-# ==========================================
-
-
 class Material(models.Model):
     name = models.CharField('שם', max_length=255)
     common_name = models.CharField('שם רגיל', max_length=255, blank=True, default='')
+
+    outward_substitute = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='inward_originals',
+        verbose_name='תחליף לפתיחה החוצה'
+    )
     sku = models.CharField('מק""ט', max_length=100, unique=True)
     material_type = models.CharField(
         'סוג חומר',
@@ -268,6 +290,15 @@ class ProductModel(models.Model):
         verbose_name='סדרה'
     )
 
+    parent_model = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='derived_models',
+        verbose_name='דגם אב'
+    )
+
     class Meta:
         verbose_name = 'מוצר'
         verbose_name_plural = 'מוצרים'
@@ -275,6 +306,27 @@ class ProductModel(models.Model):
 
     def __str__(self):
         return f"[{self.code}] {self.name} ({self.product_family.name} / {self.series.name})"
+
+    @property
+    def has_door(self) -> bool:
+        return self.product_family.product_type.has_door
+
+    @property
+    def has_frame(self) -> bool:
+        return self.product_family.product_type.has_frame
+
+    @property
+    def effective_bom(self):
+        """
+        Returns the BOM for this model. If not defined, attempts to return the effective BOM 
+        from the parent model.
+        """
+        try:
+            return self.bom
+        except Exception:
+            if self.parent_model:
+                return self.parent_model.effective_bom
+            return None
 
     @property
     def all_production_stations(self):
@@ -287,17 +339,20 @@ class ProductModel(models.Model):
 
     @property
     def available_frames(self):
-        try:
-            bom = self.bom
-        except Exception:
+        if not self.has_frame:
             return Material.objects.none()
-        if not bom or not bom.frame:
-            return Material.objects.none()
-        frame = bom.frame
-        if not frame.common_name:
-            return Material.objects.filter(id=frame.id)
 
-        return Material.objects.filter(common_name=frame.common_name).order_by('name')
+        bom = self.effective_bom
+        if not bom:
+            return Material.objects.none()
+
+        if bom.frame and bom.frame.common_name:
+            return Material.objects.filter(common_name=bom.frame.common_name).order_by('name')
+
+        if bom.frame:
+            return Material.objects.filter(id=bom.frame.id)
+
+        return Material.objects.none()
 
     @property
     def frame_colors(self):
@@ -573,8 +628,12 @@ class Customizer(models.Model):
         if not (has_types or has_families or has_models):
             return True
 
-        if has_models and self.product_models.filter(id=product_model.id).exists():
-            return True
+        if has_models:
+            if self.product_models.filter(id=product_model.id).exists():
+                return True
+            if product_model.parent_model and self.product_models.filter(id=product_model.parent_model.id).exists():
+                return True
+
         if has_families and self.product_families.filter(id=product_model.product_family_id).exists():
             return True
         if has_types and self.product_types.filter(id=product_model.product_family.product_type_id).exists():

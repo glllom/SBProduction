@@ -33,45 +33,49 @@ class BOMCalculator:
         except Exception:
             return 0
 
-    def _resolve_material(self, material):
+    def _resolve_material(self, material, tag=None):
         """
-        Resolves a material to its colored version if basic_color_frames is set.
-        If basic_color_frames is a Material object, we use its color to find 
-        matching materials with the same common_name.
+        Resolves a material to its colored version.
+        For frame, it uses the pre-resolved material from FrameResolutionStep.
         """
         if not material:
             return None
 
-        selected_frame_material = self.context.get('basic_color_frames')
-        if not selected_frame_material:
-            return material
+        # 1. Frame-specific resolution (already handled in pipeline)
+        if tag == 'frame':
+            resolved_frame = self.context.get('resolved_frame_material')
+            if resolved_frame:
+                return resolved_frame
 
-        # 1. Exact match by common_name with selected material
-        if material.common_name and selected_frame_material.common_name == material.common_name:
-            return selected_frame_material
+        # 2. General color resolution based on common_name
+        selected_color_material = self.context.get('basic_color_frames')
+        
+        if material.common_name:
+            if selected_color_material and selected_color_material.common_name == material.common_name:
+                return selected_color_material
 
-        # 2. Match other materials by common_name and the color of selected material
-        if material.common_name and selected_frame_material.color:
-            from apps.catalog.models import Material
-            colored_material = Material.objects.filter(
-                common_name=material.common_name,
-                color=selected_frame_material.color
-            ).first()
-            if colored_material:
-                return colored_material
+            if selected_color_material and selected_color_material.color:
+                from apps.catalog.models import Material
+                colored_material = Material.objects.filter(
+                    common_name=material.common_name,
+                    color=selected_color_material.color
+                ).first()
+                if colored_material:
+                    return colored_material
 
         return material
 
     def calculate_for_product(self, product, quantity=1):
         """
         Recursively calculates BOM for a product based on the structured BOM model.
+        Uses effective BOM (local or from parent model).
         """
-        try:
-            bom = product.bom
-        except Exception:  # RelatedObjectDoesNotExist
+        bom = product.effective_bom
+        if not bom:
             return []
 
         bom_result = []
+        has_frame = self.context.get('has_frame', True)
 
         # 1. Process Material Slots
         material_slots = [
@@ -83,9 +87,12 @@ class BOMCalculator:
         ]
 
         for slot_name, label in material_slots:
+            # Skip frame-related materials if has_frame is False
+            if not has_frame and slot_name in ['frame', 'casing']:
+                continue
             material = getattr(bom, slot_name)
             if material:
-                material = self._resolve_material(material)
+                material = self._resolve_material(material, tag=slot_name)
                 formula = getattr(bom, f"{slot_name}_consumption")
                 local_qty = self._evaluate(formula)
                 total_qty = local_qty * quantity
@@ -115,10 +122,7 @@ class BOMCalculator:
                     'quantity': 1 * quantity  # Default to 1 per unit
                 })
 
-        # 3. Process Nested BOMs
-        for nested_bom in bom.nested_boms.all():
-            # Recurse using the product of the nested BOM
-            nested_results = self.calculate_for_product(nested_bom.product, quantity=quantity)
-            bom_result.extend(nested_results)
+        if not has_frame:
+            bom_result = [b for b in bom_result if b.get('tag') != 'frame']
 
         return bom_result

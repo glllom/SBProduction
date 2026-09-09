@@ -23,6 +23,7 @@ class SpecCustomizerParam(BaseModel):
 
 class SpecCustomizerReport(BaseModel):
     name: str
+    tag: Optional[str] = None
     params: List[SpecCustomizerParam] = Field(default_factory=list)
 
 
@@ -88,12 +89,12 @@ class ProductionSpec(BaseModel):
     # Hardware and machining
     lock_id: Optional[int] = None
     lock_name: str = Field("", alias="lock")
-    cylinder_type: str = Field("", alias="cylinder type")
+    lock_option_type: str = Field("", alias="lock option type")
     lock_height: Optional[float] = Field(None, alias="lock's height")
     hinge_name: str = Field("", alias="hinges")
     hinge_heights: List[float] = Field(default_factory=list, alias="hinges height")
     handle_type: str = Field("", alias="handle type")
-    
+
     # Bill of Materials (BOM)
     frame: str = ""  # Formerly 'frame' in TechnicalSpec dataclass
     bom_items: List[SpecBOMItem] = Field(default_factory=list)

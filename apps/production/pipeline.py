@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from apps.orders.models import OrderItem
 from .bom_calculator import BOMCalculator
-from .models import BOM, LockStandardHeight, HingeStandardHeight
+from .models import LockStandardHeight, HingeStandardHeight
 from .schemas import (
     ProductionSpec, SpecBOMItem, SpecCustomizerParam, SpecCustomizerReport,
     OrderHeaderSpec, OrderSpec
@@ -107,14 +107,12 @@ class ProductDataStep(SpecStep):
         if product:
             spec.product_name = product.name
             spec.product_code = product.code
+            spec.has_door = product.has_door
+            spec.has_frame = product.has_frame
             if product.product_family:
                 spec.product_family = product.product_family.name
                 if not spec.series and product.series:
                     spec.series = product.series.name
-
-                if product.product_family.product_type:
-                    spec.has_door = product.product_family.product_type.has_door
-                    spec.has_frame = product.product_family.product_type.has_frame
 
 
 class AppearanceStep(SpecStep):
@@ -149,6 +147,49 @@ class AppearanceStep(SpecStep):
             spec.handle_name = order.handle.name
 
 
+class FrameResolutionStep(SpecStep):
+    """
+    Resolves the physical material for the frame.
+    Sequence: BOM Default -> Group Selection -> Opening Direction Switch.
+    """
+    priority = 350
+
+    def process(self, context: SpecContext):
+        product = context.product
+        group = context.group
+        spec = context.spec
+
+        if not spec.has_frame:
+            return
+
+        if not product:
+            return
+
+        # 1. Base Frame Material
+        # Prioritize group selection, fallback to BOM default
+        material = group.basic_color_frames
+        bom = product.effective_bom if product else None
+        if not material and bom:
+            material = bom.frame
+
+        if not material:
+            return
+
+        # 2. Outward Substitution Phase
+        if context.item.opening == 'OUT' and material.outward_substitute:
+            material = material.outward_substitute
+
+        # Store resolved material in context for BOM calculator and downstream steps
+        context.data['resolved_frame_material'] = material
+
+        # Meta-information for the spec report
+        context.spec.context['resolved_frame_material'] = {
+            'id': material.id,
+            'name': material.name,
+            'sku': material.sku
+        }
+
+
 class BOMStep(SpecStep):
     priority = 400
 
@@ -167,6 +208,8 @@ class BOMStep(SpecStep):
             'W': float(item.width or 0),
             'wall': float(item.wall or 0),
             'basic_color_frames': group.basic_color_frames,
+            'resolved_frame_material': context.data.get('resolved_frame_material'),
+            'has_frame': spec.has_frame,
             'customizers': {}  # Future expansion
         }
 
@@ -193,6 +236,12 @@ class BOMStep(SpecStep):
         spec.bom_items = spec_bom_items
         spec.profiles = profiles
 
+        # Set final resolved frame name
+        resolved_frame = context.data.get('resolved_frame_material')
+        if resolved_frame:
+            spec.frame = resolved_frame.name
+
+
         lock_bom = next((b for b in bom_result if isinstance(b, dict) and b.get('tag') == 'Lock'), None)
         if lock_bom and lock_bom.get('item'):
             lock_item = lock_bom['item']
@@ -208,11 +257,6 @@ class BOMStep(SpecStep):
             spec.hinge_name = hinge_item.name
         else:
             spec.hinge_name = "N/A"
-
-        # Frame type from first BOM if exists
-        bom_first = BOM.objects.filter(product=product).first()
-        if bom_first and bom_first.frame:
-            spec.frame = bom_first.frame.name
 
         # Store bom_result in context data for later steps (HardwareStep)
         context.data['bom_result'] = bom_result
@@ -303,32 +347,28 @@ class LockOptionSelectionStep(SpecStep):
             # Strip routing prefixes
             if val.startswith("SKU="):
                 val = val[4:]
-            elif val.startswith("SKU:"):
-                val = val[4:]
-            elif val.startswith("VAL:"):
-                val = val[4:]
 
             tag = (c.tag or "").upper()
 
-            # Set spec.cylinder_type based on the resolved value
+            # Set spec.lock_option_type based on the resolved value
             if val.startswith("CYLINDER") or tag == "CYLINDER":
-                spec.cylinder_type = "צילינדר"
+                spec.lock_option_type = "צילינדר"
             elif val in ("WC", "WC_LOCK") or tag == "WC_LOCK":
-                spec.cylinder_type = "תפוס/פנוי"
+                spec.lock_option_type = "תפוס/פנוי"
             elif val in ("KEY", "KEY_LOCK") or tag == "KEY_LOCK":
-                spec.cylinder_type = "מפתח אפס"
+                spec.lock_option_type = "מפתח אפס"
             elif val in ("NONE", "WITHOUT_LOCK"):
-                spec.cylinder_type = "ללא"
+                spec.lock_option_type = "ללא"
             else:
                 # Warehouse SKU patterns (default fallback for custom cylinder options)
-                spec.cylinder_type = "צילינדר"
+                spec.lock_option_type = "צילינדר"
 
             # Update BOM (Maintain placeholder)
             self._update_cylinder_bom(spec, c)
         else:
             # If no locking customizer provided, retain default behavior
-            if not spec.cylinder_type:
-                spec.cylinder_type = "תפוס/פנוי"
+            if not spec.lock_option_type:
+                spec.lock_option_type = "תפוס/פנוי"
 
     @staticmethod
     def _update_cylinder_bom(spec, customizer):
@@ -439,7 +479,7 @@ class LockPositionStep(SpecStep):
         # Сохраняем финальный результат
         if effective_height is None or effective_height <= 0:
             raise PipelineError(f"Lock height could not be determined for lock ID {spec.lock_id}")
-            
+
         spec.lock_height = effective_height
 
     @staticmethod
@@ -513,8 +553,6 @@ class HingePositionStep(SpecStep):
                 raise PipelineError(f"Standard hinge heights not found for hinge ID {hinge_id} and door height {item.height}")
             spec.hinge_heights = heights
         else:
-            # Если нет hinge_id, но это дверь - возможно тоже ошибка? 
-            # Пока оставим как есть, возможно петли не предусмотрены продуктом.
             pass
 
     @staticmethod
@@ -616,7 +654,7 @@ class SingleCustomizerStep(SpecStep):
                 )
 
         # Tag-based strategy logic
-        if tag == 'FRAMES_REPORT':
+        if tag in ('FRAMES_REPORT', 'FRAME_MODIFICATION'):
             spec.frames_report_customizers.append(self._format_customizer(gc))
         else:
             # Other tag-based strategies placeholders
@@ -626,7 +664,7 @@ class SingleCustomizerStep(SpecStep):
     def _format_customizer(group_customizer) -> SpecCustomizerReport:
         c = group_customizer.customizer
         params = []
-        for i in range(1, 5):
+        for i in range(1, 6):
             label = getattr(c, f'par{i}_label')
             if label:
                 val_order = getattr(group_customizer, f'par{i}')
@@ -643,7 +681,7 @@ class SingleCustomizerStep(SpecStep):
                         value=val,
                         is_custom=is_custom
                     ))
-        return SpecCustomizerReport(name=c.name, params=params)
+        return SpecCustomizerReport(name=c.name, tag=c.tag, params=params)
 
 
 class SpecPipeline:
@@ -652,6 +690,7 @@ class SpecPipeline:
             BaseItemStep(),
             ProductDataStep(),
             AppearanceStep(),
+            FrameResolutionStep(),
             BOMStep(),
             LockSelectionStep(),
             LockOptionSelectionStep(),

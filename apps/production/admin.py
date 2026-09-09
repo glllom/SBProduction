@@ -20,7 +20,7 @@ class BOMAdmin(admin.ModelAdmin):
     raw_id_fields = ('product', 'covering', 'base', 'filling', 'casing', 'frame',
                      'profile1', 'profile2', 'profile3',
                      'other1', 'other2', 'other3', 'other4', 'other5')
-    filter_horizontal = ('lock', 'hinges', 'additional', 'nested_boms')
+    filter_horizontal = ('lock', 'hinges', 'additional')
 
     fieldsets = (
         (None, {
@@ -47,11 +47,8 @@ class BOMAdmin(admin.ModelAdmin):
                 ('other5', 'other5_consumption'),
             )
         }),
-        ('Hardware (פרזול)', {
+        ('Hardware (פרзול)', {
             'fields': ('lock', 'hinges', 'additional')
-        }),
-        ('Nested BOMs (עצי מוצר מוטמעים)', {
-            'fields': ('nested_boms',)
         }),
     )
 

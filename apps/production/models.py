@@ -109,10 +109,6 @@ class BOM(models.Model):
     additional = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+',
                                         verbose_name='תוספות (Additional)')
 
-    # --- Nested BOMs ---
-    nested_boms = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='parent_boms',
-                                         verbose_name='BOM מוטמע')
-
     class Meta:
         verbose_name = 'עץ מוצר (BOM)'
         verbose_name_plural = 'עצי מוצר (BOM)'
@@ -155,7 +151,7 @@ class LockStandardHeight(models.Model):
         default=0,
         help_text='שינוי בגובה המנעול לכל יחידת גובה דלת'
     )
-    
+
     class Meta:
         verbose_name = 'גובה מנעול סטנדרטי'
         verbose_name_plural = 'גבהי מנעול סטנדרטיים'

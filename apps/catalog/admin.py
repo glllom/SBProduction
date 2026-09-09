@@ -48,7 +48,7 @@ class ProductTypeAdmin(admin.ModelAdmin):
 
 @admin.register(ProductFamily)
 class ProductFamilyAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'product_type')
+    list_display = ('id', 'name', 'product_type', 'thickness', 'leaf_height_adjustment', 'leaf_width_adjustment')
     list_filter = ('product_type',)
     search_fields = ('name',)
     inlines = [ProductionRouteFamilyInline]
@@ -113,7 +113,7 @@ class BOMInline(admin.StackedInline):
     can_delete = False
     verbose_name_plural = 'עץ מוצר (BOM)'
     fk_name = 'product'
-    filter_horizontal = ('lock', 'hinges', 'additional', 'nested_boms')
+    filter_horizontal = ('lock', 'hinges', 'additional')
     fieldsets = (
         ('Materials (חומרים)', {
             'fields': (
@@ -139,9 +139,6 @@ class BOMInline(admin.StackedInline):
         ('Hardware (פרזול)', {
             'fields': ('lock', 'hinges', 'additional')
         }),
-        ('Nested BOMs (עצי מוצר מוטמעים)', {
-            'fields': ('nested_boms',)
-        }),
     )
 
 
@@ -153,9 +150,10 @@ class ProductTechnicalDataInline(admin.StackedInline):
 
 @admin.register(ProductModel)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id', 'code', 'name', 'product_family', 'series')
+    list_display = ('id', 'code', 'name', 'product_family', 'series', 'parent_model', 'has_door', 'has_frame')
     list_filter = ('product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name')
+    raw_id_fields = ('parent_model',)
     inlines = [BOMInline, ProductTechnicalDataInline, ProductionRouteModelInline]
 
 
