@@ -1,5 +1,5 @@
-import math
 from django.db import models
+
 from apps.catalog.models import ProductModel
 
 
@@ -14,20 +14,20 @@ class ProductTechnicalData(models.Model):
         related_name='tech_data',
         verbose_name='דגם מוצר'
     )
-    
+
     cnc_program_name = models.CharField(
         'שם תוכנית CNC',
         max_length=255,
         blank=True,
         help_text='למשל: door_v1_standard.prg'
     )
-    
+
     technical_notes = models.TextField(
         'הערות טכניות',
         blank=True,
         help_text='הוראות לעובדי הייצור'
     )
-    
+
     # Add any other technical parameters here
     # e.g., tolerances, cutter types, equipment settings, etc.
 
@@ -51,52 +51,67 @@ class BOM(models.Model):
     )
 
     # --- Materials Sections ---
-    covering = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='כיסוי (Covering)')
+    covering = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                 verbose_name='כיסוי (Covering)')
     covering_consumption = models.CharField('צריכת כיסוי', max_length=255, default='1', blank=True)
 
-    base = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='בסיס (Base)')
+    base = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                             verbose_name='בסיס (Base)')
     base_consumption = models.CharField('צריכת בסיס', max_length=255, default='1', blank=True)
 
-    filling = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='מילוי (Filling)')
+    filling = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                verbose_name='מילוי (Filling)')
     filling_consumption = models.CharField('צריכת מילוי', max_length=255, default='1', blank=True)
 
-    casing = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='הלבשה (Casing)')
+    casing = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                               verbose_name='הלבשה (Casing)')
     casing_consumption = models.CharField('צריכת הלבשה', max_length=255, default='1', blank=True)
 
-    frame = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='משקוף (Frame)')
+    frame = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                              verbose_name='משקוף (Frame)')
     frame_consumption = models.CharField('צריכת משקוף', max_length=255, default='1', blank=True)
 
-    profile1 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='פרופיל 1')
+    profile1 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                 verbose_name='פרופיל 1')
     profile1_consumption = models.CharField('צריכת פרופיל 1', max_length=255, default='1', blank=True)
 
-    profile2 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='פרופיל 2')
+    profile2 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                 verbose_name='פרופיל 2')
     profile2_consumption = models.CharField('צריכת פרופיל 2', max_length=255, default='1', blank=True)
 
-    profile3 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='פרופיל 3')
+    profile3 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                 verbose_name='פרופיל 3')
     profile3_consumption = models.CharField('צריכת פרופיל 3', max_length=255, default='1', blank=True)
 
-    other1 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='אחר 1')
+    other1 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                               verbose_name='אחר 1')
     other1_consumption = models.CharField('צריכת אחר 1', max_length=255, default='1', blank=True)
 
-    other2 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='אחר 2')
+    other2 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                               verbose_name='אחר 2')
     other2_consumption = models.CharField('צריכת אחר 2', max_length=255, default='1', blank=True)
 
-    other3 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='אחר 3')
+    other3 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                               verbose_name='אחר 3')
     other3_consumption = models.CharField('צריכת אחר 3', max_length=255, default='1', blank=True)
 
-    other4 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='אחר 4')
+    other4 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                               verbose_name='אחר 4')
     other4_consumption = models.CharField('צריכת אחר 4', max_length=255, default='1', blank=True)
 
-    other5 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='אחר 5')
+    other5 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                               verbose_name='אחר 5')
     other5_consumption = models.CharField('צריכת אחר 5', max_length=255, default='1', blank=True)
 
     # --- Hardware Sections (Many-to-Many) ---
     lock = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+', verbose_name='מנעול (Lock)')
     hinges = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+', verbose_name='צירים (Hinges)')
-    additional = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+', verbose_name='תוספות (Additional)')
+    additional = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+',
+                                        verbose_name='תוספות (Additional)')
 
     # --- Nested BOMs ---
-    nested_boms = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='parent_boms', verbose_name='BOM מוטמע')
+    nested_boms = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='parent_boms',
+                                         verbose_name='BOM מוטמע')
 
     class Meta:
         verbose_name = 'עץ מוצר (BOM)'
@@ -116,10 +131,10 @@ class LockStandardHeight(models.Model):
         related_name='lock_heights',
         verbose_name='משפחות מוצרים'
     )
-    lock = models.ForeignKey(
+    locks = models.ManyToManyField(
         'catalog.Hardware',
-        on_delete=models.CASCADE,
-        verbose_name='מנעול (Lock)'
+        related_name='lock_heights',
+        verbose_name='מנעולים (Locks)'
     )
     base_door_height = models.DecimalField(
         'גובה דלת בסיסי',
@@ -140,13 +155,10 @@ class LockStandardHeight(models.Model):
         default=0,
         help_text='שינוי בגובה המנעול לכל יחידת גובה דלת'
     )
-
+    
     class Meta:
         verbose_name = 'גובה מנעול סטנדרטי'
         verbose_name_plural = 'גבהי מנעול סטנדרטיים'
-
-    def __str__(self):
-        return f"גובה מנעול עבור {self.lock.name}"
 
 
 class HingeStandardHeight(models.Model):
@@ -158,10 +170,10 @@ class HingeStandardHeight(models.Model):
         related_name='hinge_heights',
         verbose_name='משפחות מוצרים'
     )
-    hinge = models.ForeignKey(
+    hinges = models.ManyToManyField(
         'catalog.Hardware',
-        on_delete=models.CASCADE,
-        verbose_name='ציר (Hinge)'
+        related_name='hinge_heights',
+        verbose_name='צירים (Hinges)'
     )
     min_height = models.DecimalField(
         'גובה מינימלי',
@@ -182,12 +194,25 @@ class HingeStandardHeight(models.Model):
     value4 = models.DecimalField('גובה ציר 4', max_digits=7, decimal_places=2, null=True, blank=True)
     value5 = models.DecimalField('גובה ציר 5', max_digits=7, decimal_places=2, null=True, blank=True)
 
+    hinge_count = models.PositiveSmallIntegerField(
+        'כמות צירים',
+        default=0,
+        editable=False,
+        db_index=True
+    )
+
     class Meta:
         verbose_name = 'גובה צירים סטנדרטי'
         verbose_name_plural = 'גבהי צירים סטנדרטיים'
 
-    def __str__(self):
-        return f"גובה צירים עבור {self.hinge.name} ({self.min_height}-{self.max_height})"
+    def save(self, *args, **kwargs):
+        # Считаем количество ненулевых/непустых высот
+        values = [self.value1, self.value2, self.value3, self.value4, self.value5]
+        self.hinge_count = sum(1 for v in values if v is not None and float(v) > 0)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f'{self.hinge_count} צירים  בגובה {self.min_height}-{self.max_height}'
 
 
 class ProductionStation(models.Model):
@@ -199,8 +224,10 @@ class ProductionStation(models.Model):
     label = models.CharField('תווית לכפתור', max_length=100, blank=True, help_text='הטקסט שיופיע על הכפתור')
     hint = models.CharField('רמז/תיאור קצר', max_length=255, blank=True, help_text='יופיע כ-tooltip')
     description = models.TextField('תיאור מפורט', blank=True)
-    template_name = models.CharField('שם תבנית HTML', max_length=255, blank=True, help_text='נתיב לקובץ ה-html של הדו"ח')
-    has_specification = models.BooleanField('יש מפרט/כפתור', default=True, help_text='האם להציג כפתור להפקת דו"ח עבור תחנה זו')
+    template_name = models.CharField('שם תבנית HTML', max_length=255, blank=True,
+                                     help_text='נתיב לקובץ ה-html של הדו"ח')
+    has_specification = models.BooleanField('יש מפרט/כפתור', default=True,
+                                            help_text='האם להציג כפתור להפקת דו"ח עבור תחנה זו')
     is_phase1 = models.BooleanField('שלב א', default=False, help_text='האם תחנה זו שייכת לשלב א (ייצור מקדים/משקופים)')
     active = models.BooleanField('פעיל', default=True)
 

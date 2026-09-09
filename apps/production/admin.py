@@ -1,9 +1,11 @@
 from django.contrib import admin
+
 from .models import (
-    ProductTechnicalData, BOM, LockStandardHeight, HingeStandardHeight, 
+    ProductTechnicalData, BOM, LockStandardHeight, HingeStandardHeight,
     ProductionStation, ProductionRoute, ProductionRouteStep,
     CustomizerProductionStation
 )
+
 
 @admin.register(ProductTechnicalData)
 class ProductTechnicalDataAdmin(admin.ModelAdmin):
@@ -15,11 +17,11 @@ class ProductTechnicalDataAdmin(admin.ModelAdmin):
 @admin.register(BOM)
 class BOMAdmin(admin.ModelAdmin):
     list_display = ('product',)
-    raw_id_fields = ('product', 'covering', 'base', 'filling', 'casing', 'frame', 
-                    'profile1', 'profile2', 'profile3', 
-                    'other1', 'other2', 'other3', 'other4', 'other5')
+    raw_id_fields = ('product', 'covering', 'base', 'filling', 'casing', 'frame',
+                     'profile1', 'profile2', 'profile3',
+                     'other1', 'other2', 'other3', 'other4', 'other5')
     filter_horizontal = ('lock', 'hinges', 'additional', 'nested_boms')
-    
+
     fieldsets = (
         (None, {
             'fields': ('product',)
@@ -56,16 +58,12 @@ class BOMAdmin(admin.ModelAdmin):
 
 @admin.register(LockStandardHeight)
 class LockStandardHeightAdmin(admin.ModelAdmin):
-    list_display = ('lock', 'base_door_height', 'base_lock_height', 'step')
-    filter_horizontal = ('product_families',)
-    raw_id_fields = ('lock',)
+    filter_horizontal = ('product_families', 'locks')
 
 
 @admin.register(HingeStandardHeight)
 class HingeStandardHeightAdmin(admin.ModelAdmin):
-    list_display = ('hinge', 'min_height', 'max_height', 'value1', 'value2', 'value3')
-    filter_horizontal = ('product_families',)
-    raw_id_fields = ('hinge',)
+    filter_horizontal = ('product_families', 'hinges')
 
 
 @admin.register(CustomizerProductionStation)

@@ -8,7 +8,7 @@
     <div class="mb-4 align-items-end">
         <div class="d-flex align-items-center mb-2">
             <h2 class="h3 mb-0 mx-3 fw-bolder">{{ order.customer }}</h2>
-            {% if order.status == 'NEW' or user.is_admin_user %}
+            {% if order.status == 'NEW' or order.status == 'PHASE1_READY' %}
                 <button class="btn btn-sm btn-outline-primary ms-3"
                         data-bs-toggle="modal"
                         data-bs-target="#editHeaderModal"
@@ -89,6 +89,12 @@
         </div>
     </div>
     <div class="mb-2 d-flex gap-2">
+        <a href="{% url 'production:order-dev-rebuild-spec' order.pk %}"
+           class="btn btn-warning"
+           data-bs-toggle="tooltip"
+           title="Development only: Force rebuild specification and view JSON">
+            <i class="bi bi-cpu me-2"></i>Dev: Rebuild Spec
+        </a>
         {% if order.status == 'NEW' %}
             <a href="{% url 'production:order-check-validation' order.pk %}"
                class="btn btn-outline-info"
@@ -462,15 +468,23 @@
                         let html = '';
                         items.forEach(cust => {
                             let paramsHtml = '';
-                            for (let i = 1; i <= 4; i++) {
+                            for (let i = 1; i <= 5; i++) {
                                 const label = cust[`par${i}_label`];
                                 const hint = cust[`par${i}_hint`] || '';
                                 const val = cust[`par${i}`];
+                                const options = cust[`par${i}_options`] || [];
+
                                 if (label) {
+                                    let displayVal = val || '-';
+                                    if (val && options && options.length > 0) {
+                                        const opt = options.find(o => o.key === val);
+                                        if (opt) displayVal = opt.label;
+                                    }
+
                                     paramsHtml += `
                                         <div class="col-6 extra-small" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>
                                             <span class="text-muted">${label}:</span>
-                                            <span class="fw-medium">${val || '-'}</span>
+                                            <span class="fw-medium">${displayVal}</span>
                                         </div>`;
                                 }
                             }
@@ -508,6 +522,25 @@
             const $custResults = $('#customizerSearchResults');
             const $custTableBody = $('#groupCustomizersList');
 
+            function updatePar2Visibility($row) {
+                const $par1 = $row.find('.cust-param-input[data-param="par1"]');
+                const $par2Col = $row.find('.col-md-6[data-param-index="2"]');
+                const $par2Input = $par2Col.find('.cust-param-input');
+
+                if ($par1.length && $par2Col.length) {
+                    const val = $par1.val() || '';
+                    if (val === 'defined' || val.startsWith('DEFINED=')) {
+                        $par2Col.hide();
+                        // Only reset and trigger if it was not empty, to avoid infinite loops if triggered from change
+                        if ($par2Input.val() !== '') {
+                            $par2Input.val('').trigger('change');
+                        }
+                    } else {
+                        $par2Col.show();
+                    }
+                }
+            }
+
             function openCustomizerModal(groupId) {
                 const $groupCard = $(`.group-card[data-group-id="${groupId}"]`);
                 if (!$groupCard.length) {
@@ -521,6 +554,11 @@
                     $('#custModalGroupName').text(name);
                     $('#custModalGroupQty').text(qty);
                     $('#custModalGroupDetails').text(details);
+
+                    // Save context IDs for filtered search
+                    $custModal.data('product-id', $groupCard.data('product-id'));
+                    $custModal.data('family-id', $groupCard.data('family-id'));
+                    $custModal.data('type-id', $groupCard.data('type-id'));
                 }
 
                 $custModal.data('group-id', groupId);
@@ -544,6 +582,10 @@
                             html = '<tr><td colspan="3" class="text-center py-4 text-muted">לא נוספו קסטומייזרים לקבוצה זו</td></tr>';
                         }
                         $custTableBody.html(html);
+                        // Apply dependent visibility logic
+                        $custTableBody.find('tr').each(function() {
+                            updatePar2Visibility($(this));
+                        });
                         if (window.initTooltips) window.initTooltips($custTableBody[0]);
                     })
                     .catch(err => {
@@ -556,17 +598,36 @@
             function renderCustomizerRow(item) {
                 let paramsHtml = '<div class="row g-2">';
                 let hasParams = false;
-                for (let i = 1; i <= 4; i++) {
+                for (let i = 1; i <= 5; i++) {
                     const label = item[`par${i}_label`];
                     const hint = item[`par${i}_hint`] || '';
+                    const options = item[`par${i}_options`] || [];
+                    const currentValue = item[`par${i}`] || '';
+                    const defaultValue = item[`par${i}_default_value`] || '';
+
                     if (label) {
                         hasParams = true;
+                        let inputHtml = '';
+                        if (options && options.length > 0) {
+                            inputHtml = `<select class="form-select form-select-sm cust-param-input" data-id="${item.id}" data-param="par${i}">`;
+                            // If no value set and no default, maybe add placeholder? 
+                            // But usually if options are defined, one should be selected.
+                            // We'll follow the rule: current or default.
+                            options.forEach(opt => {
+                                const selected = (currentValue === opt.key || (!currentValue && defaultValue === opt.key)) ? 'selected' : '';
+                                inputHtml += `<option value="${opt.key}" ${selected}>${opt.label}</option>`;
+                            });
+                            inputHtml += `</select>`;
+                        } else {
+                            inputHtml = `<input type="text" class="form-control form-control-sm cust-param-input" data-id="${item.id}" data-param="par${i}" value="${currentValue}" placeholder="${hint}" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>`;
+                        }
+
                         paramsHtml += `
-                            <div class="col-md-6">
+                            <div class="col-md-6" data-param-index="${i}">
                                 <label class="extra-small text-muted mb-0 d-block" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>
                                     ${label} ${hint ? '<i class="bi bi-info-circle help-hint-icon"></i>' : ''}
                                 </label>
-                                <input type="text" class="form-control form-control-sm cust-param-input" data-id="${item.id}" data-param="par${i}" value="${item[`par${i}`] || ''}" placeholder="${hint}" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>
+                                ${inputHtml}
                             </div>`;
                     }
                 }
@@ -600,7 +661,16 @@
                 }
 
                 searchTimeout = setTimeout(() => {
-                    fetch(`/catalog/api/customizers/?search=${encodeURIComponent(query)}`)
+                    const productId = $custModal.data('product-id') || '';
+                    const familyId = $custModal.data('family-id') || '';
+                    const typeId = $custModal.data('type-id') || '';
+
+                    let url = `/catalog/api/customizers/?search=${encodeURIComponent(query)}`;
+                    if (productId) url += `&product_model=${productId}`;
+                    if (familyId) url += `&product_family=${familyId}`;
+                    if (typeId) url += `&product_type=${typeId}`;
+
+                    fetch(url)
                         .then(r => r.json())
                         .then(data => {
                             const results = Array.isArray(data) ? data : (data.results || []);
@@ -671,9 +741,15 @@
 
             // Update params with debounce
             let updateParamTimeout;
-            $(document).on('input', '.cust-param-input', function() {
+            $(document).on('input change', '.cust-param-input', function() {
                 const $input = $(this);
                 const id = $input.data('id');
+                const paramName = $input.data('param');
+
+                // Dependent visibility logic for par1 -> par2
+                if (paramName === 'par1') {
+                    updatePar2Visibility($input.closest('tr'));
+                }
                 const param = $input.data('param');
                 const value = $input.val();
                 const groupId = $custModal.data('group-id');

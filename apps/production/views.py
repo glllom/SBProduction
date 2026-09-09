@@ -7,7 +7,7 @@ from django.utils import timezone
 from apps.orders.models import Order
 from .decorators import require_order_spec
 from .models import ProductionStation
-from .services import OrderProductionService, ProductionDataService, TechnicalSpecService
+from .services import OrderProductionService, ProductionDataService, TechnicalSpecService, OrderValidationError
 
 
 # === 1. Production Lifecycle & Status Actions ===
@@ -21,8 +21,10 @@ def order_transfer_to_production(request, pk):
     try:
         OrderProductionService.start_production(order, user=request.user)
         messages.success(request, "The order was successfully transferred to production.")
-    except ValueError as e:
-        messages.error(request, str(e))
+    except (ValueError, OrderValidationError) as e:
+        errors = getattr(e, 'errors', [str(e)])
+        for err in errors:
+            messages.error(request, err)
     return redirect('order-detail', pk=pk)
 
 
@@ -50,8 +52,10 @@ def order_transfer_to_phase1(request, pk):
     try:
         OrderProductionService.start_phase1(order, user=request.user)
         messages.success(request, "Phase 1 (Frames) successfully transferred to production.")
-    except ValueError as e:
-        messages.error(request, str(e))
+    except (ValueError, OrderValidationError) as e:
+        errors = getattr(e, 'errors', [str(e)])
+        for err in errors:
+            messages.error(request, err)
     return redirect('order-detail', pk=pk)
 
 
@@ -138,3 +142,26 @@ def spec_json_preview(request, spec_json_dict, **kwargs):
         spec_json_dict,
         json_dumps_params={'indent': 2, 'ensure_ascii': False}
     )
+
+
+@login_required
+def order_dev_force_rebuild_spec(request, pk):
+    """
+    Development-only helper: Forces a full spec rebuild regardless of cache/status
+    and redirects to the JSON preview.
+    """
+    order = get_object_or_404(Order, pk=pk)
+    
+    # 1. Reset everything
+    order.reset_validation()
+    order.save()
+    
+    # 2. Rebuild spec (phase1 is default for now)
+    try:
+        TechnicalSpecService.get_or_build_spec(order, phase='phase1')
+        messages.success(request, f"Spec for Order {order.order_number} was forcefully rebuilt.")
+    except Exception as e:
+        messages.error(request, f"Rebuild failed: {str(e)}")
+        return redirect('order-detail', pk=pk)
+
+    return redirect('production:spec-json-preview', pk=pk)

@@ -1,5 +1,6 @@
 import math
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db import transaction
 from django.utils import timezone
@@ -132,6 +133,7 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         from apps.orders.utils import add_israeli_working_days
 
+        old_instance = None
         # Approach 3: Freeze state if locked
         if self.pk:
             try:
@@ -150,9 +152,13 @@ class Order(models.Model):
         if not self.painting_completion_date:
             self.painting_completion_date = add_israeli_working_days(base_date, 20)
 
-        # Approach 1: Reset validation on mutation (if not already locked)
-        if self.pk and not self.is_locked:
-            self.reset_validation()
+        # Approach 1: Reset validation on technical fields change (if not already locked)
+        if old_instance and not old_instance.is_locked:
+            tech_fields = ['series_id', 'front_id', 'handle_id', 'is_frames_to_paint', 'color_panels', 'color_frames']
+            for field in tech_fields:
+                if getattr(self, field) != getattr(old_instance, field):
+                    self.reset_validation()
+                    break
 
         super().save(*args, **kwargs)
 
@@ -495,7 +501,8 @@ class OrderItemsGroup(models.Model):
                     par1=cust.par1,
                     par2=cust.par2,
                     par3=cust.par3,
-                    par4=cust.par4
+                    par4=cust.par4,
+                    par5=cust.par5
                 )
             return new_group
 
@@ -524,6 +531,37 @@ class OrderItemsGroupCustomizer(models.Model):
 
     def __str__(self):
         return f"{self.group} - {self.customizer.name}"
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        product_model = getattr(self.group, 'product', None)
+        
+        # Check if the customizer itself is available for the product
+        if product_model and not self.customizer.is_available_for(product_model):
+             errors['customizer'] = f"Customizer '{self.customizer.name}' is not available for product '{product_model}'."
+
+        for i in range(1, 6):
+            field_name = f"par{i}"
+            value = getattr(self, field_name)
+
+            # Use filtered options for validation
+            options = self.customizer.get_filtered_parameter_options(i, product_model)
+            if options:
+                valid_keys = [opt[0] for opt in options]
+                if value and str(value).strip():
+                    stripped_value = str(value).strip()
+                    if stripped_value not in valid_keys:
+                        # Check if it's an existing SKU but filtered out
+                        all_options = self.customizer.get_parameter_options(i)
+                        all_keys = [opt[0] for opt in all_options]
+                        if stripped_value in all_keys:
+                             errors[field_name] = f"Selected hardware '{stripped_value}' is incompatible with the product model."
+                        else:
+                             errors[field_name] = f"Selected value '{stripped_value}' is not a valid option. Allowed: {', '.join(valid_keys)}"
+
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         if self.group.order.is_locked:
@@ -871,6 +909,7 @@ class GroupSpecification(models.Model):
                     par2=cust.par2,
                     par3=cust.par3,
                     par4=cust.par4,
+                    par5=cust.par5,
                 )
             return spec
 
@@ -900,6 +939,7 @@ class GroupSpecification(models.Model):
                     par2=cust.par2,
                     par3=cust.par3,
                     par4=cust.par4,
+                    par5=cust.par5,
                 )
             return group
 
@@ -928,6 +968,7 @@ class GroupSpecification(models.Model):
                     par2=cust.par2,
                     par3=cust.par3,
                     par4=cust.par4,
+                    par5=cust.par5,
                 )
             return new_group
 

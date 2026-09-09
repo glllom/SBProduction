@@ -105,6 +105,37 @@ class CustomizerViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         search = self.request.query_params.get('search')
+        product_model = self.request.query_params.get('product_model')
+        product_family = self.request.query_params.get('product_family')
+        product_type = self.request.query_params.get('product_type')
+
+        # Filter by hierarchy if provided
+        if product_model or product_family or product_type:
+            hierarchy_filter = models.Q(
+                product_models__isnull=True,
+                product_families__isnull=True,
+                product_types__isnull=True
+            )
+            if product_model:
+                try:
+                    pm = ProductModel.objects.get(id=product_model)
+                    hierarchy_filter |= models.Q(product_models=pm)
+                    hierarchy_filter |= models.Q(product_families=pm.product_family)
+                    hierarchy_filter |= models.Q(product_types=pm.product_family.product_type)
+                except ProductModel.DoesNotExist:
+                    pass
+            elif product_family:
+                hierarchy_filter |= models.Q(product_families_id=product_family)
+                try:
+                    pf = ProductFamily.objects.get(id=product_family)
+                    hierarchy_filter |= models.Q(product_types=pf.product_type)
+                except ProductFamily.DoesNotExist:
+                    pass
+            elif product_type:
+                hierarchy_filter |= models.Q(product_types_id=product_type)
+            
+            queryset = queryset.filter(hierarchy_filter).distinct()
+
         if search:
             queryset = queryset.filter(
                 models.Q(name__icontains=search) | models.Q(code__icontains=search)

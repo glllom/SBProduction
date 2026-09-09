@@ -11,6 +11,7 @@ from .models import (
     ProductModel,
     Handle,
     Hardware,
+    Customizer,
 )
 
 
@@ -103,6 +104,7 @@ class MaterialAdmin(admin.ModelAdmin):
 class HardwareAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'sku', 'price', 'active')
     search_fields = ('name', 'sku')
+    filter_horizontal = ('product_types', 'product_families', 'product_models', 'components')
 
 
 class BOMInline(admin.StackedInline):
@@ -165,30 +167,27 @@ from .models import Customizer
 class CustomizerAdmin(admin.ModelAdmin):
     # Fields displayed in the list
     list_display = (
-        "id",
         "code",
         "name",
         "tag",
         "active",
-        "product_type",
-        "product_family",
-        "product_model",
+        "hardware",
     )
 
     # Quick filter on the right
     list_filter = (
         "active",
         "tag",
-        "product_type",
-        "product_family",
-        "product_model",
+        "product_types",
+        "product_families",
+        "product_models",
     )
 
     # Search by code and name
     search_fields = ("code", "name", "description", "tag")
 
     # Filter horizontal for M2M
-    filter_horizontal = ("hardware_list", "materials")
+    filter_horizontal = ("product_types", "product_families", "product_models", "materials")
 
     # Default ordering
     ordering = ("tag", "code")
@@ -197,15 +196,15 @@ class CustomizerAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Основная информация",
-            {"fields": ("code", "name", "description", "active")},
+            {"fields": ("code", "name", "description", "active", "hardware")},
         ),
         (
             "Привязка к каталогу",
             {
                 "fields": (
-                    "product_type",
-                    "product_family",
-                    "product_model",
+                    "product_types",
+                    "product_families",
+                    "product_models",
                 )
             },
         ),
@@ -219,41 +218,41 @@ class CustomizerAdmin(admin.ModelAdmin):
         (
             "Комплектующие и материалы (Replacement/Addition)",
             {
-                "fields": ("hardware_list", "materials"),
+                "fields": ("materials",),
             },
         ),
         (
             "Параметр 1",
             {
-                "fields": ("par1_label", "par1_value", "par1_hint"),
+                "fields": ("par1_label", 'par1_options', "par1_value", "par1_hint"),
                 "classes": ("collapse",),
             },
         ),
         (
             "Параметр 2",
             {
-                "fields": ("par2_label", "par2_value", "par2_hint"),
+                "fields": ("par2_label", 'par2_options', "par2_value", "par2_hint"),
                 "classes": ("collapse",),
             },
         ),
         (
             "Параметр 3",
             {
-                "fields": ("par3_label", "par3_value", "par3_hint"),
+                "fields": ("par3_label", 'par3_options', "par3_value", "par3_hint"),
                 "classes": ("collapse",),
             },
         ),
         (
             "Параметр 4",
             {
-                "fields": ("par4_label", "par4_value", "par4_hint"),
+                "fields": ("par4_label", 'par4_options', "par4_value", "par4_hint"),
                 "classes": ("collapse",),
             },
         ),
         (
             "Параметр 5",
             {
-                "fields": ("par5_label", "par5_value", "par5_hint"),
+                "fields": ("par5_label", 'par5_options', "par5_value", "par5_hint"),
                 "classes": ("collapse",),
             },
         ),

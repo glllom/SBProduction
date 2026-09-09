@@ -14,4 +14,5 @@ urlpatterns = [
     path('order/<int:pk>/production-data/', views.order_production_data, name='order-production-data'),
     path('order/<int:pk>/station-report/', views.station_report, name='station-report'),
     path('order/<int:pk>/spec-json/', views.spec_json_preview, name='spec-json-preview'),
+    path('order/<int:pk>/dev-rebuild-spec/', views.order_dev_force_rebuild_spec, name='order-dev-rebuild-spec'),
 ]

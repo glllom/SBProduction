@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Series, Front, Color, ProductFamily, ProductModel, Customizer, Material
+from .models import Series, Front, Color, ProductFamily, ProductModel, Customizer, Material, Hardware
 
 
 class SeriesSerializer(serializers.ModelSerializer):
@@ -44,13 +44,20 @@ class ProductModelSerializer(serializers.ModelSerializer):
         return MaterialSerializer(obj.available_frames, many=True).data
 
 
+class HardwareSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Hardware
+        fields = ['id', 'name', 'sku', 'price']
+
+
 class CustomizerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customizer
         fields = [
-            'id', 'code', 'name', 'description',
+            'id', 'code', 'name', 'description', 'tag', 'hardware',
             'par1_label', 'par1_value', 'par1_hint',
             'par2_label', 'par2_value', 'par2_hint',
             'par3_label', 'par3_value', 'par3_hint',
-            'par4_label', 'par4_value', 'par4_hint'
+            'par4_label', 'par4_value', 'par4_hint',
+            'par5_label', 'par5_value', 'par5_hint'
         ]

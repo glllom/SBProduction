@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -147,6 +148,32 @@ class Hardware(models.Model):
     price = models.DecimalField('מחיר', max_digits=10, decimal_places=2, default=0)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
+    product_types = models.ManyToManyField(
+        ProductType,
+        blank=True,
+        related_name="hardware_items",
+        verbose_name="סוגי מוצרים",
+    )
+    product_families = models.ManyToManyField(
+        ProductFamily,
+        blank=True,
+        related_name="hardware_items",
+        verbose_name="משפחות מוצרים",
+    )
+    product_models = models.ManyToManyField(
+        "ProductModel",
+        blank=True,
+        related_name="hardware_items",
+        verbose_name="דגמי מוצרים",
+    )
+    components = models.ManyToManyField(
+        'self',
+        blank=True,
+        symmetrical=False,
+        related_name='assembled_in',
+        verbose_name='רכיבים (Components)',
+        help_text='Components that make up this assembly',
+    )
 
     class Meta:
         verbose_name = 'פרזול'
@@ -154,6 +181,32 @@ class Hardware(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
+
+    def is_compatible_with(self, product_model):
+        """
+        Check if hardware is compatible with a given product model.
+        OR logic: if explicitly listed, OR if model's family is listed, OR if model's type is listed.
+        If all sets are empty, it's globally compatible.
+        """
+        if not product_model:
+            return True
+
+        # Check if any constraints exist
+        has_types = self.product_types.exists()
+        has_families = self.product_families.exists()
+        has_models = self.product_models.exists()
+
+        if not (has_types or has_families or has_models):
+            return True
+
+        if has_models and self.product_models.filter(id=product_model.id).exists():
+            return True
+        if has_families and self.product_families.filter(id=product_model.product_family_id).exists():
+            return True
+        if has_types and self.product_types.filter(id=product_model.product_family.product_type_id).exists():
+            return True
+
+        return False
 
 
 # ==========================================
@@ -272,29 +325,33 @@ class Customizer(models.Model):
     )
 
     # --- Catalog hierarchy link (Optional / Nullable) ---
-    product_type = models.ForeignKey(
+    product_types = models.ManyToManyField(
         "ProductType",
-        on_delete=models.SET_NULL,
-        null=True,
         blank=True,
         related_name="customizers",
-        verbose_name="סוג מוצר",
+        verbose_name="סוגי מוצרים",
     )
-    product_family = models.ForeignKey(
+    product_families = models.ManyToManyField(
         "ProductFamily",
-        on_delete=models.SET_NULL,
-        null=True,
         blank=True,
         related_name="customizers",
-        verbose_name="משפחת מוצרים",
+        verbose_name="משפחות מוצרים",
     )
-    product_model = models.ForeignKey(
+    product_models = models.ManyToManyField(
         "ProductModel",
+        blank=True,
+        related_name="customizers",
+        verbose_name="דגמי מוצרים",
+    )
+
+    hardware = models.ForeignKey(
+        Hardware,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="customizers",
-        verbose_name="דגם מוצר",
+        verbose_name="פרזול (Hardware)",
+        help_text="קישור ישיר לפריט במחסן להזמנה אוטומטית",
     )
 
     # --- Engine/Pipeline settings (Strategy & Chain of Responsibility) ---
@@ -401,14 +458,37 @@ class Customizer(models.Model):
         verbose_name="פרמטר5: רמז",
     )
 
-    # --- Replacement/Addition components ---
-    hardware_list = models.ManyToManyField(
-        Hardware,
+    par1_options = models.TextField(
         blank=True,
-        related_name="customizers",
-        verbose_name='פרזול (Hardware)',
-        help_text="רכיבי פרזול להחלפה או הוספה במפרט הטכני",
+        null=True,
+        verbose_name="פרמטר 1: אפשרויות",
+        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
     )
+    par2_options = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 2: אפשרויות",
+        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
+    )
+    par3_options = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 3: אפשרויות",
+        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
+    )
+    par4_options = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 4: אפשרויות",
+        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
+    )
+    par5_options = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="פרמטר 5: אפשרויות",
+        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
+    )
+
     materials = models.ManyToManyField(
         Material,
         blank=True,
@@ -425,3 +505,120 @@ class Customizer(models.Model):
 
     def __str__(self):
         return f"[{self.code}] {self.name}"
+
+    def get_parameter_options(self, par_number):
+        """
+        Parses the raw comma-separated option string into a structured list of key-value tuples.
+        """
+        field_name = f"par{par_number}_options"
+        options_str = getattr(self, field_name, "") or ""
+        if not options_str:
+            return []
+
+        result = []
+        for item in options_str.split(','):
+            item = item.strip()
+            if not item:
+                continue
+            # Split each item strictly on the first colon (item.split(':', 1))
+            parts = item.split(':', 1)
+            key = parts[0].strip()
+            label = parts[1].strip() if len(parts) > 1 else key
+            result.append((key, label))
+        return result
+
+    def get_filtered_parameter_options(self, par_number, product_model):
+        """
+        Returns options for the given parameter, filtering SKU items by product model compatibility.
+        """
+        options = self.get_parameter_options(par_number)
+        if not product_model:
+            return options
+
+        filtered = []
+        # Pre-fetch all hardware items referenced in SKUs to avoid N+1
+        sku_keys = [key for key, _ in options if key.upper().startswith('SKU=')]
+        sku_values = [key.split('=', 1)[1].strip() for key in sku_keys]
+
+        hardware_map = {h.sku: h for h in Hardware.objects.filter(sku__in=sku_values)}
+
+        for key, label in options:
+            if key.upper().startswith('SKU='):
+                sku = key.split('=', 1)[1].strip()
+                hw = hardware_map.get(sku)
+                if hw:
+                    if hw.is_compatible_with(product_model):
+                        filtered.append((key, label))
+                else:
+                    # If SKU doesn't exist in DB, we keep it so clean() can report it, 
+                    # OR we could skip it. The PRD says clean() should report invalid SKUs.
+                    filtered.append((key, label))
+            else:
+                # Generic/system choices always available
+                filtered.append((key, label))
+        return filtered
+
+    def is_available_for(self, product_model):
+        """
+        Check availability using OR logic across scoping levels.
+        Empty sets = Global.
+        """
+        if not product_model:
+            return True
+
+        has_types = self.product_types.exists()
+        has_families = self.product_families.exists()
+        has_models = self.product_models.exists()
+
+        if not (has_types or has_families or has_models):
+            return True
+
+        if has_models and self.product_models.filter(id=product_model.id).exists():
+            return True
+        if has_families and self.product_families.filter(id=product_model.product_family_id).exists():
+            return True
+        if has_types and self.product_types.filter(id=product_model.product_family.product_type_id).exists():
+            return True
+
+        return False
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        skus_to_check = set()
+        field_to_skus = {}
+
+        for i in range(1, 6):
+            field_name = f"par{i}_options"
+            options = self.get_parameter_options(i)
+            if not options:
+                continue
+
+            field_skus = []
+            for key, label in options:
+                # Check if key starts with SKU= (case-insensitive)
+                if key.upper().startswith('SKU='):
+                    # Extract the raw SKU
+                    try:
+                        raw_sku = key.split('=', 1)[1].strip()
+                        field_skus.append(raw_sku)
+                        skus_to_check.add(raw_sku)
+                    except IndexError:
+                        pass
+                # Keys without SKU= bypass warehouse validation
+
+            field_to_skus[field_name] = field_skus
+
+        if skus_to_check:
+            # Single bulk query to verify existence of all referenced SKUs
+            existing_skus = set(
+                Hardware.objects.filter(sku__in=skus_to_check).values_list('sku', flat=True)
+            )
+            for field_name, field_skus in field_to_skus.items():
+                invalid_skus = [sku for sku in field_skus if sku not in existing_skus]
+                if invalid_skus:
+                    errors[field_name] = f"Invalid Hardware SKUs: {', '.join(invalid_skus)}"
+
+        if errors:
+            raise ValidationError(errors)

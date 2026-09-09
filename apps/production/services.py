@@ -265,6 +265,17 @@ class TechnicalSpecService:
         pipeline = OrderSpecPipeline()
         spec_obj = pipeline.execute_for_order(order, phase=phase)
 
+        # Collect errors from all items
+        all_errors = []
+        for item_spec in spec_obj.items:
+            if item_spec.errors:
+                item_label = f"Item {item_spec.mark}" if item_spec.mark else f"Item #{item_spec.item_id}"
+                for err in item_spec.errors:
+                    all_errors.append(f"{item_label}: {err}")
+        
+        if all_errors:
+            raise OrderValidationError(f"Specification building failed for {phase}", errors=all_errors)
+
         # Serialize using .model_dump() and save to order.spec_cache
         spec_json = spec_obj.model_dump()
 

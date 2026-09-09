@@ -104,6 +104,7 @@ class ProductionSpec(BaseModel):
 
     # Context/Metadata
     context: Dict[str, Any] = Field(default_factory=dict)
+    errors: List[str] = Field(default_factory=list)
 
 
 class OrderSpec(BaseModel):

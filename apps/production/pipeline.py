@@ -12,6 +12,11 @@ from .schemas import (
 )
 
 
+class PipelineError(Exception):
+    """Base class for pipeline errors that should be collected and shown to the user."""
+    pass
+
+
 class SpecContext:
     def __init__(self, item, customizers=None):
         self.item = item
@@ -31,7 +36,7 @@ class SpecContext:
         else:
             if self.group:
                 self.customizers = list(self.group.customizers.select_related('customizer').prefetch_related(
-                    'customizer__hardware_list', 'customizer__materials'
+                    'customizer__hardware__components', 'customizer__materials'
                 ).order_by('customizer__tag', 'customizer__code'))
             else:
                 self.customizers = []
@@ -39,6 +44,9 @@ class SpecContext:
         # Track processed customizers
         self.unprocessed_customizers = list(self.customizers)
         self.processed_customizers = []
+
+    def add_error(self, message: str):
+        self.spec.errors.append(message)
 
     def consume_customizers(self, tags) -> List:
         """
@@ -194,6 +202,13 @@ class BOMStep(SpecStep):
             spec.lock_id = None
             spec.lock_name = "N/A"
 
+        hinge_bom = next((b for b in bom_result if isinstance(b, dict) and b.get('tag') == 'hinge'), None)
+        if hinge_bom and hinge_bom.get('item'):
+            hinge_item = hinge_bom['item']
+            spec.hinge_name = hinge_item.name
+        else:
+            spec.hinge_name = "N/A"
+
         # Frame type from first BOM if exists
         bom_first = BOM.objects.filter(product=product).first()
         if bom_first and bom_first.frame:
@@ -221,19 +236,21 @@ class LockSelectionStep(SpecStep):
 
         for gc in group_customizers:
             c = gc.customizer
-            hardware_list = list(c.hardware_list.all())
+            main_hw = c.hardware
 
-            if hardware_list:
-                # 1. Затираем все предыдущие позиции с тэгом Lock
+            if main_hw:
+                # 1. Формируем список комплектующих (основной + вложенные)
+                hardware_list = [main_hw] + list(main_hw.components.all())
+
+                # 2. Затираем все предыдущие позиции с тэгом Lock
                 spec.bom_items = [item for item in spec.bom_items if item.tag != 'Lock']
 
-                # 2. Первым элементом ВСЕГДА идет целевой замок
-                main_lock = hardware_list[0]
-                spec.lock_id = main_lock.id
-                spec.lock_name = main_lock.name
+                # 3. Первым элементом ВСЕГДА идет целевой замок
+                spec.lock_id = main_hw.id
+                spec.lock_name = main_hw.name
                 spec.lock_height = 0
 
-                # 3. Вставляем все элементы комплекта в BOM спецификации
+                # 4. Вставляем все элементы комплекта в BOM спецификации
                 for hw in hardware_list:
                     spec.bom_items.append(
                         SpecBOMItem(
@@ -272,43 +289,46 @@ class LockOptionSelectionStep(SpecStep):
     def process(self, context: SpecContext):
         spec = context.spec
 
-        # 1. Замок отсутствует
-        if not spec.lock_id:
-            spec.cylinder_type = ""
-            spec.bom_items = [item for item in spec.bom_items if item.tag != 'LOCK_OPTION']
-            return
+        # Retrieve the active locking customizer
+        locking_tags = {'LOCK_OPTION', 'CYLINDER', 'KEY_LOCK', 'WC_LOCK'}
+        found = context.consume_customizers(locking_tags)
+        gc = found[0] if found else None
 
-        # 3. Сканируем кастомизаторы группы на наличие явно выбранного типа (используем контекст)
-        cylinder_customizer = self._find_cylinder_customizer(context)
+        if gc:
+            c = gc.customizer
+            # Read the effective option key
+            # prioritize group_customizer.par1, falling back to customizer.par1_value, then customizer.tag
+            val = (gc.par1 or c.par1_value or c.tag or "").upper()
 
-        if cylinder_customizer:
-            # Кастомизатор ЯВНО переопределяет тип (צילינדר / מפתח אפס / תפוס-פנוי)
-            tag = (cylinder_customizer.customizer.tag or '').upper()
+            # Strip routing prefixes
+            if val.startswith("SKU="):
+                val = val[4:]
+            elif val.startswith("SKU:"):
+                val = val[4:]
+            elif val.startswith("VAL:"):
+                val = val[4:]
 
-            if tag == 'CYLINDER':
+            tag = (c.tag or "").upper()
+
+            # Set spec.cylinder_type based on the resolved value
+            if val.startswith("CYLINDER") or tag == "CYLINDER":
                 spec.cylinder_type = "צילינדר"
-            elif tag == 'KEY_LOCK':
-                spec.cylinder_type = "מפתח אפס"
-            elif tag == 'WC_LOCK':
+            elif val in ("WC", "WC_LOCK") or tag == "WC_LOCK":
                 spec.cylinder_type = "תפוס/פנוי"
+            elif val in ("KEY", "KEY_LOCK") or tag == "KEY_LOCK":
+                spec.cylinder_type = "מפתח אפס"
+            elif val in ("NONE", "WITHOUT_LOCK"):
+                spec.cylinder_type = "ללא"
+            else:
+                # Warehouse SKU patterns (default fallback for custom cylinder options)
+                spec.cylinder_type = "צילינדר"
 
-            # Обновляем BOM под выбранный кастомизатор
-            self._update_cylinder_bom(spec, cylinder_customizer.customizer)
+            # Update BOM (Maintain placeholder)
+            self._update_cylinder_bom(spec, c)
         else:
-            # Если кастомизатора НЕТ, сохраняем то, что заложил BOMStep (400)
-            # (по умолчанию "תפוס/פנוי" или "צילינדר" для входных)
+            # If no locking customizer provided, retain default behavior
             if not spec.cylinder_type:
                 spec.cylinder_type = "תפוס/פנוי"
-
-    @staticmethod
-    def _find_cylinder_customizer(context: SpecContext):
-        """
-        Ищет в группе заказа кастомизатор, отвечающий за выбор типа запирания / цилиндра.
-        Использует оптимизированный метод consume_customizers.
-        """
-        cylinder_tags = {'LOCK_OPTION', 'CYLINDER', 'KEY_LOCK', 'WC_LOCK'}
-        found = context.consume_customizers(cylinder_tags)
-        return found[0] if found else None
 
     @staticmethod
     def _update_cylinder_bom(spec, customizer):
@@ -317,6 +337,66 @@ class LockOptionSelectionStep(SpecStep):
         (Заглушка для предотвращения ошибок вызова)
         """
         pass
+
+
+class HingeSelectionStep(SpecStep):
+    """
+    Шаг применения кастомизаторов петель (Priority 470).
+    Связывается с кастомизатором через tag == 'HINGE'.
+    """
+    priority = 470
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        group_customizers = context.consume_customizers('HINGE')
+
+        for gc in group_customizers:
+            c = gc.customizer
+            main_hw = c.hardware
+
+            if main_hw:
+                # 1. Формируем список комплектующих
+                hardware_list = [main_hw] + list(main_hw.components.all())
+
+                # 2. Затираем все предыдущие позиции с тэгом hinge
+                spec.bom_items = [item for item in spec.bom_items if item.tag != 'hinge']
+
+                # 3. Устанавливаем имя петли
+                spec.hinge_name = main_hw.name
+
+                # Сохраняем ID основной петли для поиска стандартов
+                context.data['hinge_hardware_id'] = main_hw.id
+
+                # 4. Вставляем все элементы комплекта в BOM
+                for hw in hardware_list:
+                    spec.bom_items.append(
+                        SpecBOMItem(
+                            type='hardware',
+                            section='צירים',
+                            item_name=hw.name,
+                            quantity=1,
+                            tag='hinge',
+                            item_id=hw.id
+                        )
+                    )
+
+            # Извлечение кастомных высот
+            custom_heights = self._extract_custom_heights(gc)
+            if custom_heights:
+                context.data['override_hinge_heights'] = custom_heights
+
+    @staticmethod
+    def _extract_custom_heights(group_customizer) -> List[float]:
+        c = group_customizer.customizer
+        res = []
+        for i in range(1, 6):
+            val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
+            if val:
+                try:
+                    res.append(float(val))
+                except (ValueError, TypeError):
+                    pass
+        return res
 
 
 class LockPositionStep(SpecStep):
@@ -357,10 +437,13 @@ class LockPositionStep(SpecStep):
             effective_height = self._get_effective_lock_height(item, spec.lock_id)
 
         # Сохраняем финальный результат
-        spec.lock_height = effective_height or 0
+        if effective_height is None or effective_height <= 0:
+            raise PipelineError(f"Lock height could not be determined for lock ID {spec.lock_id}")
+            
+        spec.lock_height = effective_height
 
     @staticmethod
-    def _get_effective_lock_height(item, lock_id: int) -> float:
+    def _get_effective_lock_height(item: OrderItem, lock_id: int) -> float:
         product = getattr(item.group, 'product', None)
         if not product or not product.product_family or not lock_id:
             return 0.0
@@ -368,7 +451,7 @@ class LockPositionStep(SpecStep):
         # Ищем запись стандартов для семейства продуктов и конкретного lock_id
         std = LockStandardHeight.objects.filter(
             product_families=product.product_family,
-            lock_id=lock_id
+            locks__id=lock_id
         ).first()
 
         if not std:
@@ -379,7 +462,6 @@ class LockPositionStep(SpecStep):
         base_lock = float(std.base_lock_height)
         step = float(std.step)
 
-        # Считаем разницу и количество шагов с округлением ВВЕРХ (ceil)
         diff = door_h - base_h
         intervals = math.ceil(diff / step)
 
@@ -387,6 +469,77 @@ class LockPositionStep(SpecStep):
         calculated_height = base_lock + (intervals * step)
 
         return float(calculated_height)
+
+
+class HingePositionStep(SpecStep):
+    """
+    Рассчитывает финальные позиции (высоты врезки) петель (Priority 510).
+    """
+    priority = 510
+
+    def process(self, context: SpecContext):
+        item = context.item
+        spec = context.spec
+
+        # 1. ПРИОРИТЕТ 1: Прямые замеры из OrderItem
+        custom_hinges = [
+            float(getattr(item, f'custom_hinge{i}'))
+            for i in range(1, 6)
+            if getattr(item, f'custom_hinge{i}')
+        ]
+        if custom_hinges:
+            spec.hinge_heights = custom_hinges
+            return
+
+        # 2. ПРИОРИТЕТ 2: Кастомные высоты из кастомизатора
+        override_heights = context.data.get('override_hinge_heights')
+        if isinstance(override_heights, list):
+            # Важно: если в кастомизаторе указаны высоты, затираем все старые значения
+            spec.hinge_heights = [float(h) for h in override_heights]
+            return
+
+        # 3. ФОЛЛБЭК: Расчет по нормативной таблице
+        hinge_id = context.data.get('hinge_hardware_id')
+
+        if not hinge_id:
+            # Ищем в BOM (если кастомизатора не было)
+            hinge_bi = next((bi for bi in spec.bom_items if bi.tag == 'hinge'), None)
+            if hinge_bi:
+                hinge_id = hinge_bi.item_id
+
+        if hinge_id:
+            heights = self._get_std_hinge_heights(item, hinge_id)
+            if not heights:
+                raise PipelineError(f"Standard hinge heights not found for hinge ID {hinge_id} and door height {item.height}")
+            spec.hinge_heights = heights
+        else:
+            # Если нет hinge_id, но это дверь - возможно тоже ошибка? 
+            # Пока оставим как есть, возможно петли не предусмотрены продуктом.
+            pass
+
+    @staticmethod
+    def _get_std_hinge_heights(item: OrderItem, hinge_id: int) -> List[float]:
+        product = getattr(item.group, 'product', None)
+        if not product or not product.product_family or not hinge_id:
+            return []
+
+        door_h = float(item.height or 0)
+        std = HingeStandardHeight.objects.filter(
+            product_families=product.product_family,
+            hinges__id=hinge_id,
+            min_height__lte=door_h,
+            max_height__gte=door_h
+        ).first()
+
+        if not std:
+            return []
+
+        res = []
+        for i in range(1, 6):
+            val = getattr(std, f'value{i}')
+            if val:
+                res.append(float(val))
+        return res
 
 
 class HardwareStep(SpecStep):
@@ -405,35 +558,6 @@ class HardwareStep(SpecStep):
 
         spec.lock_name = lock_item.name if lock_item else "N/A"
         spec.hinge_name = hinge_item.name if hinge_item else "N/A"
-
-    @staticmethod
-    def _get_effective_hinge_heights(item, hinge_hardware) -> List[float]:
-        custom_hinges = [
-            float(getattr(item, f'custom_hinge{i}'))
-            for i in range(1, 6)
-            if getattr(item, f'custom_hinge{i}')
-        ]
-        if custom_hinges:
-            return custom_hinges
-
-        product = getattr(item.group, 'product', None)
-        if not hinge_hardware or not product:
-            return []
-        door_h = float(item.height or 0)
-        std = HingeStandardHeight.objects.filter(
-            product_families=product.product_family,
-            hinge=hinge_hardware,
-            min_height__lte=door_h,
-            max_height__gte=door_h
-        ).first()
-        if not std:
-            return []
-        res = []
-        for i in range(1, 6):
-            val = getattr(std, f'value{i}')
-            if val:
-                res.append(float(val))
-        return res
 
 
 class TechnicalDataStep(SpecStep):
@@ -476,6 +600,21 @@ class SingleCustomizerStep(SpecStep):
         spec = context.spec
         tag = (c.tag or "").upper()
 
+        # Handle warehouse hardware linkage (including components)
+        if c.hardware:
+            hardware_list = [c.hardware] + list(c.hardware.components.all())
+            for hw in hardware_list:
+                spec.bom_items.append(
+                    SpecBOMItem(
+                        type='hardware',
+                        section=tag or 'Customizer',
+                        item_name=hw.name,
+                        quantity=1,
+                        tag=tag,
+                        item_id=hw.id
+                    )
+                )
+
         # Tag-based strategy logic
         if tag == 'FRAMES_REPORT':
             spec.frames_report_customizers.append(self._format_customizer(gc))
@@ -515,7 +654,10 @@ class SpecPipeline:
             AppearanceStep(),
             BOMStep(),
             LockSelectionStep(),
+            LockOptionSelectionStep(),
+            HingeSelectionStep(),
             LockPositionStep(),
+            HingePositionStep(),
             TechnicalDataStep(),
             MediaStep(),
         ]
@@ -530,13 +672,24 @@ class SpecPipeline:
         all_steps.sort(key=lambda s: getattr(s, 'priority', 9999))
 
         for step in all_steps:
-            step.process(context)
+            try:
+                step.process(context)
+            except PipelineError as e:
+                context.add_error(str(e))
+            except Exception as e:
+                # Log unexpected errors as well
+                context.add_error(f"Unexpected error in {step.__class__.__name__}: {str(e)}")
 
         # После всех специализированных шагов обрабатываем оставшиеся кастомизаторы
         # (те, что не были "потреблены" шагами типа LockSelectionStep)
         remaining = list(context.unprocessed_customizers)
         for gc in remaining:
-            SingleCustomizerStep(gc).process(context)
+            try:
+                SingleCustomizerStep(gc).process(context)
+            except PipelineError as e:
+                context.add_error(str(e))
+            except Exception as e:
+                context.add_error(f"Unexpected error in customizer {gc.customizer.code}: {str(e)}")
 
         return context.spec
 
@@ -598,7 +751,7 @@ class OrderItemsStep(OrderStep):
         all_group_customizers = OrderItemsGroupCustomizer.objects.filter(
             group_id__in=group_ids
         ).select_related('customizer').prefetch_related(
-            'customizer__hardware_list', 'customizer__materials'
+            'customizer__hardware__components', 'customizer__materials'
         ).order_by('customizer__tag', 'customizer__code')
 
         # Группируем кастомизаторы по group_id для быстрого доступа
