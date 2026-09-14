@@ -135,92 +135,109 @@
                title="העברה לייצור מלא / שלב ב">
                 <i class="bi bi-send-check me-2"></i>העברה לשלב ב
             </a>
-            {% include "orders/includes/station_buttons.html" with use_special=True %}
-        {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' %}
-            <a href="{% url 'production:order-complete-production' order.pk %}"
-               class="btn btn-success"
-               data-bs-toggle="tooltip"
-               title="סיום תהליך הייצור והעברה למוכן למשלוח">
-                <i class="bi bi-check-all me-2"></i>סיום ייצור
-            </a>
-            {% include "orders/includes/station_buttons.html" with use_special=True %}
-            <a href="{% url 'production:station-report' order.pk %}?type=IN_PRODUCTION"
+            {#            {% if order.has_split_installation %}#}
+            <a href="{% url 'production:split-measurer-report' order.pk %}"
                target="_blank"
-               class="btn btn-outline-secondary"
+               class="btn btn-outline-warning"
                data-bs-toggle="tooltip"
-               title="דו''ח ייצור מלא עבור כל הפריטים">
-                <i class="bi bi-printer me-2"></i>דו''ח מלא
+               title="דו''ח מדידה למודד לפני שלב ב'">
+                <i class="bi bi-pencil-square me-2"></i>דו''ח מדידה
             </a>
-        {% else %}
-            <a href="{% url 'production:station-report' order.pk %}?type={{ order.status }}"
-               target="_blank"
-               class="btn btn-outline-info"
-               data-bs-toggle="tooltip"
-               title="הפקת דו''ח ייצור">
-                <i class="bi bi-printer me-2"></i>הדפסת דו''ח
-            </a>
-        {% endif %}
-        {% if order.status != 'NEW' and user.is_admin_user %}
-            <div class="dropdown ms-auto">
-                <button class="btn btn-outline-secondary btn-sm"
-                        type="button"
-                        data-bs-toggle="dropdown"
-                        title="אפשרויות ניהול הזמנה">
-                    <i class="bi bi-three-dots-vertical"></i>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-                    <li>
-                        <a class="dropdown-item"
-                           href="{% url 'order-reset-to-new' order.pk %}"
-                           onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')">
-                            <i class="bi bi-arrow-counterclockwise me-2 text-warning"></i>שינוי הזמנה
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item text-danger"
-                           href="{% url 'order-cancel' order.pk %}"
-                           onclick="return confirm('האם אתה בטוח שברצונך לבטל את ההזמנה?')">
-                            <i class="bi bi-x-circle me-2"></i>ביטול הזמנה
-                        </a>
-                    </li>
-                </ul>
-            </div>
-        {% endif %}
+            {#            {% endif %}#}
+        {% include "orders/includes/station_buttons.html" with use_special=True %}
+{% elif order.status == 'IN_PRODUCTION' or order.status == '1' %}
+    <a href="{% url 'production:order-complete-production' order.pk %}"
+       class="btn btn-success"
+       data-bs-toggle="tooltip"
+       title="סיום תהליך הייצור והעברה למוכן למשלוח">
+        <i class="bi bi-check-all me-2"></i>סיום ייצור
+    </a>
+    {% include "orders/includes/station_buttons.html" with use_special=True %}
+    <a href="{% url 'production:station-report' order.pk %}?type=IN_PRODUCTION"
+       target="_blank"
+       class="btn btn-outline-secondary"
+       data-bs-toggle="tooltip"
+       title="דו''ח ייצור מלא עבור כל הפריטים">
+        <i class="bi bi-printer me-2"></i>דו''ח מלא
+    </a>
+    {% if user.is_admin_user and order.status == 'PHASE2_PRODUCTION' %}
+        <a href="{% url 'production:order-compare-snapshots' order.pk %}"
+           class="btn btn-outline-warning"
+           data-bs-toggle="tooltip"
+           title="השוואת נתוני ייצור (היה -> נהיה)">
+            <i class="bi bi-arrow-left-right me-2"></i>השוואת שלב א/ב
+        </a>
+    {% endif %}
+{% else %}
+    <a href="{% url 'production:station-report' order.pk %}?type={{ order.status }}"
+       target="_blank"
+       class="btn btn-outline-info"
+       data-bs-toggle="tooltip"
+       title="הפקת דו''ח ייצור">
+        <i class="bi bi-printer me-2"></i>הדפסת דו''ח
+    </a>
+{% endif %}
+{% if order.status != 'NEW' and user.is_admin_user %}
+    <div class="dropdown ms-auto">
+        <button class="btn btn-outline-secondary btn-sm"
+                type="button"
+                data-bs-toggle="dropdown"
+                title="אפשרויות ניהול הזמנה">
+            <i class="bi bi-three-dots-vertical"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+            <li>
+                <a class="dropdown-item"
+                   href="{% url 'order-reset-to-new' order.pk %}"
+                   onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')">
+                    <i class="bi bi-arrow-counterclockwise me-2 text-warning"></i>שינוי הזמנה
+                </a>
+            </li>
+            <li>
+                <a class="dropdown-item text-danger"
+                   href="{% url 'order-cancel' order.pk %}"
+                   onclick="return confirm('האם אתה בטוח שברצונך לבטל את ההזמנה?')">
+                    <i class="bi bi-x-circle me-2"></i>ביטול הזמנה
+                </a>
+            </li>
+        </ul>
     </div>
-    <div class="row">
-        <div class="col-lg-10 mb-4">
-            {% for group in order.groups.all %}
-                {% include "orders/includes/group_card.html" %}
-            {% empty %}
-                <div class="card shadow-sm border-0 m-1">
-                    <div class="card-body text-center py-5">
-                        <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
-                        <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
-                        <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
-                        <div class="d-flex justify-content-center gap-2 mt-3">
-                            {% if order.status == 'NEW' or user.is_admin_user %}
-                                <button class="btn btn-primary"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#addGroupModal">
-                                    <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
-                                </button>
-                                <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
-                                    <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
-                                </button>
-                            {% endif %}
-                        </div>
+{% endif %}
+</div>
+<div class="row">
+    <div class="col-lg-10 mb-4">
+        {% for group in order.groups.all %}
+            {% include "orders/includes/group_card.html" %}
+        {% empty %}
+            <div class="card shadow-sm border-0 m-1">
+                <div class="card-body text-center py-5">
+                    <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
+                    <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
+                    <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
+                    <div class="d-flex justify-content-center gap-2 mt-3">
+                        {% if order.status == 'NEW' or user.is_admin_user %}
+                            <button class="btn btn-primary"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#addGroupModal">
+                                <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
+                            </button>
+                            <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
+                                <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
+                            </button>
+                        {% endif %}
                     </div>
                 </div>
-            {% endfor %}
-        </div>
+            </div>
+        {% endfor %}
     </div>
-    <!-- Modals -->
-    {% include "orders/includes/order_header_modal.html" %}
-    {% include "orders/includes/add_group_modal.html" %}
-    {% include "orders/includes/group_customizer_modal.html" %}
-    {% include "orders/includes/edit_item_modal.html" %}
-    {% include "orders/includes/save_spec_modal.html" %}
-    {% include "orders/includes/load_spec_modal.html" %}
+</div>
+<!-- Modals -->
+{% include "orders/includes/order_header_modal.html" %}
+{% include "orders/includes/add_group_modal.html" %}
+{% include "orders/includes/group_customizer_modal.html" %}
+{% include "orders/includes/edit_item_modal.html" %}
+{% include "orders/includes/save_spec_modal.html" %}
+{% include "orders/includes/load_spec_modal.html" %}
 {% endblock %}
 {% block extra_js %}
     <script>

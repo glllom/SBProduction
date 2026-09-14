@@ -103,11 +103,20 @@ class BOM(models.Model):
                                verbose_name='אחר 5')
     other5_consumption = models.CharField('צריכת אחר 5', max_length=255, default='1', blank=True)
 
-    # --- Hardware Sections (Many-to-Many) ---
-    lock = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+', verbose_name='מנעול (Lock)')
-    hinges = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+', verbose_name='צירים (Hinges)')
+    # --- Hardware Sections ---
+    lock = models.ForeignKey('catalog.Hardware', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                             verbose_name='מנעול (Lock)')
+    hinges = models.ForeignKey('catalog.Hardware', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                               verbose_name='צירים (Hinges)')
     additional = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+',
                                         verbose_name='תוספות (Additional)')
+
+    cut_coefficients = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name='מקדמי חיתוך חלקים',
+        help_text='מילון מקדמי חיתוך חלקים במילימטרים (למשל {"transom_delta": 45})'
+    )
 
     class Meta:
         verbose_name = 'עץ מוצר (BOM)'

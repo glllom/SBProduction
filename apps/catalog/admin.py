@@ -11,7 +11,6 @@ from .models import (
     ProductModel,
     Handle,
     Hardware,
-    Customizer,
 )
 
 
@@ -48,7 +47,8 @@ class ProductTypeAdmin(admin.ModelAdmin):
 
 @admin.register(ProductFamily)
 class ProductFamilyAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'product_type', 'thickness', 'leaf_height_adjustment', 'leaf_width_adjustment')
+    list_display = ('id', 'name', 'product_type', 'thickness', 'frame_inner_height_reduction',
+                    'frame_inner_width_reduction')
     list_filter = ('product_type',)
     search_fields = ('name',)
     inlines = [ProductionRouteFamilyInline]
@@ -113,7 +113,11 @@ class BOMInline(admin.StackedInline):
     can_delete = False
     verbose_name_plural = 'עץ מוצר (BOM)'
     fk_name = 'product'
-    filter_horizontal = ('lock', 'hinges', 'additional')
+    raw_id_fields = ('covering', 'base', 'filling', 'casing', 'frame',
+                     'profile1', 'profile2', 'profile3',
+                     'other1', 'other2', 'other3', 'other4', 'other5',
+                     'lock', 'hinges')
+    filter_horizontal = ('additional',)
     fieldsets = (
         ('Materials (חומרים)', {
             'fields': (
@@ -138,6 +142,9 @@ class BOMInline(admin.StackedInline):
         }),
         ('Hardware (פרזול)', {
             'fields': ('lock', 'hinges', 'additional')
+        }),
+        ('Technological Parameters (פרמטרים טכנולוגיים)', {
+            'fields': ('cut_coefficients',)
         }),
     )
 

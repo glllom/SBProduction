@@ -148,7 +148,7 @@
                                         <th style="width: 5%;">#</th>
                                         <th style="width: 15%;">מידות</th>
                                         <th style="width: 7%;">פתיחה</th>
-                                        <th style="width: 12%;">מנעול</th>
+                                        <th style="width: 15%;">מנעול</th>
                                         <th style="width: 30%;">צירים</th>
                                         <th>תוספות</th>
                                     </tr>
@@ -157,7 +157,10 @@
                                     {% for spec in frame_group.list %}
                                         <tr>
                                             <td class="fw-bolder fs-5">{{ spec.mark }}</td>
-                                            <td class="fw-bolder fs-5">{{ spec.width|floatformat }} \ {{ spec.height|floatformat }}</td>
+                                            <td class="fw-bolder fs-5">
+                                                {{ spec.width|floatformat }}
+                                                \ {{ spec.height|floatformat }}
+                                            </td>
                                             <td class="fs-5">{{ spec.direction }} | {{ spec.opening | first }}</td>
                                             <td class="fs-5 text-center">
                                                 <span class="text-decoration-underline">{{ spec.lock_name }}</span>: {{ spec.lock_height|floatformat }}
@@ -165,50 +168,51 @@
                                             <td class="fs-5 text-center">
                                                 <span class="text-decoration-underline">{{ spec.hinge_name }}</span>:
                                                 <span>
-                                                    {% for h in spec.hinge_heights %}{{ h|floatformat }}{% if not forloop.last %} \
+                                                    {% for h in spec.hinge_heights %}{{ h|floatformat }}
+                                                        {% if not forloop.last %} \
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                </span>
+                                            </td>
+                                            <td class="py-1 border-top-0">
+                                                {% if spec.frames_report_customizers %}
+                                                    {% for cmz in spec.frames_report_customizers %}
+                                                        <div class="">
+                                                            {{ cmz.name }}
+                                                            {% if cmz.params %}
+                                                                ({% for p in cmz.params %}
+                                                                    {{ p.label }}:
+                                                                    <span class="{% if p.is_custom %}text-danger{% endif %}">{{ p.value }}</span>
+                                                                    {% if not forloop.last %},{% endif %}
+                                                            {% endfor %})
                                                     {% endif %}
-                                    {% endfor %}
-                                </span>
-                            </td>
-                            <td class="py-1 border-top-0">
-                                {% if spec.frames_report_customizers %}
-                                    {% for cmz in spec.frames_report_customizers %}
-                                        <div class="">
-                                            {{ cmz.name }}
-                                            {% if cmz.params %}
-                                                ({% for p in cmz.params %}
-                                                    {{ p.label }}:
-                                                    <span class="{% if p.is_custom %}text-danger{% endif %}">{{ p.value }}</span>
-                                                    {% if not forloop.last %},{% endif %}
-                                            {% endfor %})
+                                                    </div>
+                                                {% endfor %}
                                     {% endif %}
-                                    </div>
-                                {% endfor %}
-                    {% endif %}
-                    </td>
-                    </tr>
-                    {% if spec.comment %}
-                        <tr>
-                            <td colspan="3"></td>
-                            <td colspan="3" class="pt-0 pb-2 fst-italic text-secondary">{{ spec.comment }}</td>
-                        </tr>
-                        <tr>
-                            <td colspan="6"></td>
-                        </tr>
-                    {% endif %}
-                {% endfor %}
-                </tbody>
-                </table>
-                </div>
-            {% endwith %}
+                                </td>
+                            </tr>
+                            {% if spec.comment %}
+                                <tr>
+                                    <td colspan="3"></td>
+                                    <td colspan="3" class="pt-0 pb-2 fst-italic text-secondary">{{ spec.comment }}</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="6"></td>
+                                </tr>
+                            {% endif %}
+                    {% endfor %}
+                    </tbody>
+                    </table>
+                    </div>
+                {% endwith %}
+            {% endfor %}
         {% endfor %}
+    {% empty %}
+        <div class="alert alert-info text-center mt-5">
+            <h4>אין נתונים להצגה בדוח זה</h4>
+            <p>הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
+        </div>
     {% endfor %}
-{% empty %}
-    <div class="alert alert-info text-center mt-5">
-        <h4>אין נתונים להצגה בדוח זה</h4>
-        <p>הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
-    </div>
-{% endfor %}
 </div>
 </body>
 </html>

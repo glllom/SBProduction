@@ -1,0 +1,19 @@
+{
+  "station_id": "CNC_ALU_01",
+  "local_work_dir": "C:\\CNC_Jobs",
+  "usb_marker_file": ".sb_marker",
+  "usb_jobs_subpath": "jobs",
+  "usb_output_file": "completed_from_stations.csv",
+  "operators": [
+    {
+      "id": "superuser",
+      "name": "Gleb",
+      "pin": "8823"
+    },
+    {
+      "id": "op_02",
+      "name": "Alex Smith",
+      "pin": "5678"
+    }
+  ]
+}

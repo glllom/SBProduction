@@ -3,6 +3,7 @@ import math
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
+from apps.catalog.models import Material
 from apps.orders.models import OrderItem
 from .bom_calculator import BOMCalculator
 from .models import LockStandardHeight, HingeStandardHeight
@@ -18,8 +19,9 @@ class PipelineError(Exception):
 
 
 class SpecContext:
-    def __init__(self, item, customizers=None):
+    def __init__(self, item, customizers=None, phase='phase1'):
         self.item = item
+        self.phase = phase
         self.group = item.group
         self.order = self.group.order
         self.product = self.group.product
@@ -79,6 +81,104 @@ class SpecStep(ABC):
         pass
 
 
+class DoubleDoorStep(SpecStep):
+    """
+    Checks if the door is a double door by looking for a customizer with tag 'DOUBLE_DOOR'.
+    Priority 10.
+    """
+    priority = 10
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        # Check for DOUBLE_DOOR customizer
+        found = context.consume_customizers('DOUBLE_DOOR')
+        if found:
+            gc = found[0]
+            c = gc.customizer
+            spec.is_double_door = True
+            context.data['is_double'] = True
+
+            # Extract parameters from order customizer or template
+            try:
+                par1_str = gc.par1 if gc.par1 not in (None, '') else c.par1_value
+                par1 = float(par1_str) if par1_str else 0.5
+            except (ValueError, TypeError):
+                par1 = 0.5
+
+            try:
+                par2_str = gc.par2 if gc.par2 not in (None, '') else c.par2_value
+                par2 = float(par2_str) if par2_str else 0
+            except (ValueError, TypeError):
+                par2 = 0
+
+            context.data['double_door_par1'] = par1
+            context.data['double_door_par2'] = par2
+
+
+class PanelDimensionStep(SpecStep):
+    """
+    Calculates panel dimensions based on adjustments and double door settings.
+    Priority 20.
+    """
+    priority = 20
+
+    def process(self, context: SpecContext):
+        item = context.item
+        product = context.product
+        spec = context.spec
+
+        if not product or not product.product_family:
+            return
+
+        pf = product.product_family
+
+        # Base dimensions from item
+        h = float(item.height or 0)
+        w = float(item.width or 0)
+
+        # 1. Calculate Inner Opening Dimensions (Always)
+        spec.inner_height = h + float(pf.frame_inner_height_reduction or 0)
+        spec.inner_width = w + float(pf.frame_inner_width_reduction or 0)
+        spec.leaf_top_clearance = float(pf.leaf_top_clearance or 0)
+
+        # 2. Door leaf calculation ONLY if not Phase 1
+        if context.phase == 'phase1':
+            spec.panel_dimensions = []
+            return
+
+        # Calculate leaf height (adding negative clearances reduces the size)
+        h_panel = spec.inner_height + float(pf.leaf_top_clearance or 0) + float(pf.leaf_bottom_clearance or 0)
+
+        if not context.data.get('is_double'):
+            # Single door
+            w_panel = spec.inner_width + 2 * float(pf.leaf_side_clearance or 0)
+            spec.panel_dimensions = [{'width': round(w_panel, 2), 'height': round(h_panel, 2)}]
+        else:
+            # Double door
+            # Net width for leaves (after side clearances)
+            w_net = spec.inner_width + 2 * float(pf.leaf_side_clearance or 0)
+
+            par1 = context.data.get('double_door_par1', 0.5)
+            par2 = context.data.get('double_door_par2', 0)
+
+            # Dominant leaf width W1
+            # Note: The +1 in original code is preserved as per user request to be careful with existing logic
+            if par2 > 0:
+                w1 = par2 + 1
+            else:
+                if not (0 < par1 < 1):
+                    par1 = 0.5
+                w1 = w_net * par1 + 1
+
+            # Second leaf width W2
+            w2 = w_net - w1 + float(pf.double_leaf_overlap or 0)
+
+            spec.panel_dimensions = [
+                {'width': round(w1, 2), 'height': round(h_panel, 2)},
+                {'width': round(w2, 2), 'height': round(h_panel, 2)}
+            ]
+
+
 class BaseItemStep(SpecStep):
     priority = 100
 
@@ -109,6 +209,7 @@ class ProductDataStep(SpecStep):
             spec.product_code = product.code
             spec.has_door = product.has_door
             spec.has_frame = product.has_frame
+            spec.cut_coefficients = product.cut_coefficients
             if product.product_family:
                 spec.product_family = product.product_family.name
                 if not spec.series and product.series:
@@ -241,7 +342,6 @@ class BOMStep(SpecStep):
         if resolved_frame:
             spec.frame = resolved_frame.name
 
-
         lock_bom = next((b for b in bom_result if isinstance(b, dict) and b.get('tag') == 'Lock'), None)
         if lock_bom and lock_bom.get('item'):
             lock_item = lock_bom['item']
@@ -260,6 +360,81 @@ class BOMStep(SpecStep):
 
         # Store bom_result in context data for later steps (HardwareStep)
         context.data['bom_result'] = bom_result
+
+
+class MaterialSelectionStep(SpecStep):
+    """
+    Algorithm for selecting specific material sheets for covering and base.
+    Selects the minimum suitable sheet by common_name, color, and dimensions.
+    Priority 410 (after BOMStep).
+    """
+    priority = 410
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+
+        # Panel dimensions (one or two for double doors)
+        panels = spec.panel_dimensions
+        if not panels:
+            return
+
+        new_bom_items = []
+        # Iterate through all BOM items
+        for bom_item in spec.bom_items:
+            # We are only interested in covering and base
+            if bom_item.tag not in ['covering', 'base']:
+                new_bom_items.append(bom_item)
+                continue
+
+            # Get the original abstract material
+            original_material = Material.objects.filter(id=bom_item.item_id).first()
+            if not original_material:
+                new_bom_items.append(bom_item)
+                continue
+
+            common_name = original_material.common_name
+            color = original_material.color
+
+            # For each panel, select material
+            for i, panel in enumerate(panels):
+                panel_h = panel.get('height', 0)
+                panel_w = panel.get('width', 0)
+
+                # Search for suitable sheet
+                # Material length >= panel height + 1
+                # Material width >= panel width
+                suitable_material = Material.objects.filter(
+                    common_name=common_name,
+                    color=color,
+                    length__gte=panel_h + 1,
+                    width__gte=panel_w
+                ).order_by('length', 'width').first()
+
+                if suitable_material:
+                    # Create new BOM item for specific panel
+                    section_suffix = f" (Panel {i + 1})" if len(panels) > 1 else ""
+                    new_bom_items.append(SpecBOMItem(
+                        type=bom_item.type,
+                        section=f"{bom_item.section}{section_suffix}",
+                        item_name=suitable_material.name,
+                        quantity=bom_item.quantity / len(panels),
+                        tag=bom_item.tag,
+                        item_id=suitable_material.id
+                    ))
+                else:
+                    # Fallback to original if not found
+                    section_suffix = f" (Panel {i + 1})" if len(panels) > 1 else ""
+                    new_bom_items.append(SpecBOMItem(
+                        type=bom_item.type,
+                        section=f"{bom_item.section}{section_suffix}",
+                        item_name=bom_item.item_name,
+                        quantity=bom_item.quantity / len(panels),
+                        tag=bom_item.tag,
+                        item_id=bom_item.item_id
+                    ))
+                    context.add_error(f"No suitable sheet found for {bom_item.section}{section_suffix}")
+
+        spec.bom_items = new_bom_items
 
 
 """ new classes"""
@@ -550,7 +725,8 @@ class HingePositionStep(SpecStep):
         if hinge_id:
             heights = self._get_std_hinge_heights(item, hinge_id)
             if not heights:
-                raise PipelineError(f"Standard hinge heights not found for hinge ID {hinge_id} and door height {item.height}")
+                raise PipelineError(
+                    f"Standard hinge heights not found for hinge ID {hinge_id} and door height {item.height}")
             spec.hinge_heights = heights
         else:
             pass
@@ -578,6 +754,30 @@ class HingePositionStep(SpecStep):
             if val:
                 res.append(float(val))
         return res
+
+
+class MeasurerDataStep(SpecStep):
+    """
+    Calculates adjusted lock and hinge heights for the measurer (on the frame).
+    Priority 600.
+    """
+    priority = 600
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+
+        # Adjust lock height
+        if spec.lock_height is not None:
+            # Adjusted Height = Original Height - leaf_top_clearance
+            # Since leaf_top_clearance is negative, this adds the absolute value.
+            spec.lock_height_on_frame = spec.lock_height - float(spec.leaf_top_clearance or 0)
+
+        # Adjust hinge heights
+        if spec.hinge_heights:
+            spec.hinge_heights_on_frame = [
+                h - float(spec.leaf_top_clearance or 0)
+                for h in spec.hinge_heights
+            ]
 
 
 class HardwareStep(SpecStep):
@@ -687,22 +887,26 @@ class SingleCustomizerStep(SpecStep):
 class SpecPipeline:
     def __init__(self):
         self.steps = [
+            DoubleDoorStep(),
+            PanelDimensionStep(),
             BaseItemStep(),
             ProductDataStep(),
             AppearanceStep(),
             FrameResolutionStep(),
             BOMStep(),
+            MaterialSelectionStep(),
             LockSelectionStep(),
             LockOptionSelectionStep(),
             HingeSelectionStep(),
             LockPositionStep(),
             HingePositionStep(),
+            MeasurerDataStep(),
             TechnicalDataStep(),
             MediaStep(),
         ]
 
-    def execute(self, item, customizers=None) -> ProductionSpec:
-        context = SpecContext(item, customizers=customizers)
+    def execute(self, item, customizers=None, phase='phase1') -> ProductionSpec:
+        context = SpecContext(item, customizers=customizers, phase=phase)
 
         # Build the final list of steps
         all_steps = list(self.steps)
@@ -801,7 +1005,7 @@ class OrderItemsStep(OrderStep):
         item_pipeline = SpecPipeline()
         for item in context.items:
             group_customizers = customizers_by_group.get(item.group_id, [])
-            item_spec = item_pipeline.execute(item, customizers=group_customizers)
+            item_spec = item_pipeline.execute(item, customizers=group_customizers, phase=context.phase)
             context.spec.items.append(item_spec)
 
 

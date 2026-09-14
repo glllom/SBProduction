@@ -37,15 +37,43 @@ class ProductFamily(models.Model):
     default_value_for_frame = models.CharField('עובי משקוף ברירת מחדל', max_length=255, blank=True, default='')
 
     thickness = models.FloatField('עובי (Толщина)', default=0.0)
-    leaf_height_adjustment = models.FloatField(
-        'תיקון גובה כנף (Корректировка высоты полотна)',
+    frame_inner_height_reduction = models.FloatField(
+        'הפחתת גובה פתח משקוף',
         default=0.0,
         validators=[MaxValueValidator(0)]
     )
-    leaf_width_adjustment = models.FloatField(
-        'תיקון רוחב כנף (Корректировка ширины полотна)',
+    frame_inner_width_reduction = models.FloatField(
+        'הפחתת רוחב פתח משקוף',
         default=0.0,
         validators=[MaxValueValidator(0)]
+    )
+
+    # --- Технологические зазоры полотна (Clearance / Gaps) ---
+    leaf_top_clearance = models.FloatField(
+        'מרווח עליון כנף',
+        default=-1.0,
+        validators=[MaxValueValidator(0.0)],
+        help_text='зазор полотна по высоте (верх) (в мм)'
+    )
+
+    leaf_bottom_clearance = models.FloatField(
+        'מרווח תחתון כנף',
+        default=-1.0,
+        validators=[MaxValueValidator(0.0)],
+        help_text='зазор полотна по высоте (пол) (в мм)'
+    )
+
+    leaf_side_clearance = models.FloatField(
+        'מרווח צדדים כנף (Суммарный Зазор полотна на обе стороны)',
+        default=-0.7,
+        validators=[MaxValueValidator(0.0)],
+        help_text='Суммарный Зазор полотна на обе стороны (в мм)'
+    )
+
+    double_leaf_overlap = models.FloatField(
+        'תנקון מידה לדלת כפולה',
+        default=0.7,
+        validators=[MaxValueValidator(2)]
     )
 
     class Meta:
@@ -327,6 +355,17 @@ class ProductModel(models.Model):
             if self.parent_model:
                 return self.parent_model.effective_bom
             return None
+
+    @property
+    def cut_coefficients(self) -> dict:
+        """
+        Returns the cut_coefficients dictionary from the effective BOM.
+        Returns an empty dict if no coefficients are defined.
+        """
+        bom = self.effective_bom
+        if bom and hasattr(bom, 'cut_coefficients') and bom.cut_coefficients:
+            return bom.cut_coefficients
+        return {}
 
     @property
     def all_production_stations(self):

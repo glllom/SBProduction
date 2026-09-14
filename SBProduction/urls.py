@@ -1,11 +1,11 @@
-
-from django.contrib import admin
-from django.urls import path, include
-from django.contrib.auth import views as auth_views
-from django.views.generic import RedirectView
-from django.templatetags.static import static
 from django.conf import settings
 from django.conf.urls.static import static as static_media
+from django.contrib import admin
+from django.contrib.auth import views as auth_views
+from django.templatetags.static import static
+from django.urls import path, include
+from django.views.generic import RedirectView
+
 from apps.orders.views import DashboardView
 
 urlpatterns = [
@@ -17,6 +17,7 @@ urlpatterns = [
     path('production/', include('apps.production.urls', namespace='production')),
     path('catalog/', include('apps.catalog.urls', namespace='catalog')),
     path('', DashboardView.as_view(), name='dashboard'),
+
 ]
 
 if settings.DEBUG:

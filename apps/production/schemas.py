@@ -63,7 +63,11 @@ class ProductionSpec(BaseModel):
     height: float = 0.0
     width: float = 0.0
     wall: float = 0.0
+    inner_height: float = 0.0
+    inner_width: float = 0.0
+    leaf_top_clearance: float = 0.0
     addition_cut: Optional[float] = None
+    panel_dimensions: List[Dict[str, float]] = Field(default_factory=list)
 
     # Opening parameters
     direction: str = ""  # L/R (localized)
@@ -85,14 +89,18 @@ class ProductionSpec(BaseModel):
     cnc_program: str = ""
     tech_notes: str = ""
     sketch_url: str = ""
+    cut_coefficients: Dict[str, float] = Field(default_factory=dict)
+    parts: Dict[str, Any] = Field(default_factory=dict)
 
     # Hardware and machining
     lock_id: Optional[int] = None
     lock_name: str = Field("", alias="lock")
     lock_option_type: str = Field("", alias="lock option type")
     lock_height: Optional[float] = Field(None, alias="lock's height")
+    lock_height_on_frame: Optional[float] = None
     hinge_name: str = Field("", alias="hinges")
     hinge_heights: List[float] = Field(default_factory=list, alias="hinges height")
+    hinge_heights_on_frame: List[float] = Field(default_factory=list)
     handle_type: str = Field("", alias="handle type")
 
     # Bill of Materials (BOM)

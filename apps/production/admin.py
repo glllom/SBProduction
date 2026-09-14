@@ -19,8 +19,9 @@ class BOMAdmin(admin.ModelAdmin):
     list_display = ('product',)
     raw_id_fields = ('product', 'covering', 'base', 'filling', 'casing', 'frame',
                      'profile1', 'profile2', 'profile3',
-                     'other1', 'other2', 'other3', 'other4', 'other5')
-    filter_horizontal = ('lock', 'hinges', 'additional')
+                     'other1', 'other2', 'other3', 'other4', 'other5',
+                     'lock', 'hinges')
+    filter_horizontal = ('additional',)
 
     fieldsets = (
         (None, {
@@ -49,6 +50,9 @@ class BOMAdmin(admin.ModelAdmin):
         }),
         ('Hardware (פרзול)', {
             'fields': ('lock', 'hinges', 'additional')
+        }),
+        ('Technological Parameters (פרמטרים טכנולוגיים)', {
+            'fields': ('cut_coefficients',)
         }),
     )
 

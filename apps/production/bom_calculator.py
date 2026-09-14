@@ -105,15 +105,24 @@ class BOMCalculator:
                         'tag': slot_name  # For backward compatibility or extra identification
                     })
 
-        # 2. Process Hardware M2M Slots
+        # 2. Process Hardware Slots
         hardware_slots = [
             ('lock', 'מנעול', 'Lock'),
             ('hinges', 'צירים', 'hinge'),
             ('additional', 'תוספות', 'additional')
         ]
         for slot_name, label, tag in hardware_slots:
-            hardware_queryset = getattr(bom, slot_name).all()
-            for hw in hardware_queryset:
+            val = getattr(bom, slot_name)
+            if not val:
+                continue
+
+            # Handle both ForeignKey and ManyToManyField
+            if hasattr(val, 'all'):
+                hardware_list = val.all()
+            else:
+                hardware_list = [val]
+
+            for hw in hardware_list:
                 bom_result.append({
                     'type': 'hardware',
                     'section': label,

@@ -13,6 +13,9 @@ urlpatterns = [
     path('order/<int:pk>/complete-production/', views.order_complete_production, name='order-complete-production'),
     path('order/<int:pk>/production-data/', views.order_production_data, name='order-production-data'),
     path('order/<int:pk>/station-report/', views.station_report, name='station-report'),
+    path('order/<int:pk>/split-measurer-report/', views.split_measurer_report, name='split-measurer-report'),
     path('order/<int:pk>/spec-json/', views.spec_json_preview, name='spec-json-preview'),
+    path('order/<int:pk>/compare-snapshots/', views.order_compare_snapshots, name='order-compare-snapshots'),
     path('order/<int:pk>/dev-rebuild-spec/', views.order_dev_force_rebuild_spec, name='order-dev-rebuild-spec'),
+    path("sync-usb/", views.sync_usb_view, name="sync_usb"),
 ]
