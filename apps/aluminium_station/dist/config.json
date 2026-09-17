@@ -1,5 +1,5 @@
 {
-  "station_id": "CNC_ALU_01",
+  "station_id": "Mecal CNC",
   "local_work_dir": "C:\\CNC_Jobs",
   "usb_marker_file": ".sb_marker",
   "usb_jobs_subpath": "jobs",

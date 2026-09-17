@@ -1,15 +1,32 @@
-<div class="modal fade" id="addGroupModal" tabindex="-1">
+<div class="modal fade" id="groupModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content border-0 shadow">
             <div class="modal-header">
-                <h5 class="modal-title fw-bold">הוספת קבוצת דלתות</h5>
+                <h5 class="modal-title fw-bold" id="groupModalLabel">הוספת קבוצת דלתות</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form action="{% url 'group-add' order.pk %}" method="post">
+            <form id="groupForm" action="{% url 'group-add' order.pk %}" method="post">
                 {% csrf_token %}
                 <div class="modal-body">
                     <div class="row g-3">
-                        <!-- Row 1: Series, Front & Basic Color -->
+                        <!-- Row 1: Product Type & Product Family -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ group_form.product_type.help_text|default:'סוג המוצר' }}">
+                                סוג מוצר <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ group_form.product_type }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="{{ group_form.product_family.help_text|default:'משפחת המוצרים' }}">
+                                משפחת מוצרים <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            {{ group_form.product_family }}
+                        </div>
+                        <!-- Row 2: Series, Front & Basic Color -->
                         <div class="col-md-4">
                             <label class="form-label fw-bold"
                                    data-bs-toggle="tooltip"
@@ -33,23 +50,6 @@
                                 צבע משקוף (בסיס) <i class="bi bi-info-circle help-hint-icon"></i>
                             </label>
                             {{ group_form.basic_color_frames }}
-                        </div>
-                        <!-- Row 2: Product Type & Product Family -->
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold"
-                                   data-bs-toggle="tooltip"
-                                   title="{{ group_form.product_type.help_text|default:'סוג המוצר' }}">
-                                סוג מוצר <i class="bi bi-info-circle help-hint-icon"></i>
-                            </label>
-                            {{ group_form.product_type }}
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold"
-                                   data-bs-toggle="tooltip"
-                                   title="{{ group_form.product_family.help_text|default:'משפחת המוצרים' }}">
-                                משפחת מוצרים <i class="bi bi-info-circle help-hint-icon"></i>
-                            </label>
-                            {{ group_form.product_family }}
                         </div>
                         <!-- Row 3: Info & Quantity -->
                         <div class="col-md-10">
@@ -93,7 +93,7 @@
                             <div class="mb-3">
                                 <label class="form-label fw-bold"
                                        data-bs-toggle="tooltip"
-                                       title="קוד או שם הגוון המיוחד לכנפיים">
+                                       title="קוד или שם הגוון המיוחד לכנפיים">
                                     צבע פנלים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
                                 {{ group_form.color_panels }}
@@ -118,7 +118,7 @@
                             <div class="mb-3">
                                 <label class="form-label fw-bold"
                                        data-bs-toggle="tooltip"
-                                       title="קוד או שם הגוון המיוחד למשקופים">
+                                       title="קוד или שם הגוון המיוחד למשקופים">
                                     צבע משקופים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
                                 {{ group_form.color_frames }}
@@ -150,13 +150,15 @@
                     <button type="submit"
                             name="action"
                             value="customize"
+                            id="groupModalCustomizeBtn"
                             class="btn btn-outline-primary px-4"
                             data-bs-toggle="tooltip"
                             title="הוספה ומעבר ישיר להגדרת שינויים ושדרוגים">שינוי\שדרוג</button>
                     <button type="submit"
                             class="btn btn-primary px-4"
+                            id="groupModalSubmitBtn"
                             data-bs-toggle="tooltip"
-                            title="הוספת הקבוצה להזמנה">הוסף קבוצה</button>
+                            title="שמירת הקבוצה">הוסף קבוצה</button>
                 </div>
             </form>
         </div>

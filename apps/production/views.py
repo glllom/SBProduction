@@ -44,68 +44,82 @@ def order_transfer_to_production(request, pk):
                 modified = False
                 mark = item_spec.get('mark', str(item_id))
 
-                # 1. Width / Height
-                for field in ['width', 'height']:
+                # 1. Width / Height / Wall (Input is Inner/Gross, save External)
+                reduction_h = float(item_spec.get('frame_inner_height_reduction') or 0)
+                reduction_w = float(item_spec.get('frame_inner_width_reduction') or 0)
+
+                for field, reduction, label in [('height', reduction_h, 'Height'), ('width', reduction_w, 'Width'), ('wall', 0, 'Wall')]:
                     key = f"item_{item_id}_{field}"
                     if key in request.POST:
                         try:
                             val = request.POST.get(key)
-                            new_val = float(val) if val else None
-                            old_val = float(getattr(order_item, field)) if getattr(order_item, field) else None
-                            if new_val != old_val:
-                                setattr(order_item, field, new_val)
+                            # User entered Inner (Gross). Convert to External for saving.
+                            # For wall, reduction is 0 (it's absolute).
+                            new_inner = float(val) if val else None
+                            new_val_to_save = (new_inner - reduction) if new_inner is not None else None
+
+                            old_val_saved = float(getattr(order_item, field)) if getattr(order_item, field) else None
+                            if new_val_to_save != old_val_saved:
+                                setattr(order_item, field, new_val_to_save)
                                 modified = True
+                                log_label = f"{label} (Inner)" if field != 'wall' else label
                                 change_logs.append(OrderChangeLog(
                                     order=order, user=request.user,
-                                    field_name=f"Item {mark} - {field.capitalize()}",
-                                    old_value=str(old_val), new_value=str(new_val)
+                                    field_name=f"Item {mark} - {log_label}",
+                                    old_value=str(round(old_val_saved + reduction, 1)) if old_val_saved is not None else "None",
+                                    new_value=str(round(new_inner, 1)) if new_inner is not None else "None"
                                 ))
                         except (ValueError, TypeError):
                             pass
 
-                # 2. Lock Height
+                # 2. Lock Height (Input is Gross, save Net)
+                clearance = float(item_spec.get('leaf_top_clearance') or 0)
                 lh_key = f"item_{item_id}_lock_height"
                 if lh_key in request.POST:
                     val = request.POST.get(lh_key)
                     try:
-                        new_val = float(val) if val else None
-                        old_val = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
+                        new_gross = float(val) if val else None
+                        # Net = Gross + Clearance (clearance is negative)
+                        new_net = new_gross + clearance if new_gross is not None else None
 
-                        effective_old = old_val if old_val is not None else item_spec.get('lock_height')
+                        old_net = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
+                        effective_old_net = old_net if old_net is not None else item_spec.get('lock_height')
 
-                        if new_val != effective_old:
-                            order_item.custom_lock_height = new_val
+                        if new_net != effective_old_net:
+                            order_item.custom_lock_height = new_net
                             modified = True
                             change_logs.append(OrderChangeLog(
                                 order=order, user=request.user,
-                                field_name=f"Item {mark} - Custom Lock Height",
-                                old_value=str(effective_old), new_value=str(new_val)
+                                field_name=f"Item {mark} - Lock Height (Gross)",
+                                old_value=str(round(effective_old_net - clearance, 1)) if effective_old_net is not None else "None",
+                                new_value=str(round(new_gross, 1)) if new_gross is not None else "None"
                             ))
                     except (ValueError, TypeError):
                         pass
 
-                # 3. Hinge Heights
-                spec_hinges = item_spec.get('hinge_heights', [])
+                # 3. Hinge Heights (Input is Gross, save Net)
+                spec_hinges_net = item_spec.get('hinge_heights', [])
                 for i in range(5):
                     hh_key = f"item_{item_id}_hinge_height_{i}"
                     field_name = f"custom_hinge{i + 1}"
                     if hh_key in request.POST:
                         val = request.POST.get(hh_key)
                         try:
-                            new_val = float(val) if val else None
-                            old_val = float(getattr(order_item, field_name)) if getattr(order_item,
-                                                                                        field_name) else None
+                            new_gross = float(val) if val else None
+                            new_net = new_gross + clearance if new_gross is not None else None
 
-                            effective_old = old_val if old_val is not None else (
-                                spec_hinges[i] if len(spec_hinges) > i else None)
+                            old_net = float(getattr(order_item, field_name)) if getattr(order_item, field_name) else None
+                            effective_old_net = old_net if old_net is not None else (
+                                spec_hinges_net[i] if len(spec_hinges_net) > i else None)
 
-                            if new_val != effective_old:
-                                setattr(order_item, field_name, new_val)
+                            if new_net != effective_old_net:
+                                setattr(order_item, field_name, new_net)
                                 modified = True
                                 change_logs.append(OrderChangeLog(
                                     order=order, user=request.user,
-                                    field_name=f"Item {mark} - Custom Hinge {i + 1}",
-                                    old_value=str(effective_old), new_value=str(new_val)
+                                    field_name=f"Item {mark} - Hinge {i + 1} (Gross)",
+                                    old_value=str(round(effective_old_net - clearance, 1)) if effective_old_net is not None else "None",
+                                    new_value=str(round(new_gross, 1)) if new_gross is not None else "None"
                                 ))
                         except (ValueError, TypeError):
                             pass
@@ -141,22 +155,32 @@ def order_transfer_to_production(request, pk):
                 continue
 
             item_data = item_spec.copy()
-            item_data['width'] = order_item.width
-            item_data['height'] = order_item.height
+            # Show Inner dimensions (Gross)
+            reduction_h = float(item_spec.get('frame_inner_height_reduction') or 0)
+            reduction_w = float(item_spec.get('frame_inner_width_reduction') or 0)
+            item_data['width'] = (float(order_item.width) + reduction_w) if order_item.width else item_spec.get('inner_width')
+            item_data['height'] = (float(order_item.height) + reduction_h) if order_item.height else item_spec.get('inner_height')
+            item_data['wall'] = float(order_item.wall or item_spec.get('wall') or 0)
 
-            lock_h = order_item.custom_lock_height
-            if lock_h is None:
-                lock_h = item_spec.get('lock_height')
-            item_data['lock_height'] = lock_h
+            # Show Lock Height (Gross)
+            clearance = float(item_spec.get('leaf_top_clearance') or 0)
+            lock_h_net = order_item.custom_lock_height
+            if lock_h_net is not None:
+                item_data['lock_height'] = float(lock_h_net) - clearance
+            else:
+                item_data['lock_height'] = item_spec.get('lock_height_on_frame')
 
-            hinge_heights = []
-            spec_hinges = item_spec.get('hinge_heights', [])
+            # Show Hinge Heights (Gross)
+            hinge_heights_gross = []
+            spec_hinges_gross = item_spec.get('hinge_heights_on_frame', [])
             for i in range(1, 6):
-                val = getattr(order_item, f"custom_hinge{i}")
-                if val is None:
-                    val = spec_hinges[i - 1] if len(spec_hinges) >= i else None
-                hinge_heights.append(val)
-            item_data['padded_hinges'] = hinge_heights
+                val_net = getattr(order_item, f"custom_hinge{i}")
+                if val_net is not None:
+                    hinge_heights_gross.append(float(val_net) - clearance)
+                else:
+                    val_gross = spec_hinges_gross[i - 1] if len(spec_hinges_gross) >= i else None
+                    hinge_heights_gross.append(val_gross)
+            item_data['padded_hinges'] = hinge_heights_gross
 
             items_data.append(item_data)
 
@@ -381,12 +405,25 @@ def station_report(request, pk):
 
     service = ProductionDataService(order)
 
+    # Filter items that belong to this station's route
+    filtered_items = service.get_filtered_items(station=station)
+    filtered_item_ids = [item.id for item in filtered_items]
+    spec_obj.items = [item for item in spec_obj.items if item.item_id in filtered_item_ids]
+
+    # Determine stage label based on order status
+    if order.status in [OrderStatus.IN_PRODUCTION_PHASE2, OrderStatus.PHASE1_READY]:
+        stage_label = "שלב ב'"
+    else:
+        stage_label = "קומפלט"
+
     return render(request, station.template_name or 'production/alum_frames_report.html', {
         'order': order,
         'order_spec': spec_obj,
+        'spec_json': spec_obj.model_dump(by_alias=True),
         'station': station,
         'report_label': station.label or station.name,
         'groups_data': service.prepare_grouped_data(spec_obj),
+        'stage_label': stage_label,
         'now': timezone.now(),
     })
 

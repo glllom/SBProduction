@@ -17,7 +17,7 @@
                 </button>
                 <button class="btn btn-sm btn-outline-primary ms-3"
                         data-bs-toggle="modal"
-                        data-bs-target="#addGroupModal"
+                        data-bs-target="#groupModal"
                         title="הוספת קבוצת דלתות חדשה להזמנה">
                     <i class="bi bi-plus-lg me-2"></i>הוספת דלתות
                 </button>
@@ -218,7 +218,7 @@
                         {% if order.status == 'NEW' or user.is_admin_user %}
                             <button class="btn btn-primary"
                                     data-bs-toggle="modal"
-                                    data-bs-target="#addGroupModal">
+                                    data-bs-target="#groupModal">
                                 <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
                             </button>
                             <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
@@ -233,7 +233,7 @@
 </div>
 <!-- Modals -->
 {% include "orders/includes/order_header_modal.html" %}
-{% include "orders/includes/add_group_modal.html" %}
+{% include "orders/includes/group_modal.html" %}
 {% include "orders/includes/group_customizer_modal.html" %}
 {% include "orders/includes/edit_item_modal.html" %}
 {% include "orders/includes/save_spec_modal.html" %}
@@ -267,7 +267,7 @@
             const $specLoadingIndicator = $('#specLoadingIndicator');
             const $specCardsGrid = $('#specCardsGrid');
             const $specEmptyState = $('#specEmptyState');
-            const $groupModals = $('.edit-group-modal, #addGroupModal');
+            const $groupModal = $('#groupModal');
             const $editHeaderForm = $('#editHeaderForm');
             const $deleteOrderForm = $('#deleteOrderForm');
 
@@ -364,10 +364,76 @@
             });
 
             // Ensure Bootstrap classes are applied for modal fields correctly
-            $('#editHeaderModal input, #editHeaderModal select, #editHeaderModal textarea').each(function () {
+            $('#editHeaderModal input, #editHeaderModal select, #editHeaderModal textarea, #groupModal input, #groupModal select, #groupModal textarea').each(function () {
                 const $el = $(this);
-                if (!$el.hasClass('form-select') && !$el.hasClass('select2-hidden-accessible')) {
+                if (!$el.hasClass('form-select') && !$el.hasClass('select2-hidden-accessible') && !$el.hasClass('form-check-input')) {
                     $el.addClass('form-control');
+                }
+            });
+
+            /**
+             * Handle opening the Unified Group Modal for adding or editing.
+             */
+            $(document).on('click', '[data-bs-target="#groupModal"]', function() {
+                const $btn = $(this);
+                const isEdit = $btn.hasClass('btn-edit-group');
+                const $modal = $('#groupModal');
+                const $form = $('#groupForm');
+                const $label = $('#groupModalLabel');
+                const $submitBtn = $('#groupModalSubmitBtn');
+                const $customizeBtn = $('#groupModalCustomizeBtn');
+
+                // Set mode for internal JS logic (like updateFronts)
+                $modal.data('mode', isEdit ? 'edit' : 'add');
+
+                if (isEdit) {
+                    $label.text('עריכת קבוצה');
+                    $submitBtn.text('שמור שינויים');
+                    $customizeBtn.addClass('d-none');
+                    $form.attr('action', $btn.data('edit-url'));
+
+                    // Reset form first to clear any old state
+                    $form[0].reset();
+
+                    // Populate fields
+                    $modal.find('input[name="quantity"]').val($btn.data('quantity'));
+                    $modal.find('textarea[name="comments"]').val($btn.data('comments'));
+                    $modal.find('input[name="is_split_installation"]').prop('checked', $btn.data('is-split') === true);
+
+                    // Paint options
+                    const panelPaint = $btn.data('panel-paint-option');
+                    $modal.find(`input[name="panel_paint_option"][value="${panelPaint}"]`).prop('checked', true).trigger('change');
+                    $modal.find('input[name="color_panels"]').val($btn.data('color-panels'));
+
+                    const framePaint = $btn.data('frame-paint-option');
+                    $modal.find(`input[name="frame_paint_option"][value="${framePaint}"]`).prop('checked', true).trigger('change');
+                    $modal.find('input[name="color_frames"]').val($btn.data('color-frames'));
+
+                    // Dependent fields: Set initial values and trigger change in cascade
+                    $modal.find('select[name="product_type"]').val($btn.data('product-type')).trigger('change');
+                    $modal.find('select[name="product_family"]').data('initial-value', $btn.data('product-family'));
+                    $modal.find('select[name="series"]').val($btn.data('series')).trigger('change');
+                    $modal.find('select[name="front"]').data('initial-value', $btn.data('front'));
+                    $modal.find('select[name="basic_color_frames"]').data('initial-value', $btn.data('basic-color-frames'));
+                } else {
+                    $label.text('הוספת קבוצת דלתות');
+                    $submitBtn.text('הוסף קבוצה');
+                    $customizeBtn.removeClass('d-none');
+                    $form.attr('action', `{% url 'group-add' order.pk %}`);
+                    $form[0].reset();
+
+                    // Clear initial-value data attributes
+                    $modal.find('select').data('initial-value', '');
+                    $modal.find('.product-info-display').html('<small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
+
+                    // Defaults for New Group
+                    if (orderSeriesId) {
+                        $modal.find('select[name="series"]').val(orderSeriesId).trigger('change');
+                    }
+                    
+                    // Trigger paint logic reset
+                    $modal.find('input[name="panel_paint_option"]').first().trigger('change');
+                    $modal.find('input[name="frame_paint_option"]').first().trigger('change');
                 }
             });
 
@@ -399,13 +465,16 @@
             }
 
             // Track changes in group modals (Add and Edit)
-            $groupModals.on('show.bs.modal', function() {
+            $(document).on('show.bs.modal', '#groupModal', function() {
                 const $modal = $(this);
                 const $form = $modal.find('form');
-                $form.data('initial-state', getGroupFormState($form));
+                // Use a small timeout to let the population logic finish before capturing initial state
+                setTimeout(() => {
+                    $form.data('initial-state', getGroupFormState($form));
+                }, 100);
             });
 
-            $groupModals.on('hide.bs.modal', function(e) {
+            $(document).on('hide.bs.modal', '#groupModal', function(e) {
                 const $modal = $(this);
                 const $form = $modal.find('form');
                 const initialState = $form.data('initial-state');
@@ -420,7 +489,7 @@
                 }
             });
 
-            $(document).on('submit', '#addGroupModal form, .modal form[action*="groups/"]', function (e) {
+            $(document).on('submit', '#groupModal form', function (e) {
                 const $form = $(this);
                 const $modal = $form.closest('.modal');
                 const initialState = $form.data('initial-state');
@@ -863,9 +932,14 @@
                             });
                             $frontSelect.html(options);
 
-                            const isNew = $container.closest('#addGroupModal').length > 0;
-                            if (!isNew && currentVal && fronts.some(f => String(f.id) === String(currentVal))) {
+                            const $groupModal = $container.closest('#groupModal');
+                            const isNew = $groupModal.length > 0 && $groupModal.data('mode') === 'add';
+                            const initialVal = $frontSelect.data('initial-value');
+
+                            if (currentVal && fronts.some(f => String(f.id) === String(currentVal))) {
                                 $frontSelect.val(currentVal);
+                            } else if (!isNew && initialVal && fronts.some(f => String(f.id) === String(initialVal))) {
+                                $frontSelect.val(initialVal);
                             } else if (isNew && seriesId === orderSeriesId && orderFrontId && fronts.some(f => String(f.id) === String(orderFrontId))) {
                                 $frontSelect.val(orderFrontId);
                             }
@@ -879,34 +953,53 @@
                 const $basicColorFramesSelect = $container.find('select[name="basic_color_frames"]');
                 if (!$basicColorFramesSelect.length) return;
 
-                if (!seriesId) {
+                // Disable by default until we have both series and family (if family is relevant)
+                if (!seriesId || !familyId) {
+                    $basicColorFramesSelect.prop('disabled', true);
                     $basicColorFramesSelect.html('<option value="">---------</option>').val('').trigger('change');
-                } else {
-                    const currentVal = $basicColorFramesSelect.val();
-                    let url = `/catalog/api/frame-colors/?series=${seriesId}`;
-                    if (familyId) url += `&family=${familyId}`;
+                    return;
+                }
 
-                    fetch(url)
-                        .then(response => response.json())
-                        .then(data => {
-                            let options = '<option value="">---------</option>';
-                            const colors = (Array.isArray(data) ? data : data.results) || [];
+                const currentVal = $basicColorFramesSelect.val();
+                const initialVal = $basicColorFramesSelect.data('initial-value');
+                const $groupModal = $container.closest('#groupModal');
+                const isNew = $groupModal.length > 0 && $groupModal.data('mode') === 'add';
+
+                let url = `/catalog/api/frame-colors/?series=${seriesId}`;
+                if (familyId) url += `&family=${familyId}`;
+
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        let options = '<option value="">---------</option>';
+                        const colors = (Array.isArray(data) ? data : data.results) || [];
+                        
+                        if (colors.length === 0) {
+                            $basicColorFramesSelect.prop('disabled', true);
+                            $basicColorFramesSelect.html(options).val('').trigger('change');
+                        } else {
+                            $basicColorFramesSelect.prop('disabled', false);
                             colors.forEach(color => {
                                 const desc = color?.sku || color.description || '';
                                 options += `<option value="${color.id}" data-description="${desc}" title="${desc}">${color.name}</option>`;
                             });
                             $basicColorFramesSelect.html(options);
 
-                            const isNew = $container.closest('#addGroupModal').length > 0;
-                            if (!isNew && currentVal && colors.some(c => String(c.id) === String(currentVal))) {
+                            // Prioritize: 1. Current selected value, 2. Initial value from DB, 3. First from list
+                            if (currentVal && colors.some(c => String(c.id) === String(currentVal))) {
                                 $basicColorFramesSelect.val(currentVal);
+                            } else if (!isNew && initialVal && colors.some(c => String(c.id) === String(initialVal))) {
+                                $basicColorFramesSelect.val(initialVal);
                             } else if (colors.length > 0) {
                                 $basicColorFramesSelect.val(colors[0].id);
                             }
                             $basicColorFramesSelect.trigger('change');
-                        })
-                        .catch(error => console.error('Error fetching frame colors:', error));
-                }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching frame colors:', error);
+                        $basicColorFramesSelect.prop('disabled', true);
+                    });
             }
 
             // Logic for dependent product type -> family
@@ -921,6 +1014,9 @@
                     return;
                 }
 
+                const currentVal = $familySelect.val();
+                const initialVal = $familySelect.data('initial-value');
+
                 fetch(`/catalog/api/families/?type=${typeId}`)
                     .then(response => response.json())
                     .then(data => {
@@ -930,7 +1026,15 @@
                             const desc = family.description || '';
                             options += `<option value="${family.id}" data-description="${desc}" title="${desc}">${family.name}</option>`;
                         });
-                        $familySelect.html(options).trigger('change');
+                        $familySelect.html(options);
+
+                        if (currentVal && families.some(f => String(f.id) === String(currentVal))) {
+                            $familySelect.val(currentVal);
+                        } else if (initialVal && families.some(f => String(f.id) === String(initialVal))) {
+                            $familySelect.val(initialVal);
+                        }
+
+                        $familySelect.trigger('change');
                     })
                     .catch(error => console.error('Error fetching families:', error));
             });
@@ -983,11 +1087,18 @@
             });
 
             // Trigger initial search for products when modal opens (especially for edit)
-            $('.modal').on('shown.bs.modal', function () {
+            $('.modal:not(#groupModal)').on('shown.bs.modal', function () {
                 const $modal = $(this);
+                const $seriesSelect = $modal.find('select[name="series"]');
                 const $familySelect = $modal.find('select[name="product_family"]');
-                if ($familySelect.val()) {
+                const $typeSelect = $modal.find('select[name="product_type"]');
+
+                if ($seriesSelect.val()) {
+                    $seriesSelect.trigger('change');
+                } else if ($familySelect.val()) {
                     $familySelect.trigger('change');
+                } else if ($typeSelect.val()) {
+                    $typeSelect.trigger('change');
                 }
             });
 
@@ -1020,6 +1131,7 @@
                 const $panelColorField = $modal.find('input[name="color_panels"]');
                 const $frameOptions = $modal.find('input[name="frame_paint_option"]');
                 const $frameColorField = $modal.find('input[name="color_frames"]');
+                const $basicColorFramesSelect = $modal.find('select[name="basic_color_frames"]');
 
                 function updateGroupPanelsState() {
                     const selected = $panelOptions.filter(':checked').val();
@@ -1040,12 +1152,13 @@
                 $modal.find('form').on('submit', function() {
                     $panelColorField.prop('disabled', false);
                     $frameColorField.prop('disabled', false);
+                    $basicColorFramesSelect.prop('disabled', false);
                 });
             }
 
-            $groupModals.each(function() {
-                setupGroupPaintingLogic($(this));
-            });
+            if ($groupModal.length) {
+                setupGroupPaintingLogic($groupModal);
+            }
 
             // ==========================================
             // GROUP SPECIFICATION (SAVE & LOAD)

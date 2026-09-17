@@ -65,6 +65,8 @@ class ProductionSpec(BaseModel):
     wall: float = 0.0
     inner_height: float = 0.0
     inner_width: float = 0.0
+    frame_inner_height_reduction: float = 0.0
+    frame_inner_width_reduction: float = 0.0
     leaf_top_clearance: float = 0.0
     addition_cut: Optional[float] = None
     panel_dimensions: List[Dict[str, float]] = Field(default_factory=list)

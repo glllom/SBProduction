@@ -396,14 +396,14 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
         # Populate basic_color_frames queryset
         if product:
             available_frames = product.available_frames
-            self.fields['basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.all().order_by('name')
+            self.fields['basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.none()
         elif series_id:
             series = Series.objects.filter(id=series_id).first()
             if series:
                 available_frames = series.available_frames
-                self.fields['basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.all().order_by('name')
+                self.fields['basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.none()
             else:
-                self.fields['basic_color_frames'].queryset = Material.objects.all().order_by('name')
+                self.fields['basic_color_frames'].queryset = Material.objects.none()
         else:
             self.fields['basic_color_frames'].queryset = Material.objects.none()
 

@@ -77,49 +77,4 @@
             </div>
         </form>
     </div>
-    <script>
-        // Regex: empty string OR optional minus, digits, optional dot and decimal digits
-        const floatRegex = /^$|^-?\d+(\.\d+)?$/;
-
-        function validateInput(input) {
-            // Replace comma with dot automatically
-            let val = input.value.trim().replace(',', '.');
-            input.value = val;
-
-            const isValid = floatRegex.test(val);
-            if (!isValid) {
-                input.classList.add('is-invalid');
-            } else {
-                input.classList.remove('is-invalid');
-            }
-            updateSubmitButton();
-            return isValid;
-        }
-
-        function updateSubmitButton() {
-            const hasErrors = document.querySelectorAll('.validate-float.is-invalid').length > 0;
-            const submitBtn = document.getElementById('submit-btn');
-            if (submitBtn) {
-                submitBtn.disabled = hasErrors;
-            }
-        }
-
-        document.querySelectorAll('.validate-float').forEach(input => {
-            // Equivalent to Access afterupdate event
-            input.addEventListener('change', () => validateInput(input));
-            input.addEventListener('blur', () => validateInput(input));
-        });
-
-        document.getElementById('phase1-form').addEventListener('submit', function (e) {
-            let allValid = true;
-            document.querySelectorAll('.validate-float').forEach(input => {
-                if (!validateInput(input)) {
-                    allValid = false;
-                }
-            });
-            if (!allValid) {
-                e.preventDefault();
-            }
-        });
-    </script>
 {% endblock %}

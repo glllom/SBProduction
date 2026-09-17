@@ -372,7 +372,7 @@ class OrderItemsGroup(models.Model):
         if self.order and self.order.series:
             return self.order.series.available_frames
         from apps.catalog.models import Material
-        return Material.objects.all().order_by('name')
+        return Material.objects.none()
 
     @property
     def available_frame_colors(self):

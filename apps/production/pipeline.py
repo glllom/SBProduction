@@ -139,6 +139,8 @@ class PanelDimensionStep(SpecStep):
         # 1. Calculate Inner Opening Dimensions (Always)
         spec.inner_height = h + float(pf.frame_inner_height_reduction or 0)
         spec.inner_width = w + float(pf.frame_inner_width_reduction or 0)
+        spec.frame_inner_height_reduction = float(pf.frame_inner_height_reduction or 0)
+        spec.frame_inner_width_reduction = float(pf.frame_inner_width_reduction or 0)
         spec.leaf_top_clearance = float(pf.leaf_top_clearance or 0)
 
         # 2. Door leaf calculation ONLY if not Phase 1

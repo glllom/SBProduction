@@ -25,7 +25,21 @@
                     <li>
                         <button class="dropdown-item btn-edit-group"
                                 data-bs-toggle="modal"
-                                data-bs-target="#editGroupModal-{{ group.id }}">
+                                data-bs-target="#groupModal"
+                                data-group-id="{{ group.id }}"
+                                data-edit-url="{% url 'group-edit' group.id %}"
+                                data-product-type="{{ group.product.product_family.product_type_id }}"
+                                data-product-family="{{ group.product.product_family_id }}"
+                                data-series="{{ group.series_id|default:'' }}"
+                                data-front="{{ group.front_id|default:'' }}"
+                                data-basic-color-frames="{{ group.basic_color_frames_id|default:'' }}"
+                                data-quantity="{{ group.quantity }}"
+                                data-panel-paint-option="{{ group.panel_paint_option }}"
+                                data-color-panels="{{ group.color_panels|default:'' }}"
+                                data-frame-paint-option="{{ group.frame_paint_option }}"
+                                data-color-frames="{{ group.color_frames|default:'' }}"
+                                data-is-split="{{ group.is_split_installation|yesno:'true,false' }}"
+                                data-comments="{{ group.comments|default:'' }}">
                             <i class="bi bi-pencil me-2 text-primary"></i>ערוך קבוצה
                         </button>
                     </li>
@@ -75,8 +89,6 @@
             </div>
         {% endif %}
     </div>
-    <!-- Modal Edit Group -->
-    {% include "orders/includes/edit_group_modal.html" %}
     <div class="card-body p-0">
         <!-- Nav tabs -->
         <ul class="nav nav-tabs nav-fill border-0 bg-light" role="tablist">

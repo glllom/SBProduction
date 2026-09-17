@@ -16,7 +16,7 @@
             <i class="bi bi-exclamation-triangle me-2"></i>
             {% trans "נא לוודא את המידות הסופיות לאחר מדידת שטח (לפני ייצור הכנפיים). שינויים שיבוצעו כאן יישמרו ישירות בפרטי ההזמנה." %}
         </div>
-        <form method="post">
+        <form method="post" id="phase2-form" novalidate>
             {% csrf_token %}
             <div class="card shadow-sm border-0">
                 <div class="card-body p-0">
@@ -25,11 +25,12 @@
                             <thead class="bg-light text-muted">
                                 <tr>
                                     <th class="ps-4">{% trans "סימון (Mark)" %}</th>
-                                    <th style="width: 200px;">{% trans "מידות (רXג)" %}</th>
+                                    <th style="width: 200px;">{% trans "מידות פנים (רXג)" %}</th>
+                                    <th style="width: 100px;">{% trans "עובי קיר" %}</th>
                                     <th>{% trans "מנעול" %}</th>
+                                    <th style="width: 10%;">{% trans "גובה מנעול (ברוטו)" %}</th>
                                     <th>{% trans "צירים" %}</th>
-                                    <th style="width: 150px;">{% trans "גובה מנעול" %}</th>
-                                    <th>{% trans "גבהי צירים" %}</th>
+                                    <th>{% trans "גבהי צירים (ברוטו)" %}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -38,42 +39,50 @@
                                         <td class="ps-4 fw-medium">{{ item.mark }}</td>
                                         <td>
                                             <div class="d-flex align-items-center gap-1">
-                                                <input type="number"
-                                                       step="0.1"
+                                                <input type="text"
+                                                       inputmode="decimal"
                                                        name="item_{{ item.item_id }}_width"
                                                        value="{{ item.width|stringformat:".1f" }}"
-                                                       class="form-control form-control-sm text-center"
+                                                       class="form-control form-control-sm text-center validate-float"
                                                        style="width: 80px"
-                                                       title="{% trans "רוחב" %}">
+                                                       title="{% trans "רוחב פנים (ברוטו)" %}">
                                                 <span class="text-muted">x</span>
-                                                <input type="number"
-                                                       step="0.1"
+                                                <input type="text"
+                                                       inputmode="decimal"
                                                        name="item_{{ item.item_id }}_height"
                                                        value="{{ item.height|stringformat:".1f" }}"
-                                                       class="form-control form-control-sm text-center"
+                                                       class="form-control form-control-sm text-center validate-float"
                                                        style="width: 80px"
-                                                       title="{% trans "גובה" %}">
+                                                       title="{% trans "גובה פנים (ברוטו)" %}">
                                             </div>
+                                        </td>
+                                        <td>
+                                            <input type="text"
+                                                   inputmode="decimal"
+                                                   name="item_{{ item.item_id }}_wall"
+                                                   value="{{ item.wall|stringformat:".1f" }}"
+                                                   class="form-control form-control-sm text-center validate-float"
+                                                   style="width: 70px">
                                         </td>
                                         <td class="text-muted small">{{ item.lock_name }}</td>
-                                        <td class="text-muted small">{{ item.hinge_name }}</td>
                                         <td>
                                             <div class="input-group input-group-sm">
-                                                <input type="number"
-                                                       step="0.1"
+                                                <input type="text"
+                                                       inputmode="decimal"
                                                        name="item_{{ item.item_id }}_lock_height"
                                                        value="{{ item.lock_height|default:'' }}"
-                                                       class="form-control">
+                                                       class="form-control validate-float">
                                             </div>
                                         </td>
+                                        <td class="text-muted small">{{ item.hinge_name }}</td>
                                         <td>
                                             <div class="d-flex gap-2">
                                                 {% for h_val in item.padded_hinges %}
-                                                    <input type="number"
-                                                           step="0.1"
+                                                    <input type="text"
+                                                           inputmode="decimal"
                                                            name="item_{{ item.item_id }}_hinge_height_{{ forloop.counter0 }}"
                                                            value="{{ h_val|default:'' }}"
-                                                           class="form-control form-control-sm"
+                                                           class="form-control form-control-sm validate-float"
                                                            style="width: 70px"
                                                            placeholder="{{ forloop.counter }}">
                                                 {% endfor %}
@@ -88,7 +97,7 @@
                 <div class="card-footer bg-white p-4 text-end">
                     <a href="{% url 'order-detail' order.pk %}"
                        class="btn btn-link text-decoration-none text-secondary me-3">{% trans "ביטול" %}</a>
-                    <button type="submit" class="btn btn-primary px-4">
+                    <button type="submit" id="submit-btn" class="btn btn-primary px-4">
                         <i class="bi bi-send-check ms-2"></i>{% trans "שמור והעבר לשלב ב'" %}
                     </button>
                 </div>

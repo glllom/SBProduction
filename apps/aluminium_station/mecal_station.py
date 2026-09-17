@@ -123,7 +123,7 @@ class CNCStationApp(tk.Tk):
 
         # Window configuration
         self.title("SBProduction - CNC Sync")
-        self.geometry("420x520")
+        self.geometry("420x400")
         self.resizable(False, False)
         self.attributes("-topmost", True)
 
