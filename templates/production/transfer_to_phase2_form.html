@@ -21,16 +21,13 @@
             <div class="card shadow-sm border-0">
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
+                        <table class="table table-hover align-middle mb-0 table-bordered border-dark">
                             <thead class="bg-light text-muted">
                                 <tr>
-                                    <th class="ps-4">{% trans "סימון (Mark)" %}</th>
-                                    <th style="width: 200px;">{% trans "מידות פנים (רXג)" %}</th>
-                                    <th style="width: 100px;">{% trans "עובי קיר" %}</th>
-                                    <th>{% trans "מנעול" %}</th>
-                                    <th style="width: 10%;">{% trans "גובה מנעול (ברוטו)" %}</th>
-                                    <th>{% trans "צירים" %}</th>
-                                    <th>{% trans "גבהי צירים (ברוטו)" %}</th>
+                                    <th style="width: 7%;" class="ps-4">{% trans "#" %}</th>
+                                    <th style="width: 20%">{% trans "מידות פנים" %}</th>
+                                    <th style="width: 30%" colspan="2">{% trans "גובה מנעול (ברוטו)" %}</th>
+                                    <th colspan="2">{% trans "גבהי צירים (ברוטו)" %}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -56,14 +53,6 @@
                                                        title="{% trans "גובה פנים (ברוטו)" %}">
                                             </div>
                                         </td>
-                                        <td>
-                                            <input type="text"
-                                                   inputmode="decimal"
-                                                   name="item_{{ item.item_id }}_wall"
-                                                   value="{{ item.wall|stringformat:".1f" }}"
-                                                   class="form-control form-control-sm text-center validate-float"
-                                                   style="width: 70px">
-                                        </td>
                                         <td class="text-muted small">{{ item.lock_name }}</td>
                                         <td>
                                             <div class="input-group input-group-sm">
@@ -83,8 +72,7 @@
                                                            name="item_{{ item.item_id }}_hinge_height_{{ forloop.counter0 }}"
                                                            value="{{ h_val|default:'' }}"
                                                            class="form-control form-control-sm validate-float"
-                                                           style="width: 70px"
-                                                           placeholder="{{ forloop.counter }}">
+                                                           style="width: 70px">
                                                 {% endfor %}
                                             </div>
                                         </td>

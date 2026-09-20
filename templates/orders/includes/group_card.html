@@ -38,6 +38,9 @@
                                 data-color-panels="{{ group.color_panels|default:'' }}"
                                 data-frame-paint-option="{{ group.frame_paint_option }}"
                                 data-color-frames="{{ group.color_frames|default:'' }}"
+                                data-product-id="{{ group.product_id }}"
+                                data-product-name="{{ group.product.name }}"
+                                data-product-code="{{ group.product.code }}"
                                 data-is-split="{{ group.is_split_installation|yesno:'true,false' }}"
                                 data-comments="{{ group.comments|default:'' }}">
                             <i class="bi bi-pencil me-2 text-primary"></i>ערוך קבוצה

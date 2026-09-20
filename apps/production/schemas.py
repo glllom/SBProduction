@@ -91,7 +91,8 @@ class ProductionSpec(BaseModel):
     cnc_program: str = ""
     tech_notes: str = ""
     sketch_url: str = ""
-    cut_coefficients: Dict[str, float] = Field(default_factory=dict)
+    cut_coefficients: Dict[str, Any] = Field(default_factory=dict)
+    cut_sheets: List[Dict[str, Any]] = Field(default_factory=list)
     parts: Dict[str, Any] = Field(default_factory=dict)
 
     # Hardware and machining
@@ -112,6 +113,7 @@ class ProductionSpec(BaseModel):
 
     # Additional
     frames_report_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
+    doors_report_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
 
     # Context/Metadata
     context: Dict[str, Any] = Field(default_factory=dict)

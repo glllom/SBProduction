@@ -120,56 +120,134 @@
                                 </div>
                                 <div class="col-4 text-end">
                                     <h5 class="">
-                                        סдרה: <span class="text-decoration-underline">{{ series.grouper }}</span>
+                                        סדרה: <span class="text-decoration-underline">{{ series.grouper }}</span>
                                     </h5>
                                 </div>
                             </div>
                         </div>
-                        <table class="table table-sm table-bordered mt-0">
-                            <thead>
-                                <tr class="table-secondary">
-                                    <th style="width: 5%;">#</th>
-                                    <th style="width: 10%;">מיקום</th>
-                                    <th style="width: 15%;">מידות כנף</th>
-                                    <th style="width: 10%;">פתיחה</th>
-                                    <th style="width: 15%;">מנעול</th>
-                                    <th style="width: 20%;">צירים</th>
-                                    <th>הערות</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for spec in series.list %}
-                                    <tr>
-                                        <td class="fw-bolder fs-5">{{ spec.mark }}</td>
-                                        <td class="fs-5">{{ spec.place }}</td>
-                                        <td class="fw-bolder fs-5">
-                                            {% for dim in spec.panel_dimensions %}
-                                                {{ dim.width|floatformat }} x {{ dim.height|floatformat }}
-                                                {% if not forloop.last %}<br>{% endif %}
-                                            {% endfor %}
-                                        </td>
-                                        <td class="fs-5">{{ spec.direction }} / {{ spec.opening }}</td>
-                                        <td class="fs-5">
-                                            <div><span class="text-decoration-underline">{{ spec.lock_name }}</span></div>
-                                            <div>גובה: {{ spec.lock_height|floatformat }}</div>
-                                        </td>
-                                        <td class="fs-5">
-                                            <div><span class="text-decoration-underline">{{ spec.hinge_name }}</span></div>
-                                            <div>{{ spec.hinge_heights|join:", " }}</div>
-                                        </td>
-                                        <td class="fs-6 fst-italic">{{ spec.comment }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% endfor %}
-            {% empty %}
-                <div class="alert alert-info text-center mt-5">
-                    <h4>אין נתונים להצגה בדוח זה</h4>
-                    <p>הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
+                        {#                        <table class="table table-sm table-bordered mt-0">#}
+                        {#                            <thead>#}
+                        {#                                <tr class="table-secondary">#}
+                        {#                                    <th style="width: 6%;">#</th>#}
+                        {#                                    <th style="width: 15%;">מידות כנף</th>#}
+                        {#                                    <th style="width: 10%;">פתיחה</th>#}
+                        {#                                    <th style="width: 15%;">מנעול</th>#}
+                        {#                                    <th style="width: 30%;">צירים</th>#}
+                        {#                                    <th>הערות</th>#}
+                        {#                                </tr>#}
+                        {#                            </thead>#}
+                        {#                            <tbody>#}
+                        {#                                {% for spec in series.list %}#}
+                        {#                                    <tr>#}
+                        {#                                        <td class="fw-bolder fs-5">{{ spec.mark }}</td>#}
+                        {#                                        <td class="fw-bolder fs-5">#}
+                        {#                                            {% for dim in spec.panel_dimensions %}#}
+                        {#                                                {{ dim.width|floatformat }} \ {{ dim.height|floatformat }}#}
+                        {#                                                {% if not forloop.last %}<br>{% endif %}#}
+                        {#                                            {% endfor %}#}
+                    {#                                        </td>#}
+                    {#                                        <td class="fs-5">{{ spec.direction }} \ {{ spec.opening }}</td>#}
+                    {#                                        <td class="fs-5">#}
+                    {#                                            <div>#}
+                    {#                                                <span class="text-decoration-underline">{{ spec.lock_name }}:</span> {{ spec.lock_height|floatformat }}#}
+                    {#                                            </div>#}
+                    {#                                        </td>#}
+                    {#                                        <td class="fs-5">#}
+                    {#                                            <div>#}
+                    {#                                                <span class="text-decoration-underline">{{ spec.hinge_name }}:</span>#}
+                    {#                                                {% for h in spec.hinge_heights %}{{ h|floatformat }}{% if not forloop.last %} \#}
+                    {#                                                {% endif %}#}
+                {#                                {% endfor %}#}
+            {#                            </div>#}
+            {#                        </td>#}
+            {#                        <td class="fs-6 fst-italic">#}
+            {#                            {% if spec.comment %}#}
+            {#                                <div>{{ spec.comment }}</div>#}
+            {#                            {% endif %}#}
+        {#                            {% if spec.doors_report_customizers %}#}
+        {#                                <div class="mt-1">#}
+        {#                                    {% for cmz in spec.doors_report_customizers %}#}
+        {#                                        <div class="fw-bold text-primary">#}
+        {#                                            {{ cmz.name }}#}
+        {#                                            {% if cmz.params %}#}
+        {#                                                <span class="fw-normal text-dark">#}
+        {#                                                    ({% for p in cmz.params %}{{ p.label }}:#}
+        {#                                                        {{ p.value }}{% if not forloop.last %}, {% endif %}{% endfor %})#}
+    {#                                                </span>#}
+    {#                                    {% endif %}#}
+{#                                </div>#}
+{#                            {% endfor %}#}
+{#                        </div>#}
+{#                {% endif %}#}
+{#                </td>#}
+{#                </tr>#}
+{#            {% endfor %}#}
+{#        </tbody>#}
+{#    </table>#}
+<table class="table table-sm table-bordered mt-0">
+    <thead>
+        <tr class="table-secondary">
+            <th style="width: 6%;">#</th>
+            <th style="width: 15%;">מידות כנף</th>
+            <th style="width: 10%;">פתיחה</th>
+            <th style="width: 17%;">מ: <span class="text-danger fw-bold fs-5">{{ series.list.0.lock_name }}</span></th>
+            <th style="width: 25%;">צ: <span class="text-danger fw-bold fs-5">{{ series.list.0.hinge_name }}</span></th>
+            <th>תוספות</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for spec in series.list %}
+            <tr>
+                <td class="fw-bolder fs-5">{{ spec.mark }}</td>
+                <td class="fw-bolder fs-5">
+                    {% for dim in spec.panel_dimensions %}
+                        {{ dim.width|floatformat }} \
+                        {{ dim.height|floatformat }}{% if not forloop.last %}<br>{% endif %}
+                    {% endfor %}
+                </td>
+                <td class="fs-5">{{ spec.direction }} \ {{ spec.opening }}</td>
+                <td class="fs-5">{{ spec.lock_height|floatformat }}</td>
+                <td class="fs-5">
+                    {% for h in spec.hinge_heights %}{{ h|floatformat }}{% if not forloop.last %} \
+                    {% endif %}
+        {% endfor %}
+    </td>
+    {% if forloop.first %}
+        <td rowspan="{{ series.list|length }}"
+            class="fs-6 fst-italic align-middle">
+            {% if spec.comment %}
+                <div>{{ spec.comment }}</div>
+            {% endif %}
+            {% if spec.doors_report_customizers %}
+                <div class="mt-1">
+                    {% for cmz in spec.doors_report_customizers %}
+                        <div class="fw-bold text-primary">
+                            {{ cmz.name }}
+                            {% if cmz.params %}
+                                <span class="fw-normal text-dark">
+                                    ({% for p in cmz.params %}{{ p.label }}:
+                                        {{ p.value }}{% if not forloop.last %},
+                            {% endif %}{% endfor %})
+                        </span>
+                    {% endif %}
                 </div>
             {% endfor %}
         </div>
-    </body>
+    {% endif %}
+</td>
+{% endif %}
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endfor %}
+{% empty %}
+<div class="alert alert-info text-center mt-5">
+    <h4>אין נתונים להצגה בדוח זה</h4>
+    <p>הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
+</div>
+{% endfor %}
+</div>
+</body>
 </html>

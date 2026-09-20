@@ -53,6 +53,7 @@ class SpecContext:
     def consume_customizers(self, tags) -> List:
         """
         Finds customizers by tag(s), moves them to processed, and returns them.
+        Supports multiple tags in customizer.tag (space or comma separated).
         """
         if isinstance(tags, str):
             tags_set = {tags.upper()}
@@ -62,8 +63,11 @@ class SpecContext:
         found = []
         remaining = []
         for gc in self.unprocessed_customizers:
-            tag = (gc.customizer.tag or "").upper()
-            if tag in tags_set:
+            # Split tags by comma or space and normalize
+            tag_str = (gc.customizer.tag or "").upper()
+            item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
+
+            if item_tags & tags_set:
                 found.append(gc)
                 self.processed_customizers.append(gc)
             else:
@@ -216,6 +220,60 @@ class ProductDataStep(SpecStep):
                 spec.product_family = product.product_family.name
                 if not spec.series and product.series:
                     spec.series = product.series.name
+
+
+class CutSheetsStep(SpecStep):
+    """
+    Calculates material sheet dimensions based on panel dimensions and cut coefficients.
+    Priority 210 (after ProductDataStep and PanelDimensionStep).
+    """
+    priority = 210
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        coeffs = spec.cut_coefficients
+        panels = spec.panel_dimensions
+
+        if not coeffs or not panels:
+            return
+
+        cut_sheets = []
+        rail_delta = coeffs.get('rail_delta')
+        try:
+            rail_delta = float(rail_delta) if rail_delta is not None else 0
+        except (ValueError, TypeError):
+            rail_delta = 0
+
+        for i, panel in enumerate(panels):
+            panel_w = panel.get('width', 0)
+            panel_h = panel.get('height', 0)
+
+            sheet_data = {
+                'panel_index': i + 1,
+                'alucobond': self._calc(panel_w, panel_h, coeffs.get('alucobond')),
+                'exterior_panel': self._calc(panel_w, panel_h, coeffs.get('exterior_panel')),
+                'interior_panel': self._calc(panel_w, panel_h, coeffs.get('interior_panel')),
+                'rails': {
+                    'width': round(panel_w + rail_delta, 2),
+                    'count': int(panel_h // 50)
+                }
+            }
+            cut_sheets.append(sheet_data)
+
+        spec.cut_sheets = cut_sheets
+
+    def _calc(self, w, h, delta_dict):
+        if not delta_dict:
+            return None
+        try:
+            dw = float(delta_dict.get('width_delta', 0))
+            dh = float(delta_dict.get('height_delta', 0))
+            return {
+                'width': round(w + dw, 2),
+                'height': round(h + dh, 2)
+            }
+        except (ValueError, TypeError):
+            return None
 
 
 class AppearanceStep(SpecStep):
@@ -525,14 +583,15 @@ class LockOptionSelectionStep(SpecStep):
             if val.startswith("SKU="):
                 val = val[4:]
 
-            tag = (c.tag or "").upper()
+            tag_str = (c.tag or "").upper()
+            item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
 
             # Set spec.lock_option_type based on the resolved value
-            if val.startswith("CYLINDER") or tag == "CYLINDER":
+            if val.startswith("CYLINDER") or "CYLINDER" in item_tags:
                 spec.lock_option_type = "צילינדר"
-            elif val in ("WC", "WC_LOCK") or tag == "WC_LOCK":
+            elif val in ("WC", "WC_LOCK") or "WC_LOCK" in item_tags:
                 spec.lock_option_type = "תפוס/פנוי"
-            elif val in ("KEY", "KEY_LOCK") or tag == "KEY_LOCK":
+            elif val in ("KEY", "KEY_LOCK") or "KEY_LOCK" in item_tags:
                 spec.lock_option_type = "מפתח אפס"
             elif val in ("NONE", "WITHOUT_LOCK"):
                 spec.lock_option_type = "ללא"
@@ -838,7 +897,8 @@ class SingleCustomizerStep(SpecStep):
         gc = self.group_customizer
         c = gc.customizer
         spec = context.spec
-        tag = (c.tag or "").upper()
+        tag_str = (c.tag or "").upper()
+        item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
 
         # Handle warehouse hardware linkage (including components)
         if c.hardware:
@@ -847,20 +907,26 @@ class SingleCustomizerStep(SpecStep):
                 spec.bom_items.append(
                     SpecBOMItem(
                         type='hardware',
-                        section=tag or 'Customizer',
+                        section=tag_str or 'Customizer',
                         item_name=hw.name,
                         quantity=1,
-                        tag=tag,
+                        tag=tag_str,
                         item_id=hw.id
                     )
                 )
 
         # Tag-based strategy logic
-        if tag in ('FRAMES_REPORT', 'FRAME_MODIFICATION'):
-            spec.frames_report_customizers.append(self._format_customizer(gc))
-        else:
-            # Other tag-based strategies placeholders
-            pass
+        formatted = None
+
+        if item_tags & {'FRAMES_REPORT', 'FRAME_MODIFICATION'}:
+            if not formatted:
+                formatted = self._format_customizer(gc)
+            spec.frames_report_customizers.append(formatted)
+
+        if item_tags & {'DOORS_REPORT'}:
+            if not formatted:
+                formatted = self._format_customizer(gc)
+            spec.doors_report_customizers.append(formatted)
 
     @staticmethod
     def _format_customizer(group_customizer) -> SpecCustomizerReport:
@@ -893,6 +959,7 @@ class SpecPipeline:
             PanelDimensionStep(),
             BaseItemStep(),
             ProductDataStep(),
+            CutSheetsStep(),
             AppearanceStep(),
             FrameResolutionStep(),
             BOMStep(),

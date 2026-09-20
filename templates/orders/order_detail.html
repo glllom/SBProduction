@@ -89,6 +89,32 @@
         </div>
     </div>
     <div class="mb-2 d-flex gap-2">
+        {% if order.status != 'NEW' and user.is_admin_user %}
+            <div class="dropdown">
+                <button class="btn btn-outline-secondary btn-sm"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        title="אפשרויות ניהול הזמנה">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    <li>
+                        <a class="dropdown-item"
+                           href="{% url 'order-reset-to-new' order.pk %}"
+                           onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')">
+                            <i class="bi bi-arrow-counterclockwise me-2 text-warning"></i>שינוי הזמנה
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item text-danger"
+                           href="{% url 'order-cancel' order.pk %}"
+                           onclick="return confirm('האם אתה בטוח שברצונך לבטל את ההזמנה?')">
+                            <i class="bi bi-x-circle me-2"></i>ביטול הזמנה
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        {% endif %}
         <a href="{% url 'production:order-dev-rebuild-spec' order.pk %}"
            class="btn btn-warning"
            data-bs-toggle="tooltip"
@@ -145,7 +171,7 @@
             </a>
             {#            {% endif %}#}
         {% include "orders/includes/station_buttons.html" with use_special=True %}
-{% elif order.status == 'IN_PRODUCTION' or order.status == '1' %}
+{% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' %}
     <a href="{% url 'production:order-complete-production' order.pk %}"
        class="btn btn-success"
        data-bs-toggle="tooltip"
@@ -176,32 +202,6 @@
        title="הפקת דו''ח ייצור">
         <i class="bi bi-printer me-2"></i>הדפסת דו''ח
     </a>
-{% endif %}
-{% if order.status != 'NEW' and user.is_admin_user %}
-    <div class="dropdown ms-auto">
-        <button class="btn btn-outline-secondary btn-sm"
-                type="button"
-                data-bs-toggle="dropdown"
-                title="אפשרויות ניהול הזמנה">
-            <i class="bi bi-three-dots-vertical"></i>
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-            <li>
-                <a class="dropdown-item"
-                   href="{% url 'order-reset-to-new' order.pk %}"
-                   onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')">
-                    <i class="bi bi-arrow-counterclockwise me-2 text-warning"></i>שינוי הזמנה
-                </a>
-            </li>
-            <li>
-                <a class="dropdown-item text-danger"
-                   href="{% url 'order-cancel' order.pk %}"
-                   onclick="return confirm('האם אתה בטוח שברצונך לבטל את ההזמנה?')">
-                    <i class="bi bi-x-circle me-2"></i>ביטול הזמנה
-                </a>
-            </li>
-        </ul>
-    </div>
 {% endif %}
 </div>
 <div class="row">
@@ -390,31 +390,45 @@
                     $label.text('עריכת קבוצה');
                     $submitBtn.text('שמור שינויים');
                     $customizeBtn.addClass('d-none');
-                    $form.attr('action', $btn.data('edit-url'));
+                    $form.attr('action', $btn.attr('data-edit-url'));
 
                     // Reset form first to clear any old state
                     $form[0].reset();
 
                     // Populate fields
-                    $modal.find('input[name="quantity"]').val($btn.data('quantity'));
-                    $modal.find('textarea[name="comments"]').val($btn.data('comments'));
-                    $modal.find('input[name="is_split_installation"]').prop('checked', $btn.data('is-split') === true);
+                    $modal.find('input[name="quantity"]').val($btn.attr('data-quantity'));
+                    $modal.find('textarea[name="comments"]').val($btn.attr('data-comments'));
+                    $modal.find('input[name="is_split_installation"]').prop('checked', $btn.attr('data-is-split') === 'true');
 
                     // Paint options
-                    const panelPaint = $btn.data('panel-paint-option');
+                    const panelPaint = $btn.attr('data-panel-paint-option');
                     $modal.find(`input[name="panel_paint_option"][value="${panelPaint}"]`).prop('checked', true).trigger('change');
-                    $modal.find('input[name="color_panels"]').val($btn.data('color-panels'));
+                    $modal.find('input[name="color_panels"]').val($btn.attr('data-color-panels'));
 
-                    const framePaint = $btn.data('frame-paint-option');
+                    const framePaint = $btn.attr('data-frame-paint-option');
                     $modal.find(`input[name="frame_paint_option"][value="${framePaint}"]`).prop('checked', true).trigger('change');
-                    $modal.find('input[name="color_frames"]').val($btn.data('color-frames'));
+                    $modal.find('input[name="color_frames"]').val($btn.attr('data-color-frames'));
+
+                    // Product Display Info
+                    const productId = $btn.attr('data-product-id');
+                    const productName = $btn.attr('data-product-name');
+                    const productCode = $btn.attr('data-product-code');
+                    if (productId) {
+                        const $productSelect = $modal.find('select[name="product"]');
+                        if ($productSelect.find(`option[value="${productId}"]`).length === 0) {
+                             $productSelect.append(`<option value="${productId}">${productName}</option>`);
+                        }
+                        $productSelect.val(productId);
+                        $modal.find('.product-info-display').html(`<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ${productName} (${productCode})</strong>`);
+                    }
 
                     // Dependent fields: Set initial values and trigger change in cascade
-                    $modal.find('select[name="product_type"]').val($btn.data('product-type')).trigger('change');
-                    $modal.find('select[name="product_family"]').data('initial-value', $btn.data('product-family'));
-                    $modal.find('select[name="series"]').val($btn.data('series')).trigger('change');
-                    $modal.find('select[name="front"]').data('initial-value', $btn.data('front'));
-                    $modal.find('select[name="basic_color_frames"]').data('initial-value', $btn.data('basic-color-frames'));
+                    $modal.find('select[name="product_family"]').attr('data-initial-value', $btn.attr('data-product-family'));
+                    $modal.find('select[name="product_type"]').val($btn.attr('data-product-type')).trigger('change');
+
+                    $modal.find('select[name="front"]').attr('data-initial-value', $btn.attr('data-front'));
+                    $modal.find('select[name="basic_color_frames"]').attr('data-initial-value', $btn.attr('data-basic-color-frames'));
+                    $modal.find('select[name="series"]').val($btn.attr('data-series')).trigger('change');
                 } else {
                     $label.text('הוספת קבוצת דלתות');
                     $submitBtn.text('הוסף קבוצה');
@@ -423,7 +437,7 @@
                     $form[0].reset();
 
                     // Clear initial-value data attributes
-                    $modal.find('select').data('initial-value', '');
+                    $modal.find('select').removeAttr('data-initial-value');
                     $modal.find('.product-info-display').html('<small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
 
                     // Defaults for New Group
@@ -934,7 +948,7 @@
 
                             const $groupModal = $container.closest('#groupModal');
                             const isNew = $groupModal.length > 0 && $groupModal.data('mode') === 'add';
-                            const initialVal = $frontSelect.data('initial-value');
+                            const initialVal = $frontSelect.attr('data-initial-value');
 
                             if (currentVal && fronts.some(f => String(f.id) === String(currentVal))) {
                                 $frontSelect.val(currentVal);
@@ -961,7 +975,7 @@
                 }
 
                 const currentVal = $basicColorFramesSelect.val();
-                const initialVal = $basicColorFramesSelect.data('initial-value');
+                const initialVal = $basicColorFramesSelect.attr('data-initial-value');
                 const $groupModal = $container.closest('#groupModal');
                 const isNew = $groupModal.length > 0 && $groupModal.data('mode') === 'add';
 
@@ -1015,7 +1029,7 @@
                 }
 
                 const currentVal = $familySelect.val();
-                const initialVal = $familySelect.data('initial-value');
+                const initialVal = $familySelect.attr('data-initial-value');
 
                 fetch(`/catalog/api/families/?type=${typeId}`)
                     .then(response => response.json())
