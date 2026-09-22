@@ -1012,7 +1012,16 @@ class OrderSpecContext:
         self.phase = phase
         # If items are not provided, we might want to take all items from the order groups
         if items is None:
-            self.items = OrderItem.objects.filter(group__order=order)
+            from apps.orders.models import OrderItemsGroup
+            self.items = list(
+                OrderItem.objects.filter(group__order=order)
+                .exclude(
+                    group__production_state__in=[
+                        OrderItemsGroup.ProductionState.WAITING,
+                        OrderItemsGroup.ProductionState.CANCELED,
+                    ]
+                )
+            )
         else:
             self.items = items
 

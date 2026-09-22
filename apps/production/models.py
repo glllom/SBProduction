@@ -110,6 +110,12 @@ class BOM(models.Model):
                                verbose_name='צירים (Hinges)')
     additional = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+',
                                         verbose_name='תוספות (Additional)')
+    required_customizers = models.ManyToManyField(
+        'catalog.Customizer',
+        blank=True,
+        related_name='required_for_boms',
+        verbose_name='קסטומייזרים חובה'
+    )
 
     cut_coefficients = models.JSONField(
         default=dict,
@@ -410,3 +416,50 @@ class ProductionRouteStep(models.Model):
 
     def __str__(self):
         return f"{self.order}: {self.station.name}"
+
+
+class OrderSpecificationSnapshot(models.Model):
+    """
+    Stores historical snapshots of order specifications at key milestones
+    (e.g., Phase 1, Phase 2, Phase 2 Completion).
+    """
+
+    class SnapshotType(models.TextChoices):
+        PHASE1 = 'PHASE1', 'שלב א (משקופים)'
+        PHASE2 = 'PHASE2', 'שלב ב (דלתות)'
+        PHASE2_COMPLETION = 'PHASE2_COMPLETION', 'השלמות שלב ב'
+
+    order = models.ForeignKey(
+        'orders.Order',
+        on_delete=models.CASCADE,
+        related_name='specification_snapshots',
+        verbose_name='הזמנה'
+    )
+    snapshot_type = models.CharField(
+        max_length=30,
+        choices=SnapshotType.choices,
+        default=SnapshotType.PHASE1,
+        verbose_name='סוג סנאפשוט'
+    )
+    spec_data = models.JSONField(
+        verbose_name='נתוני מפרט (JSON)'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='זמן יצירה'
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='נוצר על ידי'
+    )
+
+    class Meta:
+        verbose_name = 'סנאפשוט מפרט הזמנה'
+        verbose_name_plural = 'סנאפשוטים של מפרטי הזמנות'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"סנאפשוט {self.get_snapshot_type_display()} - הזמנה {self.order.order_number} ({self.created_at.strftime('%d/%m/%Y %H:%M')})"

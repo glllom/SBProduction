@@ -54,10 +54,10 @@ class CustomizerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customizer
         fields = [
-            'id', 'code', 'name', 'description', 'tag', 'hardware',
-            'par1_label', 'par1_value', 'par1_hint',
-            'par2_label', 'par2_value', 'par2_hint',
-            'par3_label', 'par3_value', 'par3_hint',
-            'par4_label', 'par4_value', 'par4_hint',
-            'par5_label', 'par5_value', 'par5_hint'
+            'id', 'code', 'name', 'description', 'tag', 'hardware', 'is_required',
+            'par1_label', 'par1_required', 'par1_value', 'par1_hint',
+            'par2_label', 'par2_required', 'par2_value', 'par2_hint',
+            'par3_label', 'par3_required', 'par3_value', 'par3_hint',
+            'par4_label', 'par4_required', 'par4_value', 'par4_hint',
+            'par5_label', 'par5_required', 'par5_value', 'par5_hint'
         ]

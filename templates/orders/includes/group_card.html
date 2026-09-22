@@ -8,89 +8,140 @@
      data-group-details="{{ group.product.product_family.name }} / {{ group.series.name }}">
     <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
         <div>
-            <h5 class="mb-0 fw-bold text-primary">
+            <h5 class="mb-0 fw-bold text-primary d-flex align-items-center flex-wrap gap-2">
                 {{ group.product.name }}
                 {% if group.is_split_installation %}
-                    <span class="badge bg-info-subtle text-info ms-2" style="font-size: 0.7rem">התקנה מפוצלת (שלב א)</span>
+                    <span class="badge bg-info-subtle text-info" style="font-size: 0.75rem">התקנה מפוצלת (שלב א)</span>
+                {% endif %}
+                {% if group.production_state == 'WAITING' %}
+                    <span class="badge bg-warning-subtle text-warning border border-warning"
+                          style="font-size: 0.75rem">
+                        <i class="bi bi-hourglass-split me-1"></i>ממתין
+                    </span>
+                {% elif group.production_state == 'IN_PRODUCTION' %}
+                    <span class="badge bg-primary-subtle text-primary border border-primary"
+                          style="font-size: 0.75rem">
+                        <i class="bi bi-gear-wide-connected me-1"></i>בייצור
+                    </span>
+                {% elif group.production_state == 'COMPLETED' %}
+                    <span class="badge bg-success-subtle text-success border border-success"
+                          style="font-size: 0.75rem">
+                        <i class="bi bi-check2-all me-1"></i>הושלם
+                    </span>
                 {% endif %}
             </h5>
             <small class="text-muted">כמות דלתות: {{ group.quantity }}</small>
         </div>
-        {% if order.status == 'NEW' or user.is_admin_user %}
-            <div class="dropdown">
-                <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
-                    <i class="bi bi-three-dots-vertical"></i>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-                    <li>
-                        <button class="dropdown-item btn-edit-group"
-                                data-bs-toggle="modal"
-                                data-bs-target="#groupModal"
-                                data-group-id="{{ group.id }}"
-                                data-edit-url="{% url 'group-edit' group.id %}"
-                                data-product-type="{{ group.product.product_family.product_type_id }}"
-                                data-product-family="{{ group.product.product_family_id }}"
-                                data-series="{{ group.series_id|default:'' }}"
-                                data-front="{{ group.front_id|default:'' }}"
-                                data-basic-color-frames="{{ group.basic_color_frames_id|default:'' }}"
-                                data-quantity="{{ group.quantity }}"
-                                data-panel-paint-option="{{ group.panel_paint_option }}"
-                                data-color-panels="{{ group.color_panels|default:'' }}"
-                                data-frame-paint-option="{{ group.frame_paint_option }}"
-                                data-color-frames="{{ group.color_frames|default:'' }}"
-                                data-product-id="{{ group.product_id }}"
-                                data-product-name="{{ group.product.name }}"
-                                data-product-code="{{ group.product.code }}"
-                                data-is-split="{{ group.is_split_installation|yesno:'true,false' }}"
-                                data-comments="{{ group.comments|default:'' }}">
-                            <i class="bi bi-pencil me-2 text-primary"></i>ערוך קבוצה
-                        </button>
-                    </li>
-                    <li>
-                        <form action="{% url 'group-duplicate' group.id %}" method="post">
-                            {% csrf_token %}
-                            <button type="submit" class="dropdown-item">
-                                <i class="bi bi-copy me-2 text-info"></i>לשכפל קבוצה
+        <div class="d-flex align-items-center gap-2">
+            {% if group.production_state == 'COMPLETED' and order.status in 'PHASE2_READY,READY,COMPLETED,COMPLETION_PRODUCTION' %}
+                <form action="{% url 'production:group-toggle-state' order.pk group.id %}"
+                      method="post"
+                      class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="state" value="WAITING">
+                    <button type="submit"
+                            class="btn btn-outline-warning btn-sm"
+                            title="הפשרת קבוצה לייצור השלמות">
+                        <i class="bi bi-arrow-clockwise me-1"></i>הפשר להשלמות
+                    </button>
+                </form>
+            {% endif %}
+            {% if order.status == 'NEW' or user.is_admin_user or order.status in 'PHASE2_READY,READY,COMPLETED,COMPLETION_PRODUCTION' %}
+                <div class="dropdown">
+                    <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                        <li>
+                            <button class="dropdown-item btn-edit-group"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#groupModal"
+                                    data-group-id="{{ group.id }}"
+                                    data-edit-url="{% url 'group-edit' group.id %}"
+                                    data-product-type="{{ group.product.product_family.product_type_id }}"
+                                    data-product-family="{{ group.product.product_family_id }}"
+                                    data-series="{{ group.series_id|default:'' }}"
+                                    data-front="{{ group.front_id|default:'' }}"
+                                    data-basic-color-frames="{{ group.basic_color_frames_id|default:'' }}"
+                                    data-quantity="{{ group.quantity }}"
+                                    data-panel-paint-option="{{ group.panel_paint_option }}"
+                                    data-color-panels="{{ group.color_panels|default:'' }}"
+                                    data-frame-paint-option="{{ group.frame_paint_option }}"
+                                    data-color-frames="{{ group.color_frames|default:'' }}"
+                                    data-product-id="{{ group.product_id }}"
+                                    data-product-name="{{ group.product.name }}"
+                                    data-product-code="{{ group.product.code }}"
+                                    data-is-split="{{ group.is_split_installation|yesno:'true,false' }}"
+                                    data-comments="{{ group.comments|default:'' }}">
+                                <i class="bi bi-pencil me-2 text-primary"></i>ערוך קבוצה
                             </button>
-                        </form>
-                    </li>
-                    <li>
-                        <hr class="dropdown-divider">
-                    </li>
-                    <li>
-                        <button type="button"
-                                class="dropdown-item btn-open-save-spec"
-                                data-group-id="{{ group.id }}"
-                                data-group-name="{{ group.product.name }}"
-                                data-group-details="{{ group.product.product_family.name }} / {{ group.series.name|default:'סטנדרט' }}"
-                                data-group-qty="{{ group.quantity }}">
-                            <i class="bi bi-bookmark-plus me-2 text-success"></i>לשמור מפרט
-                        </button>
-                    </li>
-                    <li>
-                        <button type="button"
-                                class="dropdown-item btn-open-load-spec"
-                                data-group-id="{{ group.id }}"
-                                data-group-name="{{ group.product.name }}">
-                            <i class="bi bi-box-arrow-in-down me-2 text-warning"></i>טען מפרט
-                        </button>
-                    </li>
-                    <li>
-                        <hr class="dropdown-divider">
-                    </li>
-                    <li>
-                        <form action="{% url 'group-delete' group.id %}"
-                              method="post"
-                              onsubmit="return confirm('האם אתה בטוח שברצונך למחוק קבוצה זו?');">
-                            {% csrf_token %}
-                            <button type="submit" class="dropdown-item text-danger">
-                                <i class="bi bi-trash me-2"></i>מחק קבוצה
+                        </li>
+                        <li>
+                            <form action="{% url 'group-duplicate' group.id %}" method="post">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item">
+                                    <i class="bi bi-copy me-2 text-info"></i>לשכפל קבוצה
+                                </button>
+                            </form>
+                        </li>
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li>
+                            <form action="{% url 'production:group-toggle-state' order.pk group.id %}"
+                                  method="post">
+                                {% csrf_token %}
+                                {% if group.production_state == 'COMPLETED' %}
+                                    <input type="hidden" name="state" value="WAITING">
+                                    <button type="submit" class="dropdown-item text-warning">
+                                        <i class="bi bi-unlock me-2"></i>הפשר קבוצה (העבר לממתין)
+                                    </button>
+                                {% else %}
+                                    <input type="hidden" name="state" value="COMPLETED">
+                                    <button type="submit" class="dropdown-item text-success">
+                                        <i class="bi bi-check-circle me-2"></i>סמן כהושלם
+                                    </button>
+                                {% endif %}
+                            </form>
+                        </li>
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li>
+                            <button type="button"
+                                    class="dropdown-item btn-open-save-spec"
+                                    data-group-id="{{ group.id }}"
+                                    data-group-name="{{ group.product.name }}"
+                                    data-group-details="{{ group.product.product_family.name }} / {{ group.series.name|default:'סטנדרט' }}"
+                                    data-group-qty="{{ group.quantity }}">
+                                <i class="bi bi-bookmark-plus me-2 text-success"></i>לשמור מפרט
                             </button>
-                        </form>
-                    </li>
-                </ul>
-            </div>
-        {% endif %}
+                        </li>
+                        <li>
+                            <button type="button"
+                                    class="dropdown-item btn-open-load-spec"
+                                    data-group-id="{{ group.id }}"
+                                    data-group-name="{{ group.product.name }}">
+                                <i class="bi bi-box-arrow-in-down me-2 text-warning"></i>טען מפרט
+                            </button>
+                        </li>
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li>
+                            <form action="{% url 'group-delete' group.id %}"
+                                  method="post"
+                                  onsubmit="return confirm('האם אתה בטוח שברצונך למחוק קבוצה זו?');">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item text-danger">
+                                    <i class="bi bi-trash me-2"></i>מחק קבוצה
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
     </div>
     <div class="card-body p-0">
         <!-- Nav tabs -->

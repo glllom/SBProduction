@@ -117,7 +117,7 @@ class BOMInline(admin.StackedInline):
                      'profile1', 'profile2', 'profile3',
                      'other1', 'other2', 'other3', 'other4', 'other5',
                      'lock', 'hinges')
-    filter_horizontal = ('additional',)
+    filter_horizontal = ('additional', 'required_customizers')
     fieldsets = (
         ('Materials (חומרים)', {
             'fields': (
@@ -141,7 +141,7 @@ class BOMInline(admin.StackedInline):
             )
         }),
         ('Hardware (פרזול)', {
-            'fields': ('lock', 'hinges', 'additional')
+            'fields': ('lock', 'hinges', 'additional', 'required_customizers')
         }),
         ('Technological Parameters (פרמטרים טכנולוגיים)', {
             'fields': ('cut_coefficients',)
@@ -161,6 +161,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = ('product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name')
     raw_id_fields = ('parent_model',)
+    filter_horizontal = ('required_customizers',)
     inlines = [BOMInline, ProductTechnicalDataInline, ProductionRouteModelInline]
 
 
@@ -175,6 +176,7 @@ class CustomizerAdmin(admin.ModelAdmin):
         "code",
         "name",
         "tag",
+        "is_required",
         "active",
         "hardware",
     )
@@ -182,6 +184,7 @@ class CustomizerAdmin(admin.ModelAdmin):
     # Quick filter on the right
     list_filter = (
         "active",
+        "is_required",
         "tag",
         "product_types",
         "product_families",
@@ -201,7 +204,7 @@ class CustomizerAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Основная информация",
-            {"fields": ("code", "name", "description", "active", "hardware")},
+            {"fields": ("code", "name", "description", "is_required", "active", "hardware")},
         ),
         (
             "Привязка к каталогу",
@@ -229,35 +232,35 @@ class CustomizerAdmin(admin.ModelAdmin):
         (
             "Параметр 1",
             {
-                "fields": ("par1_label", 'par1_options', "par1_value", "par1_hint"),
+                "fields": ("par1_label", "par1_required", 'par1_options', "par1_value", "par1_hint"),
                 "classes": ("collapse",),
             },
         ),
         (
             "Параметр 2",
             {
-                "fields": ("par2_label", 'par2_options', "par2_value", "par2_hint"),
+                "fields": ("par2_label", "par2_required", 'par2_options', "par2_value", "par2_hint"),
                 "classes": ("collapse",),
             },
         ),
         (
             "Параметр 3",
             {
-                "fields": ("par3_label", 'par3_options', "par3_value", "par3_hint"),
+                "fields": ("par3_label", "par3_required", 'par3_options', "par3_value", "par3_hint"),
                 "classes": ("collapse",),
             },
         ),
         (
             "Параметр 4",
             {
-                "fields": ("par4_label", 'par4_options', "par4_value", "par4_hint"),
+                "fields": ("par4_label", "par4_required", 'par4_options', "par4_value", "par4_hint"),
                 "classes": ("collapse",),
             },
         ),
         (
             "Параметр 5",
             {
-                "fields": ("par5_label", 'par5_options', "par5_value", "par5_hint"),
+                "fields": ("par5_label", "par5_required", 'par5_options', "par5_value", "par5_hint"),
                 "classes": ("collapse",),
             },
         ),

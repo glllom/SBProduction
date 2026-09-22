@@ -326,6 +326,12 @@ class ProductModel(models.Model):
         related_name='derived_models',
         verbose_name='דגם אב'
     )
+    required_customizers = models.ManyToManyField(
+        'Customizer',
+        blank=True,
+        related_name='required_for_products',
+        verbose_name='קסטומייזרים חובה'
+    )
 
     class Meta:
         verbose_name = 'מוצר'
@@ -400,6 +406,41 @@ class ProductModel(models.Model):
             id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(),
             active=True)
 
+    def get_required_customizers(self):
+        """
+        Returns QuerySet of required customizers for this product model.
+        Combines:
+        - ProductModel's own required_customizers
+        - Effective BOM's required_customizers
+        - Active Customizers with is_required=True that are scoped to this product or global
+        """
+        from django.db.models import Q
+        direct_ids = set()
+        if self.pk:
+            direct_ids.update(self.required_customizers.filter(active=True).values_list('id', flat=True))
+
+        bom = self.effective_bom
+        if bom and hasattr(bom, 'required_customizers'):
+            direct_ids.update(bom.required_customizers.filter(active=True).values_list('id', flat=True))
+
+        q_model = Q(product_models=self)
+        if self.parent_model_id:
+            q_model |= Q(product_models_id=self.parent_model_id)
+
+        q_family = Q(product_families=self.product_family_id)
+        q_type = Q(product_types=self.product_family.product_type_id)
+        q_global = Q(product_models__isnull=True, product_families__isnull=True, product_types__isnull=True)
+
+        req_scoped = Customizer.objects.filter(
+            active=True,
+            is_required=True
+        ).filter(
+            q_model | q_family | q_type | q_global
+        ).values_list('id', flat=True)
+
+        all_ids = direct_ids.union(set(req_scoped))
+        return Customizer.objects.filter(id__in=all_ids, active=True).distinct()
+
 
 class Customizer(models.Model):
     # --- Main identifiers ---
@@ -416,6 +457,11 @@ class Customizer(models.Model):
     )
     active = models.BooleanField(
         default=True, verbose_name="פעיל", db_index=True
+    )
+    is_required = models.BooleanField(
+        default=False,
+        verbose_name="חובה (אוטומטי לקבוצה)",
+        help_text="אם מסומן, קסטומייזר זה יצורף אוטומטית לקבוצה ויידרש במעבר לייצור",
     )
 
     # --- Catalog hierarchy link (Optional / Nullable) ---
@@ -456,12 +502,16 @@ class Customizer(models.Model):
         help_text="מזהה אסטרטגיית עיבוד בקוד",
     )
 
-    # --- Parameters 1..4 (Labels, Default Values, Hints) ---
+    # --- Parameters 1..5 (Labels, Required Flags, Default Values, Hints) ---
     par1_label = models.CharField(
         max_length=100,
         blank=True,
         null=True,
         verbose_name="פרמטר 1: תווית",
+    )
+    par1_required = models.BooleanField(
+        default=False,
+        verbose_name="פרמטר 1: שדה חובה",
     )
     par1_value = models.CharField(
         max_length=255,
@@ -482,6 +532,10 @@ class Customizer(models.Model):
         null=True,
         verbose_name="פרמטר 2: תווית",
     )
+    par2_required = models.BooleanField(
+        default=False,
+        verbose_name="פרמטר 2: שדה חובה",
+    )
     par2_value = models.CharField(
         max_length=255,
         blank=True,
@@ -500,6 +554,10 @@ class Customizer(models.Model):
         blank=True,
         null=True,
         verbose_name="פרמטר 3: תווית",
+    )
+    par3_required = models.BooleanField(
+        default=False,
+        verbose_name="פרמטר 3: שדה חובה",
     )
     par3_value = models.CharField(
         max_length=255,
@@ -520,6 +578,10 @@ class Customizer(models.Model):
         null=True,
         verbose_name="פרמטר 4: תווית",
     )
+    par4_required = models.BooleanField(
+        default=False,
+        verbose_name="פרמטר 4: שדה חובה",
+    )
     par4_value = models.CharField(
         max_length=255,
         blank=True,
@@ -539,6 +601,10 @@ class Customizer(models.Model):
         null=True,
         verbose_name="פרמטר 5: תווית",
     )
+    par5_required = models.BooleanField(
+        default=False,
+        verbose_name="פרמטר 5: שדה חובה",
+    )
     par5_value = models.CharField(
         max_length=255,
         blank=True,
@@ -549,7 +615,7 @@ class Customizer(models.Model):
         max_length=255,
         blank=True,
         null=True,
-        verbose_name="פרמטר5: רמז",
+        verbose_name="פרמטר 5: רמז",
     )
 
     par1_options = models.TextField(

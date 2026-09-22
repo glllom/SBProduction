@@ -7,29 +7,35 @@ class OrderItemsGroupCustomizerSerializer(serializers.ModelSerializer):
     customizer_name = serializers.ReadOnlyField(source='customizer.name')
     customizer_code = serializers.ReadOnlyField(source='customizer.code')
     customizer_description = serializers.ReadOnlyField(source='customizer.description')
+    customizer_is_required = serializers.ReadOnlyField(source='customizer.is_required')
 
     # We also need labels and hints to show in the UI
     par1_label = serializers.ReadOnlyField(source='customizer.par1_label')
+    par1_required = serializers.ReadOnlyField(source='customizer.par1_required')
     par1_hint = serializers.ReadOnlyField(source='customizer.par1_hint')
     par1_default_value = serializers.ReadOnlyField(source='customizer.par1_value')
     par1_options = serializers.SerializerMethodField()
 
     par2_label = serializers.ReadOnlyField(source='customizer.par2_label')
+    par2_required = serializers.ReadOnlyField(source='customizer.par2_required')
     par2_hint = serializers.ReadOnlyField(source='customizer.par2_hint')
     par2_default_value = serializers.ReadOnlyField(source='customizer.par2_value')
     par2_options = serializers.SerializerMethodField()
 
     par3_label = serializers.ReadOnlyField(source='customizer.par3_label')
+    par3_required = serializers.ReadOnlyField(source='customizer.par3_required')
     par3_hint = serializers.ReadOnlyField(source='customizer.par3_hint')
     par3_default_value = serializers.ReadOnlyField(source='customizer.par3_value')
     par3_options = serializers.SerializerMethodField()
 
     par4_label = serializers.ReadOnlyField(source='customizer.par4_label')
+    par4_required = serializers.ReadOnlyField(source='customizer.par4_required')
     par4_hint = serializers.ReadOnlyField(source='customizer.par4_hint')
     par4_default_value = serializers.ReadOnlyField(source='customizer.par4_value')
     par4_options = serializers.SerializerMethodField()
 
     par5_label = serializers.ReadOnlyField(source='customizer.par5_label')
+    par5_required = serializers.ReadOnlyField(source='customizer.par5_required')
     par5_hint = serializers.ReadOnlyField(source='customizer.par5_hint')
     par5_default_value = serializers.ReadOnlyField(source='customizer.par5_value')
     par5_options = serializers.SerializerMethodField()
@@ -38,12 +44,13 @@ class OrderItemsGroupCustomizerSerializer(serializers.ModelSerializer):
         model = OrderItemsGroupCustomizer
         fields = [
             'id', 'group', 'customizer', 'customizer_name', 'customizer_code', 'customizer_description',
+            'customizer_is_required',
             'par1', 'par2', 'par3', 'par4', 'par5',
-            'par1_label', 'par1_hint', 'par1_default_value', 'par1_options',
-            'par2_label', 'par2_hint', 'par2_default_value', 'par2_options',
-            'par3_label', 'par3_hint', 'par3_default_value', 'par3_options',
-            'par4_label', 'par4_hint', 'par4_default_value', 'par4_options',
-            'par5_label', 'par5_hint', 'par5_default_value', 'par5_options',
+            'par1_label', 'par1_required', 'par1_hint', 'par1_default_value', 'par1_options',
+            'par2_label', 'par2_required', 'par2_hint', 'par2_default_value', 'par2_options',
+            'par3_label', 'par3_required', 'par3_hint', 'par3_default_value', 'par3_options',
+            'par4_label', 'par4_required', 'par4_hint', 'par4_default_value', 'par4_options',
+            'par5_label', 'par5_required', 'par5_hint', 'par5_default_value', 'par5_options',
         ]
 
     def get_par1_options(self, obj):
@@ -71,24 +78,30 @@ class GroupSpecificationCustomizerSerializer(serializers.ModelSerializer):
     customizer_name = serializers.ReadOnlyField(source='customizer.name')
     customizer_code = serializers.ReadOnlyField(source='customizer.code')
     customizer_description = serializers.ReadOnlyField(source='customizer.description')
-    
+    customizer_is_required = serializers.ReadOnlyField(source='customizer.is_required')
+
     par1_label = serializers.ReadOnlyField(source='customizer.par1_label')
+    par1_required = serializers.ReadOnlyField(source='customizer.par1_required')
     par1_default_value = serializers.ReadOnlyField(source='customizer.par1_value')
     par1_options = serializers.SerializerMethodField()
-    
+
     par2_label = serializers.ReadOnlyField(source='customizer.par2_label')
+    par2_required = serializers.ReadOnlyField(source='customizer.par2_required')
     par2_default_value = serializers.ReadOnlyField(source='customizer.par2_value')
     par2_options = serializers.SerializerMethodField()
-    
+
     par3_label = serializers.ReadOnlyField(source='customizer.par3_label')
+    par3_required = serializers.ReadOnlyField(source='customizer.par3_required')
     par3_default_value = serializers.ReadOnlyField(source='customizer.par3_value')
     par3_options = serializers.SerializerMethodField()
-    
+
     par4_label = serializers.ReadOnlyField(source='customizer.par4_label')
+    par4_required = serializers.ReadOnlyField(source='customizer.par4_required')
     par4_default_value = serializers.ReadOnlyField(source='customizer.par4_value')
     par4_options = serializers.SerializerMethodField()
-    
+
     par5_label = serializers.ReadOnlyField(source='customizer.par5_label')
+    par5_required = serializers.ReadOnlyField(source='customizer.par5_required')
     par5_default_value = serializers.ReadOnlyField(source='customizer.par5_value')
     par5_options = serializers.SerializerMethodField()
 
@@ -96,12 +109,13 @@ class GroupSpecificationCustomizerSerializer(serializers.ModelSerializer):
         model = GroupSpecificationCustomizer
         fields = [
             'id', 'customizer', 'customizer_name', 'customizer_code', 'customizer_description',
+            'customizer_is_required',
             'par1', 'par2', 'par3', 'par4', 'par5',
-            'par1_label', 'par1_default_value', 'par1_options',
-            'par2_label', 'par2_default_value', 'par2_options',
-            'par3_label', 'par3_default_value', 'par3_options',
-            'par4_label', 'par4_default_value', 'par4_options',
-            'par5_label', 'par5_default_value', 'par5_options',
+            'par1_label', 'par1_required', 'par1_default_value', 'par1_options',
+            'par2_label', 'par2_required', 'par2_default_value', 'par2_options',
+            'par3_label', 'par3_required', 'par3_default_value', 'par3_options',
+            'par4_label', 'par4_required', 'par4_default_value', 'par4_options',
+            'par5_label', 'par5_required', 'par5_default_value', 'par5_options',
         ]
 
     def get_par1_options(self, obj):

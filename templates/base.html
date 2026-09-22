@@ -31,10 +31,68 @@
             {% if user.is_authenticated %}
                 <!-- Sidebar -->
                 <nav id="sidebar">
-                    <div class="sidebar-header p-1 bg-dark">
-                        <span class="border border-2 border-dark bg-white rounded-2 w-100">
-                            <img src="{% static 'logo_large.jpg' %}" alt="SB Production Logo">
-                        </span>
+                    <div class="sidebar-header top-navbar border-bottom border-secondary border-opacity-25 bg-primary">
+                        <div class="dropdown container-fluid">
+                            <a href="#"
+                               class="d-flex justify-content-between align-items-center text-white text-decoration-none dropdown-toggle w-100"
+                               id="userDropdownSidebar"
+                               data-bs-toggle="dropdown"
+                               aria-expanded="false">
+                                <!-- Company Logo -->
+                                <div class="flex-shrink-0 bg-white rounded-2 d-flex align-items-center justify-content-center shadow-sm"
+                                     style="width: 44px;
+                                            height: 44px">
+                                    <img src="{% static 'logo_large.jpg' %}"
+                                         alt="SB Doors"
+                                         class="img-fluid rounded"
+                                         style="max-height: 100%;
+                                                object-fit: contain">
+                                </div>
+                                <!-- User Info -->
+                                <div class="d-flex flex-column text-end overflow-hidden flex-grow-1">
+                                    <span class="fw-semibold text-truncate text-light small">{{ user.get_full_name|default:user.username }}</span>
+                                    <span class="text-white-50" style="font-size: 0.72rem;">
+                                        {% if user.is_superuser %}
+                                            מנהל מערכת
+                                        {% elif user.is_staff %}
+                                            צוות ייצור
+                                        {% else %}
+                                            משתמש מחובר
+                                        {% endif %}
+                                    </span>
+                                </div>
+                            </a>
+                            <!-- User Menu -->
+                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow border-0 text-end w-100 mt-2"
+                                aria-labelledby="userDropdownSidebar">
+                                <li>
+                                    <h6 class="dropdown-header text-white-50 small mb-0">{{ user.username }}</h6>
+                                </li>
+                                <li>
+                                    <hr class="dropdown-divider my-1 border-secondary opacity-50">
+                                </li>
+                                <li>
+                                    <a class="dropdown-item py-2" href="#"><i class="bi bi-person ms-2"></i> פרופיל</a>
+                                </li>
+                                {% if user.is_staff %}
+                                    <li>
+                                        <a class="dropdown-item py-2" href="/admin/"><i class="bi bi-shield-lock ms-2"></i> פאנל
+                                        ניהול</a>
+                                    </li>
+                                {% endif %}
+                                <li>
+                                    <hr class="dropdown-divider my-1 border-secondary opacity-50">
+                                </li>
+                                <li>
+                                    <form action="{% url 'logout' %}" method="post">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item py-2 text-danger">
+                                            <i class="bi bi-box-arrow-right ms-2"></i> יציאה
+                                        </button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                     <ul class="list-unstyled components">
                         <li class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
@@ -90,38 +148,6 @@
                             {% block navbar_extra %}{% endblock %}
                         {% endif %}
                     </div>
-                    <div class="d-flex align-items-center">
-                        {% if user.is_authenticated %}
-                            <div class="dropdown">
-                                <a class="nav-link dropdown-toggle d-flex align-items-center"
-                                   href="#"
-                                   role="button"
-                                   data-bs-toggle="dropdown">
-                                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center ms-2"
-                                         style="width: 32px;
-                                                height: 32px;
-                                                font-size: 0.8rem">{{ user.username|slice:":1"|upper }}</div>
-                                    <span class="d-none d-md-inline">{{ user.username }}</span>
-                                </a>
-                                <ul class="dropdown-menu dropdown-menu-end shadow border-0 text-end">
-                                    <li><a class="dropdown-item" href="#"><i class="bi bi-person ms-2"></i> פרופיל</a></li>
-                                    <li>
-                                        <hr class="dropdown-divider">
-                                    </li>
-                                    <li>
-                                        <form action="{% url 'logout' %}" method="post">
-                                            {% csrf_token %}
-                                            <button type="submit" class="dropdown-item text-danger">
-                                                <i class="bi bi-box-arrow-right ms-2"></i> יציאה
-                                            </button>
-                                        </form>
-                                    </li>
-                                </ul>
-                            </div>
-                        {% else %}
-                            <a href="{% url 'login' %}" class="btn btn-primary btn-sm">כניסה</a>
-                        {% endif %}
-                    </div>
                 </nav>
                 <div class="main-content">
                     {% if messages %}
@@ -147,7 +173,7 @@
         <!-- Custom Utils -->
         <script src="{% static 'js/float-validation.js' %}"></script>
         <!-- Select2 JS -->
-        <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"></script>
         <script>
     document.addEventListener('DOMContentLoaded', function () {
         const sidebarCollapse = document.getElementById('sidebarCollapse');
@@ -165,20 +191,16 @@
      */
     function initTooltips(container) {
         const root = container || document;
-        // Select elements with tooltip attributes, excluding options and internal select2 elements
         const elements = root.querySelectorAll('[data-bs-toggle="tooltip"], [data-tooltip]');
 
         elements.forEach(function (el) {
-            // Do not initialize tooltips on <option> or internal Select2 elements
             if (el.tagName === 'OPTION' || el.closest('.select2') || el.closest('.select2-container')) return;
 
-            // If element is a hidden select managed by Select2, skip it
             if (el.tagName === 'SELECT' && el.classList.contains('select2-hidden-accessible')) return;
 
             const titleText = el.getAttribute('data-bs-title') || el.getAttribute('title') || el.getAttribute('data-tooltip') || el.getAttribute('data-description');
             if (!titleText || !titleText.trim()) return;
 
-            // Move native title to data-bs-title to avoid native tooltip overlapping
             if (el.hasAttribute('title')) {
                 el.setAttribute('data-bs-title', el.getAttribute('title'));
                 el.removeAttribute('title');
@@ -235,7 +257,6 @@
                         templateSelection: formatSelectSelection
                     };
 
-                    // Fix for Select2 in Bootstrap Modals
                     const modal = $(this).closest('.modal');
                     if (modal.length) {
                         options.dropdownParent = modal;
@@ -251,13 +272,11 @@
         initSelect2(document);
         initTooltips(document);
 
-        // Re-initialize for Bootstrap Modals
         $('.modal').on('shown.bs.modal', function () {
             initSelect2(this);
             initTooltips(this);
         });
 
-        // Automatically hide tooltip when the trigger element is clicked
         $(document).on('click', '[data-bs-toggle="tooltip"]', function () {
             const inst = bootstrap.Tooltip.getInstance(this);
             if (inst) {

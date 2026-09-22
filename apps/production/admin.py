@@ -3,8 +3,17 @@ from django.contrib import admin
 from .models import (
     ProductTechnicalData, BOM, LockStandardHeight, HingeStandardHeight,
     ProductionStation, ProductionRoute, ProductionRouteStep,
-    CustomizerProductionStation
+    CustomizerProductionStation, OrderSpecificationSnapshot
 )
+
+
+@admin.register(OrderSpecificationSnapshot)
+class OrderSpecificationSnapshotAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'snapshot_type', 'created_at', 'created_by')
+    list_filter = ('snapshot_type', 'created_at')
+    search_fields = ('order__order_number', 'order__customer')
+    readonly_fields = ('created_at',)
+    raw_id_fields = ('order', 'created_by')
 
 
 @admin.register(ProductTechnicalData)
@@ -21,7 +30,7 @@ class BOMAdmin(admin.ModelAdmin):
                      'profile1', 'profile2', 'profile3',
                      'other1', 'other2', 'other3', 'other4', 'other5',
                      'lock', 'hinges')
-    filter_horizontal = ('additional',)
+    filter_horizontal = ('additional', 'required_customizers')
 
     fieldsets = (
         (None, {
@@ -48,8 +57,8 @@ class BOMAdmin(admin.ModelAdmin):
                 ('other5', 'other5_consumption'),
             )
         }),
-        ('Hardware (פרзול)', {
-            'fields': ('lock', 'hinges', 'additional')
+        ('Hardware (פרזול)', {
+            'fields': ('lock', 'hinges', 'additional', 'required_customizers')
         }),
         ('Technological Parameters (פרמטרים טכנולוגיים)', {
             'fields': ('cut_coefficients',)

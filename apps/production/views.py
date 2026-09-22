@@ -1,15 +1,21 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import redirect
 from django.shortcuts import render, get_object_or_404
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.orders.models import Order, OrderStatus, OrderChangeLog, OrderItem
+from apps.orders.models import Order, OrderStatus, OrderChangeLog, OrderItem, OrderItemsGroup
 from .decorators import require_order_spec
 from .models import ProductionStation
-from .services import OrderProductionService, ProductionDataService, TechnicalSpecService, OrderValidationError
+from .services import (
+    OrderProductionService,
+    ProductionDataService,
+    TechnicalSpecService,
+    OrderValidationError,
+    OrderValidationService,
+)
 from .usb_sync import run_usb_sync
 
 
@@ -33,7 +39,16 @@ def order_transfer_to_production(request, pk):
 
         if request.method == 'POST':
             change_logs = []
-            items_by_id = {item.id: item for item in OrderItem.objects.filter(group__order=order)}
+            items_by_id = {
+                item.id: item for item in OrderItem.objects.filter(
+                    group__order=order
+                ).exclude(
+                    group__production_state__in=[
+                        OrderItemsGroup.ProductionState.WAITING,
+                        OrderItemsGroup.ProductionState.CANCELED,
+                    ]
+                )
+            }
 
             for item_spec in spec_json.get('items', []):
                 item_id = item_spec.get('item_id')
@@ -48,7 +63,8 @@ def order_transfer_to_production(request, pk):
                 reduction_h = float(item_spec.get('frame_inner_height_reduction') or 0)
                 reduction_w = float(item_spec.get('frame_inner_width_reduction') or 0)
 
-                for field, reduction, label in [('height', reduction_h, 'Height'), ('width', reduction_w, 'Width'), ('wall', 0, 'Wall')]:
+                for field, reduction, label in [('height', reduction_h, 'Height'), ('width', reduction_w, 'Width'),
+                                                ('wall', 0, 'Wall')]:
                     key = f"item_{item_id}_{field}"
                     if key in request.POST:
                         try:
@@ -66,7 +82,8 @@ def order_transfer_to_production(request, pk):
                                 change_logs.append(OrderChangeLog(
                                     order=order, user=request.user,
                                     field_name=f"Item {mark} - {log_label}",
-                                    old_value=str(round(old_val_saved + reduction, 1)) if old_val_saved is not None else "None",
+                                    old_value=str(
+                                        round(old_val_saved + reduction, 1)) if old_val_saved is not None else "None",
                                     new_value=str(round(new_inner, 1)) if new_inner is not None else "None"
                                 ))
                         except (ValueError, TypeError):
@@ -91,7 +108,8 @@ def order_transfer_to_production(request, pk):
                             change_logs.append(OrderChangeLog(
                                 order=order, user=request.user,
                                 field_name=f"Item {mark} - Lock Height (Gross)",
-                                old_value=str(round(effective_old_net - clearance, 1)) if effective_old_net is not None else "None",
+                                old_value=str(round(effective_old_net - clearance,
+                                                    1)) if effective_old_net is not None else "None",
                                 new_value=str(round(new_gross, 1)) if new_gross is not None else "None"
                             ))
                     except (ValueError, TypeError):
@@ -108,7 +126,8 @@ def order_transfer_to_production(request, pk):
                             new_gross = float(val) if val else None
                             new_net = new_gross + clearance if new_gross is not None else None
 
-                            old_net = float(getattr(order_item, field_name)) if getattr(order_item, field_name) else None
+                            old_net = float(getattr(order_item, field_name)) if getattr(order_item,
+                                                                                        field_name) else None
                             effective_old_net = old_net if old_net is not None else (
                                 spec_hinges_net[i] if len(spec_hinges_net) > i else None)
 
@@ -118,7 +137,8 @@ def order_transfer_to_production(request, pk):
                                 change_logs.append(OrderChangeLog(
                                     order=order, user=request.user,
                                     field_name=f"Item {mark} - Hinge {i + 1} (Gross)",
-                                    old_value=str(round(effective_old_net - clearance, 1)) if effective_old_net is not None else "None",
+                                    old_value=str(round(effective_old_net - clearance,
+                                                        1)) if effective_old_net is not None else "None",
                                     new_value=str(round(new_gross, 1)) if new_gross is not None else "None"
                                 ))
                         except (ValueError, TypeError):
@@ -158,8 +178,10 @@ def order_transfer_to_production(request, pk):
             # Show Inner dimensions (Gross)
             reduction_h = float(item_spec.get('frame_inner_height_reduction') or 0)
             reduction_w = float(item_spec.get('frame_inner_width_reduction') or 0)
-            item_data['width'] = (float(order_item.width) + reduction_w) if order_item.width else item_spec.get('inner_width')
-            item_data['height'] = (float(order_item.height) + reduction_h) if order_item.height else item_spec.get('inner_height')
+            item_data['width'] = (float(order_item.width) + reduction_w) if order_item.width else item_spec.get(
+                'inner_width')
+            item_data['height'] = (float(order_item.height) + reduction_h) if order_item.height else item_spec.get(
+                'inner_height')
             item_data['wall'] = float(order_item.wall or item_spec.get('wall') or 0)
 
             # Show Lock Height (Gross)
@@ -196,6 +218,47 @@ def order_transfer_to_production(request, pk):
         errors = getattr(e, 'errors', [str(e)])
         for err in errors:
             messages.error(request, err)
+    return redirect('order-detail', pk=pk)
+
+
+@login_required
+def order_transfer_to_completion_production(request, pk):
+    """
+    Transfers order to completion production (ייצור השלמות) for new / waiting groups.
+    """
+    order = get_object_or_404(Order, pk=pk)
+    try:
+        OrderProductionService.start_completion_production(order, user=request.user)
+        messages.success(request, "ההזמנה הועברה לייצור השלמות בהצלחה.")
+    except (ValueError, OrderValidationError) as e:
+        errors = getattr(e, 'errors', [str(e)])
+        for err in errors:
+            messages.error(request, err)
+    return redirect('order-detail', pk=pk)
+
+
+@login_required
+def group_toggle_state(request, pk, group_id):
+    """
+    Toggles or sets the production state of an OrderItemsGroup (e.g. unfreezing completed group back to WAITING).
+    """
+    order = get_object_or_404(Order, pk=pk)
+    group = get_object_or_404(order.groups, pk=group_id)
+    new_state = request.POST.get('state') or request.GET.get('state')
+
+    if new_state in [OrderItemsGroup.ProductionState.WAITING, OrderItemsGroup.ProductionState.IN_PRODUCTION,
+                     OrderItemsGroup.ProductionState.COMPLETED]:
+        old_state = group.production_state
+        group.production_state = new_state
+        group.save(update_fields=['production_state'])
+        messages.success(request, f"סטטוס קבוצה #{group.id} עודכן ל-{group.get_production_state_display()}.")
+        OrderChangeLog.objects.create(
+            order=order,
+            user=request.user,
+            field_name=f"Group #{group.id} production_state",
+            old_value=old_state,
+            new_value=new_state
+        )
     return redirect('order-detail', pk=pk)
 
 
@@ -373,55 +436,149 @@ def order_complete_production(request, pk):
 # === 2. Exports and Station Reports ===
 
 @login_required
-def order_production_data(request, **kwargs):
-    # TODO: Implement full code to generate production data zip file
+def order_production_data(request, pk, **kwargs):
     """
-    Will be updated to handle CNC XML export and batch report downloading.
+    Generates and downloads the ZIP archive containing CNC machine files and technical reports.
     """
-    pass
+    order = get_object_or_404(Order, pk=pk)
+    service = ProductionDataService(order)
+    try:
+        buffer = service.generate_production_zip()
+        response = HttpResponse(buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="production_data_{order.order_number}.zip"'
+        return response
+    except Exception as e:
+        messages.error(request, f"Production data generation failed: {str(e)}")
+        return redirect('order-detail', pk=pk)
 
 
 @login_required
 def station_report(request, pk):
     """
     Single entry point for all station HTML reports.
-    Dynamically resolves phase and template name based on the requested ProductionStation.
+    Supports individual station reports (e.g. ?station=FRAMES) and master print (?station=ALL).
     """
     order = get_object_or_404(Order, pk=pk)
-    station_code = request.GET.get('station')
-    station = get_object_or_404(ProductionStation, code=station_code)
+    station_code = request.GET.get('station') or request.GET.get('type')
 
-    phase = 'phase1' if station.is_phase1 else 'phase2'
+    if not station_code:
+        station_code = 'ALL'
+
+    # Determine stage label based on order status
+    if order.status in [OrderStatus.IN_PRODUCTION_PHASE1]:
+        stage_label = "שלב א'"
+    elif order.status in [OrderStatus.IN_PRODUCTION_PHASE2, OrderStatus.PHASE1_READY]:
+        stage_label = "שלב ב'"
+    else:
+        stage_label = "קומפלט"
+
+    service = ProductionDataService(order)
+
+    if station_code.upper() in ['ALL', 'IN_PRODUCTION', 'FULL', 'FULL_PRODUCTION']:
+        # Master print mode: aggregate all stations
+        stations = order.get_production_stations()
+        if not stations:
+            stations = list(ProductionStation.objects.filter(has_specification=True, active=True))
+
+        sections = []
+        for station in stations:
+            phase = 'phase1' if station.is_phase1 else 'phase2'
+            try:
+                val_res = OrderValidationService.validate_for_report(order, station=station)
+                val_res.raise_if_invalid()
+                spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
+            except Exception as e:
+                errors = getattr(e, 'errors', [str(e)])
+                return render(request, 'production/report_validation_error.html', {
+                    'order': order,
+                    'errors': errors,
+                    'validation_errors': errors,
+                    'validation_type': 'PARTIAL' if phase == 'phase1' else 'FULL',
+                    'phase': phase,
+                    'report_label': station.label or station.name or "דוחות ייצור"
+                })
+
+            filtered_items = service.get_filtered_items(station=station)
+            filtered_item_ids = [item.id for item in filtered_items]
+
+            station_spec = spec_obj.model_copy()
+            station_spec.items = [item for item in spec_obj.items if item.item_id in filtered_item_ids]
+
+            if station_spec.items or not order.groups.exists():
+                include_template = None
+                code_lower = station.code.lower() if station.code else ''
+                if code_lower in ['frames', 'alum_frames']:
+                    include_template = 'production/includes/report_alum_frames.html'
+                elif code_lower in ['doors', 'alum_doors']:
+                    include_template = 'production/includes/report_alum_doors.html'
+                elif code_lower in ['cut_sheets', 'sheets']:
+                    include_template = 'production/includes/report_cut_sheets.html'
+                elif station.template_name:
+                    base_name = station.template_name.split('/')[-1].replace('_report.html', '')
+                    include_template = f'production/includes/report_{base_name}.html'
+
+                if not include_template:
+                    include_template = 'production/includes/report_alum_frames.html'
+
+                sections.append({
+                    'station': station,
+                    'station_code': station.code,
+                    'report_label': station.label or station.name,
+                    'order_spec': station_spec,
+                    'groups_data': service.prepare_grouped_data(station_spec),
+                    'include_template': include_template,
+                })
+
+        return render(request, 'production/master_report.html', {
+            'order': order,
+            'sections': sections,
+            'stage_label': stage_label,
+            'now': timezone.now(),
+        })
+
+    # Single station report
+    station = ProductionStation.objects.filter(code=station_code).first()
+    if not station:
+        if station_code == 'PHASE1_FRAMES':
+            station = ProductionStation.objects.filter(is_phase1=True).first()
+        elif station_code == 'PHASE2_DOORS':
+            station = ProductionStation.objects.filter(code__in=['DOORS', 'PRESS']).first()
+
+    phase = 'phase1' if (station and station.is_phase1) or station_code == 'PHASE1_FRAMES' else 'phase2'
 
     try:
+        val_res = OrderValidationService.validate_for_report(order, report_type=station_code, station=station)
+        val_res.raise_if_invalid()
         spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
     except Exception as e:
         errors = getattr(e, 'errors', [str(e)])
         return render(request, 'production/report_validation_error.html', {
             'order': order,
             'errors': errors,
-            'phase': phase
+            'validation_errors': errors,
+            'validation_type': 'PARTIAL' if phase == 'phase1' else 'FULL',
+            'phase': phase,
+            'report_label': (station.label if station else (station.name if station else station_code)) or "דוח ייצור"
         })
 
-    service = ProductionDataService(order)
+    if station:
+        filtered_items = service.get_filtered_items(station=station)
+        template_name = station.template_name or 'production/alum_frames_report.html'
+        report_label = station.label or station.name
+    else:
+        filtered_items = service.get_filtered_items(report_type=station_code)
+        template_name = 'production/alum_frames_report.html'
+        report_label = station_code
 
-    # Filter items that belong to this station's route
-    filtered_items = service.get_filtered_items(station=station)
     filtered_item_ids = [item.id for item in filtered_items]
     spec_obj.items = [item for item in spec_obj.items if item.item_id in filtered_item_ids]
 
-    # Determine stage label based on order status
-    if order.status in [OrderStatus.IN_PRODUCTION_PHASE2, OrderStatus.PHASE1_READY]:
-        stage_label = "שלב ב'"
-    else:
-        stage_label = "קומפלט"
-
-    return render(request, station.template_name or 'production/alum_frames_report.html', {
+    return render(request, template_name, {
         'order': order,
         'order_spec': spec_obj,
         'spec_json': spec_obj.model_dump(by_alias=True),
         'station': station,
-        'report_label': station.label or station.name,
+        'report_label': report_label,
         'groups_data': service.prepare_grouped_data(spec_obj),
         'stage_label': stage_label,
         'now': timezone.now(),

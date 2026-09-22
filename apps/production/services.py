@@ -13,7 +13,8 @@ from django.utils import timezone
 
 from apps.orders.models import OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
 from .models import (
-    ProductionStation
+    ProductionStation,
+    OrderSpecificationSnapshot,
 )
 
 
@@ -28,6 +29,7 @@ class OrderValidationError(Exception):
 class ValidationType(models.TextChoices):
     PARTIAL = 'PARTIAL', 'Partial validation (Phase A)'
     FULL = 'FULL', 'Full validation (Phase B / Full production)'
+    COMPLETION = 'COMPLETION', 'Completion validation (Unfinished groups only)'
 
 
 @dataclass
@@ -53,7 +55,7 @@ class OrderValidationService:
     Validation service (data integrity check) for orders.
     Executed before production start, technical report generation, and CNC/ZIP file production.
 
-    Supports two validation types:
+    Supports validation types:
     1. PARTIAL (Phase A - frames in split installation):
        - Series and front/finish check for each group
        - Product model and item existence check in group
@@ -63,12 +65,16 @@ class OrderValidationService:
        - Includes all Phase A checks
        - Handle selection check
        - Paint color check when painting option is selected
+    3. COMPLETION (Delta / Unfinished groups only):
+       - Runs full validation for groups with production_state != COMPLETED.
     """
 
     @classmethod
     def validate(cls, order, validation_type: str = ValidationType.FULL) -> ValidationResult:
         if validation_type == ValidationType.PARTIAL:
             return cls.validate_partial(order)
+        elif validation_type == ValidationType.COMPLETION:
+            return cls.validate_completion(order)
         return cls.validate_full(order)
 
     @classmethod
@@ -76,7 +82,6 @@ class OrderValidationService:
         """
         Partial validation (Phase A - frames in split installation).
         """
-
         errors = cls._run_validation(order, is_full=False)
         return ValidationResult(
             is_valid=(len(errors) == 0),
@@ -97,10 +102,24 @@ class OrderValidationService:
         )
 
     @classmethod
+    def validate_completion(cls, order) -> ValidationResult:
+        """
+        Validation for completions / uncompleted groups only.
+        """
+        errors = cls._run_validation(order, is_full=True, completion_only=True)
+        return ValidationResult(
+            is_valid=(len(errors) == 0),
+            errors=errors,
+            validation_type=ValidationType.COMPLETION
+        )
+
+    @classmethod
     def validate_for_production(cls, order, phase: Optional[str] = None) -> ValidationResult:
         """
         Appropriate validation before transferring order to production.
         """
+        if order.status == OrderStatus.COMPLETION_PRODUCTION or phase == 'phase2_completion':
+            return cls.validate_completion(order)
         has_split = getattr(order, 'has_split_installation', False)
         if phase == str(order.status).upper() == 'PHASE1_PRODUCTION' or (
                 has_split and getattr(order, 'status', None) == OrderStatus.NEW):
@@ -114,12 +133,14 @@ class OrderValidationService:
         For Phase A frames report (PHASE1_FRAMES) - partial check.
         For other reports (doors, press, full frames, full production) - full check.
         """
+        if order.status == OrderStatus.COMPLETION_PRODUCTION:
+            return cls.validate_completion(order)
         if station and not station.has_specification:
             # If station doesn't require specification but we are here, do full validation
             return cls.validate_full(order)
 
         # Determine based on phase
-        if report_type == 'PHASE1_FRAMES':
+        if report_type in ['PHASE1_FRAMES', 'PHASE1_PRODUCTION'] or (station and getattr(station, 'is_phase1', False)):
             return cls.validate_partial(order)
         return cls.validate_full(order)
 
@@ -130,6 +151,8 @@ class OrderValidationService:
         """
         if phase == 'phase1':
             return cls.validate_partial(order)
+        elif phase == 'phase2_completion':
+            return cls.validate_completion(order)
         return cls.validate_full(order)
 
     @classmethod
@@ -137,13 +160,15 @@ class OrderValidationService:
         """
         Appropriate validation before production file (ZIP) generation.
         """
+        if order.status == OrderStatus.COMPLETION_PRODUCTION:
+            return cls.validate_completion(order)
         has_split = getattr(order, 'has_split_installation', False)
         if has_split and getattr(order, 'status', None) == OrderStatus.IN_PRODUCTION_PHASE1:
             return cls.validate_partial(order)
         return cls.validate_full(order)
 
     @classmethod
-    def _run_validation(cls, order, is_full: bool) -> List[str]:
+    def _run_validation(cls, order, is_full: bool, completion_only: bool = False) -> List[str]:
         errors = []
 
         if not getattr(order, 'order_number', None):
@@ -151,10 +176,23 @@ class OrderValidationService:
         if not getattr(order, 'customer', None):
             errors.append("Customer name missing")
 
-        groups = list(order.groups.all())
-        if not groups:
-            errors.append("No product groups in order")
-            return errors
+        active_groups_qs = order.groups.exclude(
+            production_state__in=[
+                OrderItemsGroup.ProductionState.WAITING,
+                OrderItemsGroup.ProductionState.CANCELED,
+            ]
+        )
+
+        if completion_only:
+            groups = [g for g in active_groups_qs if g.production_state != OrderItemsGroup.ProductionState.COMPLETED]
+            if not groups:
+                errors.append("No active or uncompleted groups found for completion production")
+                return errors
+        else:
+            groups = list(active_groups_qs)
+            if not groups:
+                errors.append("No active product groups in order")
+                return errors
 
         has_any_doors = False
 
@@ -182,7 +220,7 @@ class OrderValidationService:
                     if not group.color_panels and not getattr(order, 'color_panels', None):
                         errors.append(f"{group_label}: Special panel color selected but no panel color defined")
                 if group.frame_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
-                    if not group.basic_colormes and not getattr(order, 'color_frames', None):
+                    if not group.basic_color_frames and not getattr(order, 'color_frames', None):
                         errors.append(f"{group_label}: Special frame color selected but no frame color defined")
 
             # 4. Items in a group
@@ -223,7 +261,26 @@ class OrderValidationService:
                     if not item.direction:
                         errors.append(f"{item_label}: Opening direction not selected (In/Out)")
 
-        # 5. Handle selection check in full validation (Phase B or no split installation)
+            # 5. Required customizers and parameters check
+            required_customizers = group.product.get_required_customizers()
+            group_customizers = list(group.customizers.select_related('customizer').all())
+            group_customizers_map = {gc.customizer_id: gc for gc in group_customizers}
+
+            for req_cust in required_customizers:
+                if req_cust.id not in group_customizers_map:
+                    errors.append(f"{group_label}: Required customizer '{req_cust.name}' is missing")
+
+            for gc in group_customizers:
+                cust = gc.customizer
+                for i in range(1, 6):
+                    if getattr(cust, f'par{i}_required', False):
+                        val = getattr(gc, f'par{i}', None)
+                        if val is None or not str(val).strip():
+                            param_label = getattr(cust, f'par{i}_label') or f"Parameter {i}"
+                            errors.append(
+                                f"{group_label} - {cust.name}: Parameter '{param_label}' is required and cannot be empty")
+
+        # 6. Handle selection check in full validation (Phase B or no split installation)
         if is_full and has_any_doors:
             if not getattr(order, 'handle', None):
                 errors.append("Handle not selected for order (required for Phase B / Full production)")
@@ -238,9 +295,10 @@ class TechnicalSpecService:
     """
 
     @staticmethod
-    def get_or_build_spec(order, phase='phase1'):
+    def get_or_build_spec(order, phase='phase1', user=None):
         """
         Gets the specification from cache or builds it if invalid/missing.
+        Also persists snapshot if building fresh.
         """
         from .schemas import OrderSpec
         from .pipeline import OrderSpecPipeline
@@ -261,7 +319,6 @@ class TechnicalSpecService:
             raise OrderValidationError(f"Validation failed for {phase}", errors=res.errors)
 
         # Run SpecPipeline().execute_for_order(order, phase)
-        # Note: SpecPipeline in architect's note refers to the order-level pipeline
         pipeline = OrderSpecPipeline()
         spec_obj = pipeline.execute_for_order(order, phase=phase)
 
@@ -272,7 +329,7 @@ class TechnicalSpecService:
                 item_label = f"Item {item_spec.mark}" if item_spec.mark else f"Item #{item_spec.item_id}"
                 for err in item_spec.errors:
                     all_errors.append(f"{item_label}: {err}")
-        
+
         if all_errors:
             raise OrderValidationError(f"Specification building failed for {phase}", errors=all_errors)
 
@@ -280,6 +337,7 @@ class TechnicalSpecService:
         spec_json = spec_obj.model_dump()
 
         # Update validation flag and cache in DB
+        snapshot_type = OrderSpecificationSnapshot.SnapshotType.PHASE1 if phase == 'phase1' else OrderSpecificationSnapshot.SnapshotType.PHASE2
         if phase == 'phase1':
             order.phase1_validated = True
             order.phase1_spec_cache = spec_json
@@ -289,7 +347,77 @@ class TechnicalSpecService:
             order.phase2_spec_cache = spec_json
             order.save(update_fields=['phase2_validated', 'phase2_spec_cache'])
 
+        # Save snapshot
+        OrderSpecificationSnapshot.objects.create(
+            order=order,
+            snapshot_type=snapshot_type,
+            spec_data=spec_json,
+            created_by=user
+        )
+
         return spec_obj, spec_json
+
+    @classmethod
+    def build_completion_spec(cls, order, user=None):
+        """
+        Builds specification only for unfinished/delta groups (production_state != COMPLETED).
+        Saves snapshot of type PHASE2_COMPLETION and merges items into order.phase2_spec_cache.
+        """
+        from .pipeline import OrderSpecPipeline
+
+        res = OrderValidationService.validate_completion(order)
+        if not res.is_valid:
+            raise OrderValidationError("Validation failed for completion production", errors=res.errors)
+
+        # Delta items from non-completed groups
+        delta_items = list(OrderItem.objects.filter(
+            group__order=order
+        ).exclude(
+            group__production_state__in=[OrderItemsGroup.ProductionState.COMPLETED,
+                                         OrderItemsGroup.ProductionState.WAITING,
+                                         OrderItemsGroup.ProductionState.CANCELED]
+        ).select_related('group', 'group__product'))
+
+        if not delta_items:
+            raise OrderValidationError("No delta items found for completion production")
+
+        pipeline = OrderSpecPipeline()
+        delta_spec_obj = pipeline.execute(order, items=delta_items, phase='phase2')
+
+        all_errors = []
+        for item_spec in delta_spec_obj.items:
+            if item_spec.errors:
+                item_label = f"Item {item_spec.mark}" if item_spec.mark else f"Item #{item_spec.item_id}"
+                for err in item_spec.errors:
+                    all_errors.append(f"{item_label}: {err}")
+
+        if all_errors:
+            raise OrderValidationError("Specification building failed for completions", errors=all_errors)
+
+        delta_spec_json = delta_spec_obj.model_dump()
+
+        # Create specialized snapshot for completion
+        OrderSpecificationSnapshot.objects.create(
+            order=order,
+            snapshot_type=OrderSpecificationSnapshot.SnapshotType.PHASE2_COMPLETION,
+            spec_data=delta_spec_json,
+            created_by=user
+        )
+
+        # Merge into main Phase 2 specification
+        existing_spec = order.phase2_spec_cache or delta_spec_json.copy()
+        existing_items = existing_spec.get('items', [])
+        existing_items_map = {it.get('item_id'): it for it in existing_items}
+
+        for delta_item_data in delta_spec_json.get('items', []):
+            existing_items_map[delta_item_data.get('item_id')] = delta_item_data
+
+        existing_spec['items'] = list(existing_items_map.values())
+        order.phase2_spec_cache = existing_spec
+        order.phase2_validated = True
+        order.save(update_fields=['phase2_spec_cache', 'phase2_validated'])
+
+        return delta_spec_obj, delta_spec_json
 
     @staticmethod
     def validate(item: OrderItem) -> List[str]:
@@ -351,6 +479,7 @@ class ProductionDataService:
         PHASE2_PRESS = 'PHASE2_PRESS', 'Press'
         PHASE2_FRAMES = 'PHASE2_FRAMES', 'Frames'
         IN_PRODUCTION = 'IN_PRODUCTION', 'Full Production Report'
+        FULL_PRODUCTION = 'FULL_PRODUCTION', 'Full Production Report'
 
     def __init__(self, order):
         self.order = order
@@ -390,23 +519,49 @@ class ProductionDataService:
     def _add_cnc_files_to_zip(self, zip_file):
         """Internal helper to add CNC files to the zip buffer"""
         is_phase_a = self.order.status == OrderStatus.IN_PRODUCTION_PHASE1
+        is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
         phase = 'phase1' if is_phase_a else 'phase2'
         order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
 
-        for spec in order_spec.items:
+        # In completion mode, filter out items from COMPLETED groups
+        items_to_process = order_spec.items
+        if is_completion:
+            active_item_ids = set(OrderItem.objects.filter(
+                group__order=self.order
+            ).exclude(
+                group__production_state=OrderItemsGroup.ProductionState.COMPLETED
+            ).values_list('id', flat=True))
+            items_to_process = [it for it in items_to_process if it.item_id in active_item_ids]
+
+        for spec in items_to_process:
             folder_name = f"{self.order.order_number}/{spec.mark}"
             for i in range(1, 5):
-                xml_content = f"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <order_number>{self.order.order_number}</order_number>\n  <item_mark>{spec.mark}</item_mark>\n  <file_number>{i}</file_number>\n  <status>{'Phase A' if is_phase_a else 'Full Production'}</status>\n</root>"
+                xml_content = f"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <order_number>{self.order.order_number}</order_number>\n  <item_mark>{spec.mark}</item_mark>\n  <file_number>{i}</file_number>\n  <status>{'Phase A' if is_phase_a else ('Completion Production' if is_completion else 'Full Production')}</status>\n</root>"
                 zip_file.writestr(f"{folder_name}/file_{i}.xml", xml_content)
 
-    def generate_cnc_files(self):
+    def generate_cnc_files(self, spec_items=None):
         """
         Standalone method to generate CNC files on the server filesystem.
         Creates folder structure cnc_files/mecal/<order_number>/ and fills it with XML files.
+        If spec_items is provided, generates only for those items.
+        If order is in COMPLETION_PRODUCTION, generates only for items from active/uncompleted groups.
         """
         is_phase_a = self.order.status == OrderStatus.IN_PRODUCTION_PHASE1
+        is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
         phase = 'phase1' if is_phase_a else 'phase2'
-        order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
+
+        if spec_items is not None:
+            items_to_process = spec_items
+        else:
+            order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
+            items_to_process = order_spec.items
+            if is_completion:
+                active_item_ids = set(OrderItem.objects.filter(
+                    group__order=self.order
+                ).exclude(
+                    group__production_state=OrderItemsGroup.ProductionState.COMPLETED
+                ).values_list('id', flat=True))
+                items_to_process = [it for it in items_to_process if it.item_id in active_item_ids]
 
         # Paths
         cnc_root = os.path.join(settings.BASE_DIR, 'cnc_files')
@@ -428,7 +583,7 @@ class ProductionDataService:
         os.makedirs(doors_root)
 
         # Iterate through items in the order specification
-        for spec in order_spec.items:
+        for spec in items_to_process:
             mark = spec.mark
 
             if spec.has_frame:
@@ -492,9 +647,12 @@ class ProductionDataService:
 
         if station:
             label = station.label or station.name
-            template = station.template_name
+            template = station.template_name or 'production/alum_frames_report.html'
         else:
-            label = self.ReportType(report_type).label
+            try:
+                label = self.ReportType(report_type).label
+            except ValueError:
+                label = str(report_type)
             template = 'production/alum_frames_report.html'
 
             # Adjust label if no split installation in the whole order
@@ -515,6 +673,15 @@ class ProductionDataService:
         order_spec_for_report = order_spec.model_copy()
         order_spec_for_report.items = [item for item in order_spec.items if item.item_id in filtered_item_ids]
 
+        if self.order.status in [OrderStatus.IN_PRODUCTION_PHASE1]:
+            stage_label = "שלב א'"
+        elif self.order.status in [OrderStatus.IN_PRODUCTION_PHASE2, OrderStatus.PHASE1_READY]:
+            stage_label = "שלב ב'"
+        elif self.order.status == OrderStatus.COMPLETION_PRODUCTION:
+            stage_label = "השלמות"
+        else:
+            stage_label = "קומפלט"
+
         context = {
             'order': self.order,
             'order_spec': order_spec_for_report,
@@ -522,6 +689,7 @@ class ProductionDataService:
             'report_type': report_type,
             'station': station,
             'report_label': label,
+            'stage_label': stage_label,
             'groups_data': self.prepare_grouped_data(order_spec_for_report),
             'now': timezone.now(),
         }
@@ -530,9 +698,21 @@ class ProductionDataService:
     def get_filtered_items(self, report_type=None, station=None):
         """
         Returns a list of items that belong to the specified report or station.
+        If the order is in COMPLETION_PRODUCTION, excludes items from COMPLETED groups.
         """
         items = []
+        is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
+
         for group in self.order.groups.all():
+            if group.production_state in [
+                OrderItemsGroup.ProductionState.WAITING,
+                OrderItemsGroup.ProductionState.CANCELED,
+            ]:
+                continue
+
+            if is_completion and group.production_state == OrderItemsGroup.ProductionState.COMPLETED:
+                continue
+
             is_split = group.is_split_installation
             product_type = None
             if group.product and group.product.product_family and group.product.product_family.product_type:
@@ -546,16 +726,16 @@ class ProductionDataService:
                 group_stations = ProductionRoute.get_stations_for_group(group)
                 if station not in group_stations:
                     continue
-            elif report_type == self.ReportType.PHASE1_FRAMES:
+            elif report_type in [self.ReportType.PHASE1_FRAMES, 'PHASE1_FRAMES', 'PHASE1_PRODUCTION']:
                 if not is_split or not has_frame:
                     continue
-            elif report_type == self.ReportType.PHASE2_DOORS:
+            elif report_type in [self.ReportType.PHASE2_DOORS, 'PHASE2_DOORS']:
                 if not has_door:
                     continue
-            elif report_type == self.ReportType.PHASE2_PRESS:
+            elif report_type in [self.ReportType.PHASE2_PRESS, 'PHASE2_PRESS']:
                 if not has_door:
                     continue
-            elif report_type == self.ReportType.PHASE2_FRAMES:
+            elif report_type in [self.ReportType.PHASE2_FRAMES, 'PHASE2_FRAMES']:
                 if not has_frame:
                     continue
 
@@ -722,6 +902,12 @@ class OrderProductionService:
         old_status = order.status
 
         with transaction.atomic():
+            order.groups.filter(
+                production_state=OrderItemsGroup.ProductionState.NEW
+            ).update(
+                production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION
+            )
+
             if order.status == OrderStatus.PHASE1_READY:
                 # Transition from "Phase 1 ready" to production stage 2
                 order.status = OrderStatus.IN_PRODUCTION_PHASE2
@@ -729,12 +915,60 @@ class OrderProductionService:
                 order.status = OrderStatus.IN_PRODUCTION_PHASE1
             else:
                 order.status = OrderStatus.IN_PRODUCTION
+            order.save(update_fields=['status'])
 
-            order.save()
+            # Spec building / snapshot saving
+            phase = 'phase1' if order.status == OrderStatus.IN_PRODUCTION_PHASE1 else 'phase2'
+            TechnicalSpecService.get_or_build_spec(order, phase=phase, user=user)
 
             # CNC files generation
             service = ProductionDataService(order)
             service.generate_cnc_files()
+
+            OrderChangeLog.objects.create(
+                order=order,
+                user=user,
+                field_name='status',
+                old_value=old_status,
+                new_value=order.status
+            )
+        return order
+
+    @staticmethod
+    def start_completion_production(order, user=None):
+        """
+        Transfers order to completion production (ייצור השלמות) for new / unfrozen groups.
+        """
+        if order.status not in [OrderStatus.PHASE2_READY, OrderStatus.READY, OrderStatus.COMPLETED]:
+            raise ValueError(
+                "Completion production is only available from Phase 2 Ready, Ready, or Completed statuses.")
+
+        # Check that there are uncompleted groups
+        uncompleted_groups = order.groups.filter(
+            production_state=OrderItemsGroup.ProductionState.NEW
+        )
+        if not uncompleted_groups.exists():
+            raise ValueError("No new or waiting groups to produce completions for.")
+
+        # Validate completion groups
+        val_res = OrderValidationService.validate_completion(order)
+        val_res.raise_if_invalid()
+
+        old_status = order.status
+
+        with transaction.atomic():
+            # Build completion spec and snapshot
+            delta_spec, _ = TechnicalSpecService.build_completion_spec(order, user=user)
+
+            # Update groups to IN_PRODUCTION
+            uncompleted_groups.update(production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION)
+
+            order.status = OrderStatus.COMPLETION_PRODUCTION
+            order.save()
+
+            # CNC files generation only for delta items
+            service = ProductionDataService(order)
+            service.generate_cnc_files(spec_items=delta_spec.items)
 
             OrderChangeLog.objects.create(
                 order=order,
@@ -774,14 +1008,21 @@ class OrderProductionService:
     def complete_production(order, user=None):
         """
         Completes order production and transitions it to READY status.
+        Marks all IN_PRODUCTION groups as COMPLETED.
         """
-        if order.status not in [OrderStatus.IN_PRODUCTION, OrderStatus.IN_PRODUCTION_PHASE2]:
+        if order.status not in [OrderStatus.IN_PRODUCTION, OrderStatus.IN_PRODUCTION_PHASE2,
+                                OrderStatus.COMPLETION_PRODUCTION]:
             raise ValueError(
-                "Production completion is only possible for orders in 'In Production' or 'Phase B Production' status")
+                "Production completion is only possible for orders in 'In Production', 'Phase B Production' or 'Completion Production' status")
 
         old_status = order.status
         with transaction.atomic():
             order.status = OrderStatus.READY
+            # Mark active groups as completed
+            order.groups.filter(
+                production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION
+            ).update(production_state=OrderItemsGroup.ProductionState.COMPLETED)
+
             order.save()
 
             # Clean up CNC files upon production completion
@@ -808,7 +1049,16 @@ class OrderProductionService:
         old_status = order.status
         with transaction.atomic():
             order.status = OrderStatus.IN_PRODUCTION_PHASE1
+
+            # Update waiting groups to IN_PRODUCTION
+            order.groups.filter(
+                production_state=OrderItemsGroup.ProductionState.NEW
+            ).update(production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION)
+
             order.save()
+
+            # Spec building / snapshot saving
+            TechnicalSpecService.get_or_build_spec(order, phase='phase1', user=user)
 
             # CNC files generation
             service = ProductionDataService(order)

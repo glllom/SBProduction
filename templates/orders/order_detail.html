@@ -88,156 +88,262 @@
             </div>
         </div>
     </div>
-    <div class="mb-2 d-flex gap-2">
-        {% if order.status != 'NEW' and user.is_admin_user %}
+    <!-- Action Toolbar & Primary Process CTAs -->
+    <div class="mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2 p-2 bg-light rounded border">
+        <!-- Primary CTA and Main Actions based on current status -->
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            {% if order.status == 'NEW' %}
+                <a href="{% url 'production:order-transfer-to-production' order.pk %}"
+                   class="btn btn-primary fw-bold"
+                   data-bs-toggle="tooltip"
+                   title="העברת ההזמנה לתהליך ייצור מלא">
+                    <i class="bi bi-send-check me-1"></i>העבר לייצור
+                </a>
+                <a href="{% url 'production:order-check-validation' order.pk %}"
+                   class="btn btn-outline-info"
+                   data-bs-toggle="tooltip"
+                   title="בדיקת תקינות הנתונים של ההזמנה">
+                    <i class="bi bi-list-task me-1"></i>בדיקת ההזמנה
+                </a>
+                <a href="{% url 'order-measurements' order.pk %}"
+                   class="btn btn-outline-primary"
+                   data-bs-toggle="tooltip"
+                   title="צפייה ועריכת מידות הפריטים">
+                    <i class="bi bi-rulers me-1"></i>טופס מידות
+                </a>
+            {% elif order.status == 'PHASE1_PRODUCTION' %}
+                <a href="{% url 'production:order-complete-phase1' order.pk %}"
+                   class="btn btn-success fw-bold"
+                   data-bs-toggle="tooltip"
+                   title="סיום שלב א' של ההזמנה">
+                    <i class="bi bi-check-circle me-1"></i>סיום שלב א
+                </a>
+            {% elif order.status == 'PHASE1_READY' %}
+                <a href="{% url 'production:order-transfer-to-production' order.pk %}"
+                   class="btn btn-primary fw-bold"
+                   data-bs-toggle="tooltip"
+                   title="העברה לייצור מלא / שלב ב">
+                    <i class="bi bi-send-check me-1"></i>העברה לשלב ב
+                </a>
+                <a href="{% url 'production:order-check-validation' order.pk %}"
+                   class="btn btn-outline-info"
+                   data-bs-toggle="tooltip"
+                   title="בדיקת תקינות הנתונים לקראת שלב ב">
+                    <i class="bi bi-list-task me-1"></i>בדיקת ההזמנה
+                </a>
+                {% if order.has_split_installation %}
+                    <a href="{% url 'production:split-measurer-report' order.pk %}"
+                       target="_blank"
+                       class="btn btn-outline-warning"
+                       data-bs-toggle="tooltip"
+                       title="דו''ח מדידה למודד לפני שלב ב'">
+                        <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
+                    </a>
+                {% endif %}
+            {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' %}
+                <a href="{% url 'production:order-complete-production' order.pk %}"
+                   class="btn btn-success fw-bold"
+                   data-bs-toggle="tooltip"
+                   title="סיום תהליך הייצור והעברה למוכן למשלוח">
+                    <i class="bi bi-check-all me-1"></i>סיום ייצור
+                </a>
+            {% elif order.status == 'READY' or order.status == 'COMPLETED' or order.status == 'PHASE2_READY' %}
+                {% if order.groups.all %}
+                    <a href="{% url 'production:order-transfer-to-completion-production' order.pk %}"
+                       class="btn btn-warning fw-bold"
+                       data-bs-toggle="tooltip"
+                       title="העברת קבוצות חדשות או מופשרות לייצור השלמות">
+                        <i class="bi bi-arrow-repeat me-1"></i>העבר לייצור השלמות
+                    </a>
+                {% endif %}
+            {% endif %}
+            <!-- Collapsible Production Actions & Documents Toolbar Toggle -->
+            <button class="btn btn-outline-secondary"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#productionActionsPanel"
+                    aria-expanded="false"
+                    aria-controls="productionActionsPanel">
+                <i class="bi bi-gear-wide-connected me-1"></i>פעולות ייצור ומסמכים
+                <i class="bi bi-chevron-down ms-1"></i>
+            </button>
+        </div>
+        <!-- Dev Tools & Management Dropdown -->
+        {% if user.is_admin_user or user.is_staff %}
             <div class="dropdown">
-                <button class="btn btn-outline-secondary btn-sm"
+                <button class="btn btn-outline-warning btn-sm dropdown-toggle"
                         type="button"
                         data-bs-toggle="dropdown"
-                        title="אפשרויות ניהול הזמנה">
-                    <i class="bi bi-three-dots-vertical"></i>
+                        aria-expanded="false"
+                        title="כלי פיתוח ובקרה">
+                    <i class="bi bi-tools me-1"></i>Dev Tools
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end shadow border-0">
                     <li>
+                        <h6 class="dropdown-header text-warning fw-bold">כלי פיתוח ובקרה</h6>
+                    </li>
+                    <li>
                         <a class="dropdown-item"
-                           href="{% url 'order-reset-to-new' order.pk %}"
-                           onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')">
-                            <i class="bi bi-arrow-counterclockwise me-2 text-warning"></i>שינוי הזמנה
+                           href="{% url 'production:order-dev-rebuild-spec' order.pk %}">
+                            <i class="bi bi-cpu me-2 text-warning"></i>Rebuild Spec
                         </a>
                     </li>
                     <li>
-                        <a class="dropdown-item text-danger"
-                           href="{% url 'order-cancel' order.pk %}"
-                           onclick="return confirm('האם אתה בטוח שברצונך לבטל את ההזמנה?')">
-                            <i class="bi bi-x-circle me-2"></i>ביטול הזמנה
+                        <a class="dropdown-item"
+                           href="{% url 'production:spec-json-preview' order.pk %}"
+                           target="_blank">
+                            <i class="bi bi-filetype-json me-2 text-info"></i>צפייה ב-JSON Spec
                         </a>
                     </li>
+                    {% if order.status == 'PHASE2_PRODUCTION' or order.status == 'IN_PRODUCTION' or order.status == 'COMPLETED' %}
+                        <li>
+                            <a class="dropdown-item"
+                               href="{% url 'production:order-compare-snapshots' order.pk %}">
+                                <i class="bi bi-arrow-left-right me-2 text-primary"></i>השוואת שלב א/ב (Snapshot Diffs)
+                            </a>
+                        </li>
+                    {% endif %}
+                    {% if order.status != 'NEW' %}
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li>
+                            <a class="dropdown-item text-warning"
+                               href="{% url 'order-reset-to-new' order.pk %}"
+                               onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')">
+                                <i class="bi bi-arrow-counterclockwise me-2"></i>שינוי הזמנה (Reset to NEW)
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item text-danger"
+                               href="{% url 'order-cancel' order.pk %}"
+                               onclick="return confirm('האם אתה בטוח שברצונך לבטל את ההזמנה?')">
+                                <i class="bi bi-x-circle me-2"></i>ביטול הזמנה
+                            </a>
+                        </li>
+                    {% endif %}
                 </ul>
             </div>
         {% endif %}
-        <a href="{% url 'production:order-dev-rebuild-spec' order.pk %}"
-           class="btn btn-warning"
-           data-bs-toggle="tooltip"
-           title="Development only: Force rebuild specification and view JSON">
-            <i class="bi bi-cpu me-2"></i>Dev: Rebuild Spec
-        </a>
-        {% if order.status == 'NEW' %}
-            <a href="{% url 'production:order-check-validation' order.pk %}"
-               class="btn btn-outline-info"
-               data-bs-toggle="tooltip"
-               title="בדיקת תקינות הנתונים של ההזמנה">
-                <i class="bi bi-list-task me-2"></i>בדיקת ההזמנה
-            </a>
-            <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-               class="btn btn-primary"
-               data-bs-toggle="tooltip"
-               title="העברת ההזמנה לתהליך ייצור מלא">
-                <i class="bi bi-send-check me-2"></i>העבר לייצור
-            </a>
-            <a href="{% url 'order-measurements' order.pk %}"
-               class="btn btn-outline-primary"
-               data-bs-toggle="tooltip"
-               title="צפייה ועריכת מידות הפריטים">
-                <i class="bi bi-rulers me-2"></i>טופס מידות
-            </a>
-        {% elif order.status == 'PHASE1_PRODUCTION' %}
-            <a href="{% url 'production:order-complete-phase1' order.pk %}"
-               class="btn btn-success"
-               data-bs-toggle="tooltip"
-               title="סיום שלב א' של ההזמנה">
-                <i class="bi bi-check-circle me-2"></i>סיום שלב א
-            </a>
-            {% include "orders/includes/station_buttons.html" %}
-        {% elif order.status == 'PHASE1_READY' %}
-            <a href="{% url 'production:order-check-validation' order.pk %}"
-               class="btn btn-outline-info"
-               data-bs-toggle="tooltip"
-               title="בדיקת תקינות הנתונים לקראת שלב ב">
-                <i class="bi bi-list-task me-2"></i>בדיקת ההזמנה
-            </a>
-            <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-               class="btn btn-primary"
-               data-bs-toggle="tooltip"
-               title="העברה לייצור מלא / שלב ב">
-                <i class="bi bi-send-check me-2"></i>העברה לשלב ב
-            </a>
-            {#            {% if order.has_split_installation %}#}
-            <a href="{% url 'production:split-measurer-report' order.pk %}"
-               target="_blank"
-               class="btn btn-outline-warning"
-               data-bs-toggle="tooltip"
-               title="דו''ח מדידה למודד לפני שלב ב'">
-                <i class="bi bi-pencil-square me-2"></i>דו''ח מדידה
-            </a>
-            {#            {% endif %}#}
-        {% include "orders/includes/station_buttons.html" with use_special=True %}
-{% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' %}
-    <a href="{% url 'production:order-complete-production' order.pk %}"
-       class="btn btn-success"
-       data-bs-toggle="tooltip"
-       title="סיום תהליך הייצור והעברה למוכן למשלוח">
-        <i class="bi bi-check-all me-2"></i>סיום ייצור
-    </a>
-    {% include "orders/includes/station_buttons.html" with use_special=True %}
-    <a href="{% url 'production:station-report' order.pk %}?type=IN_PRODUCTION"
-       target="_blank"
-       class="btn btn-outline-secondary"
-       data-bs-toggle="tooltip"
-       title="דו''ח ייצור מלא עבור כל הפריטים">
-        <i class="bi bi-printer me-2"></i>דו''ח מלא
-    </a>
-    {% if user.is_admin_user and order.status == 'PHASE2_PRODUCTION' %}
-        <a href="{% url 'production:order-compare-snapshots' order.pk %}"
-           class="btn btn-outline-warning"
-           data-bs-toggle="tooltip"
-           title="השוואת נתוני ייצור (היה -> נהיה)">
-            <i class="bi bi-arrow-left-right me-2"></i>השוואת שלב א/ב
-        </a>
-    {% endif %}
-{% else %}
-    <a href="{% url 'production:station-report' order.pk %}?type={{ order.status }}"
-       target="_blank"
-       class="btn btn-outline-info"
-       data-bs-toggle="tooltip"
-       title="הפקת דו''ח ייצור">
-        <i class="bi bi-printer me-2"></i>הדפסת דו''ח
-    </a>
-{% endif %}
-</div>
-<div class="row">
-    <div class="col-lg-10 mb-4">
-        {% for group in order.groups.all %}
-            {% include "orders/includes/group_card.html" %}
-        {% empty %}
-            <div class="card shadow-sm border-0 m-1">
-                <div class="card-body text-center py-5">
-                    <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
-                    <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
-                    <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
-                    <div class="d-flex justify-content-center gap-2 mt-3">
-                        {% if order.status == 'NEW' or user.is_admin_user %}
-                            <button class="btn btn-primary"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#groupModal">
-                                <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
-                            </button>
-                            <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
-                                <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
-                            </button>
-                        {% endif %}
+    </div>
+    <!-- Collapsible Production Actions & Documents Block -->
+    <div class="collapse mb-3" id="productionActionsPanel">
+        <div class="card card-body bg-light border shadow-sm">
+            <div class="row g-3">
+                <!-- 1. דוחות ייצור -->
+                <div class="col-md-4 border-end">
+                    <h6 class="fw-bold text-primary mb-2">
+                        <i class="bi bi-file-earmark-text me-1"></i>דוחות ייצור
+                    </h6>
+                    <div class="d-flex flex-column gap-2">
+                        <a href="{% url 'production:station-report' order.pk %}?station=ALL"
+                           target="_blank"
+                           class="btn btn-primary btn-sm text-start">
+                            <i class="bi bi-printer-fill me-1"></i><strong>הדפסת כל הדו"חות (Master Print)</strong>
+                        </a>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            {% for station in order.get_production_stations %}
+                                {% if station.has_specification %}
+                                    <a href="{% url 'production:station-report' order.pk %}?station={{ station.code }}"
+                                       target="_blank"
+                                       class="btn btn-outline-secondary btn-sm"
+                                       data-bs-toggle="tooltip"
+                                       title="{{ station.hint|default:station.name }}">
+                                        <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
+                                    </a>
+                                {% endif %}
+                            {% endfor %}
+                            {% if order.has_split_installation %}
+                                <a href="{% url 'production:split-measurer-report' order.pk %}"
+                                   target="_blank"
+                                   class="btn btn-outline-warning btn-sm"
+                                   data-bs-toggle="tooltip"
+                                   title="דו''ח מדידה למודד לפני שלב ב'">
+                                    <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <!-- 2. קבצי מכונות (CNC) -->
+                <div class="col-md-4 border-end">
+                    <h6 class="fw-bold text-success mb-2">
+                        <i class="bi bi-cpu me-1"></i>קבצי מכונות (CNC)
+                    </h6>
+                    <div class="d-flex flex-column gap-2">
+                        <a href="{% url 'production:order-production-data' order.pk %}"
+                           class="btn btn-success btn-sm text-start">
+                            <i class="bi bi-file-earmark-zip-fill me-1"></i><strong>הורדת ארכיון ייצור מלא
+                            (ZIP)</strong>
+                        </a>
+                        <a href="{% url 'production:sync_usb' %}?order_id={{ order.pk }}"
+                           class="btn btn-outline-success btn-sm text-start">
+                            <i class="bi bi-usb-drive me-1"></i>סנכרון תוכניות CNC ל-USB
+                        </a>
+                    </div>
+                </div>
+                <!-- 3. מדבקות -->
+                <div class="col-md-4">
+                    <h6 class="fw-bold text-dark mb-2">
+                        <i class="bi bi-tags me-1"></i>מדבקות
+                    </h6>
+                    <div class="d-flex flex-column gap-2">
+                        <a href="javascript:void(0)"
+                           onclick="window.open('{% url 'production:station-report' order.pk %}?station=ALL', '_blank');"
+                           class="btn btn-dark btn-sm text-start">
+                            <i class="bi bi-tag-fill me-1"></i><strong>הדפסת כל המדבקות</strong>
+                        </a>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            <a href="javascript:void(0)"
+                               onclick="window.open('{% url 'production:station-report' order.pk %}?station=FRAMES', '_blank');"
+                               class="btn btn-outline-dark btn-sm">
+                                <i class="bi bi-tag me-1"></i>מדבקות משקופים
+                            </a>
+                            <a href="javascript:void(0)"
+                               onclick="window.open('{% url 'production:station-report' order.pk %}?station=DOORS', '_blank');"
+                               class="btn btn-outline-dark btn-sm">
+                                <i class="bi bi-tag me-1"></i>מדבקות כנפיים
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
-        {% endfor %}
+        </div>
     </div>
-</div>
-<!-- Modals -->
-{% include "orders/includes/order_header_modal.html" %}
-{% include "orders/includes/group_modal.html" %}
-{% include "orders/includes/group_customizer_modal.html" %}
-{% include "orders/includes/edit_item_modal.html" %}
-{% include "orders/includes/save_spec_modal.html" %}
-{% include "orders/includes/load_spec_modal.html" %}
+    <div class="row">
+        <div class="col-lg-10 mb-4">
+            {% for group in order.groups.all %}
+                {% include "orders/includes/group_card.html" %}
+            {% empty %}
+                <div class="card shadow-sm border-0 m-1">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
+                        <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
+                        <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
+                        <div class="d-flex justify-content-center gap-2 mt-3">
+                            {% if order.status == 'NEW' or user.is_admin_user %}
+                                <button class="btn btn-primary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#groupModal">
+                                    <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
+                                </button>
+                                <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
+                                    <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    <!-- Modals -->
+    {% include "orders/includes/order_header_modal.html" %}
+    {% include "orders/includes/group_modal.html" %}
+    {% include "orders/includes/group_customizer_modal.html" %}
+    {% include "orders/includes/edit_item_modal.html" %}
+    {% include "orders/includes/save_spec_modal.html" %}
+    {% include "orders/includes/load_spec_modal.html" %}
 {% endblock %}
 {% block extra_js %}
     <script>
@@ -274,7 +380,7 @@
             /**
              * Toggle the visibility of items in a group (Show More/Show Less).
              */
-            $('.btn-toggle-items').on('click', function() {
+            $('.btn-toggle-items').on('click', function () {
                 const $btn = $(this);
                 const groupId = $btn.data('group-id');
                 const $allRows = $(`.item-row-${groupId}`);
@@ -284,7 +390,7 @@
                     $hiddenRows.removeClass('d-none');
                     $btn.text('הצג פחות');
                 } else {
-                    $allRows.each(function(index) {
+                    $allRows.each(function (index) {
                         if (index >= 4) $(this).addClass('d-none');
                     });
                     const count = $allRows.length - 4;
@@ -295,7 +401,7 @@
             /**
              * Populate and show the Edit Item Modal.
              */
-            $('.btn-edit-item').on('click', function() {
+            $('.btn-edit-item').on('click', function () {
                 const $btn = $(this);
                 const itemId = $btn.data('item-id');
                 const typeId = $btn.data('type-id');
@@ -346,7 +452,7 @@
                 }
 
                 // Show/Hide fields based on Product Type config
-                const config = productTypeConfig[typeId] || { has_door: true, has_frame: true };
+                const config = productTypeConfig[typeId] || {has_door: true, has_frame: true};
                 const $fieldWall = $('.field-wall');
                 const $fieldDoor = $('.field-door');
                 const $fieldDims = $('.field-dims');
@@ -374,7 +480,7 @@
             /**
              * Handle opening the Unified Group Modal for adding or editing.
              */
-            $(document).on('click', '[data-bs-target="#groupModal"]', function() {
+            $(document).on('click', '[data-bs-target="#groupModal"]', function () {
                 const $btn = $(this);
                 const isEdit = $btn.hasClass('btn-edit-group');
                 const $modal = $('#groupModal');
@@ -416,7 +522,7 @@
                     if (productId) {
                         const $productSelect = $modal.find('select[name="product"]');
                         if ($productSelect.find(`option[value="${productId}"]`).length === 0) {
-                             $productSelect.append(`<option value="${productId}">${productName}</option>`);
+                            $productSelect.append(`<option value="${productId}">${productName}</option>`);
                         }
                         $productSelect.val(productId);
                         $modal.find('.product-info-display').html(`<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ${productName} (${productCode})</strong>`);
@@ -444,7 +550,7 @@
                     if (orderSeriesId) {
                         $modal.find('select[name="series"]').val(orderSeriesId).trigger('change');
                     }
-                    
+
                     // Trigger paint logic reset
                     $modal.find('input[name="panel_paint_option"]').first().trigger('change');
                     $modal.find('input[name="frame_paint_option"]').first().trigger('change');
@@ -479,7 +585,7 @@
             }
 
             // Track changes in group modals (Add and Edit)
-            $(document).on('show.bs.modal', '#groupModal', function() {
+            $(document).on('show.bs.modal', '#groupModal', function () {
                 const $modal = $(this);
                 const $form = $modal.find('form');
                 // Use a small timeout to let the population logic finish before capturing initial state
@@ -488,7 +594,7 @@
                 }, 100);
             });
 
-            $(document).on('hide.bs.modal', '#groupModal', function(e) {
+            $(document).on('hide.bs.modal', '#groupModal', function (e) {
                 const $modal = $(this);
                 const $form = $modal.find('form');
                 const initialState = $form.data('initial-state');
@@ -552,7 +658,7 @@
 
                         // Ensure container exists
                         if ($container.length === 0) {
-                           $tab.html(`
+                            $tab.html(`
                                 <div class="row row-cols-1 row-cols-md-2 g-3"></div>
                                 ${canEdit ? `
                                 <div class="mt-4 text-end">
@@ -562,7 +668,7 @@
                                 </div>
                                 ` : ''}
                            `);
-                           $container = $tab.find('.row-cols-1');
+                            $container = $tab.find('.row-cols-1');
                         }
 
                         let html = '';
@@ -597,7 +703,10 @@
                                                 <i class="bi bi-check2-circle"></i>
                                             </div>
                                             <div>
-                                                <div class="fw-bold small text-primary">${cust.customizer_name}</div>
+                                                <div class="fw-bold small text-primary">
+                                                    ${cust.customizer_name}
+                                                    ${(cust.customizer_is_required || cust.is_required) ? '<span class="badge bg-danger-subtle text-danger ms-1">חובה</span>' : ''}
+                                                </div>
                                                 <div class="text-muted extra-small">${cust.customizer_code}</div>
                                             </div>
                                         </div>
@@ -683,7 +792,7 @@
                         }
                         $custTableBody.html(html);
                         // Apply dependent visibility logic
-                        $custTableBody.find('tr').each(function() {
+                        $custTableBody.find('tr').each(function () {
                             updatePar2Visibility($(this));
                         });
                         if (window.initTooltips) window.initTooltips($custTableBody[0]);
@@ -698,34 +807,36 @@
             function renderCustomizerRow(item) {
                 let paramsHtml = '<div class="row g-2">';
                 let hasParams = false;
+                const custIsRequired = item.customizer_is_required;
                 for (let i = 1; i <= 5; i++) {
                     const label = item[`par${i}_label`];
                     const hint = item[`par${i}_hint`] || '';
                     const options = item[`par${i}_options`] || [];
                     const currentValue = item[`par${i}`] || '';
                     const defaultValue = item[`par${i}_default_value`] || '';
+                    const isRequired = item[`par${i}_required`];
 
                     if (label) {
                         hasParams = true;
                         let inputHtml = '';
                         if (options && options.length > 0) {
                             inputHtml = `<select class="form-select form-select-sm cust-param-input" data-id="${item.id}" data-param="par${i}">`;
-                            // If no value set and no default, maybe add placeholder? 
-                            // But usually if options are defined, one should be selected.
-                            // We'll follow the rule: current or default.
+                            if (isRequired) {
+                                inputHtml += `<option value="" ${!currentValue ? 'selected' : ''}>-- נא לבחור --</option>`;
+                            }
                             options.forEach(opt => {
-                                const selected = (currentValue === opt.key || (!currentValue && defaultValue === opt.key)) ? 'selected' : '';
+                                const selected = (currentValue === opt.key || (!isRequired && !currentValue && defaultValue === opt.key)) ? 'selected' : '';
                                 inputHtml += `<option value="${opt.key}" ${selected}>${opt.label}</option>`;
                             });
                             inputHtml += `</select>`;
                         } else {
-                            inputHtml = `<input type="text" class="form-control form-control-sm cust-param-input" data-id="${item.id}" data-param="par${i}" value="${currentValue}" placeholder="${hint}" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>`;
+                            inputHtml = `<input type="text" class="form-control form-control-sm cust-param-input" data-id="${item.id}" data-param="par${i}" value="${currentValue}" placeholder="${hint || (isRequired ? 'שדה חובה' : '')}" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>`;
                         }
 
                         paramsHtml += `
                             <div class="col-md-6" data-param-index="${i}">
                                 <label class="extra-small text-muted mb-0 d-block" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>
-                                    ${label} ${hint ? '<i class="bi bi-info-circle help-hint-icon"></i>' : ''}
+                                    ${label} ${isRequired ? '<span class="text-danger fw-bold" title="שדה חובה">*</span>' : ''} ${hint ? '<i class="bi bi-info-circle help-hint-icon"></i>' : ''}
                                 </label>
                                 ${inputHtml}
                             </div>`;
@@ -737,7 +848,10 @@
                 return `
                     <tr data-item-id="${item.id}">
                         <td>
-                            <div class="fw-bold text-primary" data-bs-toggle="tooltip" title="${item.customizer_description || item.customizer_name}">${item.customizer_name}</div>
+                            <div class="fw-bold text-primary" data-bs-toggle="tooltip" title="${item.customizer_description || item.customizer_name}">
+                                ${item.customizer_name}
+                                ${custIsRequired ? '<span class="badge bg-danger-subtle text-danger ms-1">חובה</span>' : ''}
+                            </div>
                             <div class="extra-small text-muted">${item.customizer_code}</div>
                         </td>
                         <td>${paramsHtml}</td>
@@ -752,7 +866,7 @@
 
             // Search logic
             let searchTimeout;
-            $custSearch.on('input', function() {
+            $custSearch.on('input', function () {
                 clearTimeout(searchTimeout);
                 const query = $(this).val();
                 if (query.length < 2) {
@@ -799,7 +913,7 @@
             });
 
             // Add customizer
-            $(document).on('click', '.add-customizer-item', function(e) {
+            $(document).on('click', '.add-customizer-item', function (e) {
                 e.preventDefault();
                 const custId = $(this).data('id');
                 const groupId = $custModal.data('group-id');
@@ -815,24 +929,24 @@
                         customizer: custId
                     })
                 })
-                .then(r => r.json())
-                .then(item => {
-                    console.log('Successfully saved/added item:', item);
-                    $custSearch.val('');
-                    $custResults.addClass('d-none');
-                    loadGroupCustomizers(groupId);
-                    updateMainListCustomizers(groupId);
-                });
+                    .then(r => r.json())
+                    .then(item => {
+                        console.log('Successfully saved/added item:', item);
+                        $custSearch.val('');
+                        $custResults.addClass('d-none');
+                        loadGroupCustomizers(groupId);
+                        updateMainListCustomizers(groupId);
+                    });
             });
 
             // Remove customizer
-            $(document).on('click', '.remove-cust-btn', function() {
+            $(document).on('click', '.remove-cust-btn', function () {
                 if (!confirm('להסיר קסטומייזר זה?')) return;
                 const id = $(this).data('id');
                 const groupId = $custModal.data('group-id');
                 fetch(`/orders/api/group-customizers/${id}/`, {
                     method: 'DELETE',
-                    headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
                 }).then(() => {
                     loadGroupCustomizers(groupId);
                     updateMainListCustomizers(groupId);
@@ -841,7 +955,7 @@
 
             // Update params with debounce
             let updateParamTimeout;
-            $(document).on('input change', '.cust-param-input', function() {
+            $(document).on('input change', '.cust-param-input', function () {
                 const $input = $(this);
                 const id = $input.data('id');
                 const paramName = $input.data('param');
@@ -864,20 +978,20 @@
                             'Content-Type': 'application/json',
                             'X-CSRFToken': '{{ csrf_token }}'
                         },
-                        body: JSON.stringify({ [param]: value })
+                        body: JSON.stringify({[param]: value})
                     })
-                    .then(r => {
-                        if (r.ok) {
-                            $input.removeClass('border-warning').addClass('border-success');
-                            setTimeout(() => $input.removeClass('border-success'), 1000);
-                            updateMainListCustomizers(groupId);
-                        }
-                    });
+                        .then(r => {
+                            if (r.ok) {
+                                $input.removeClass('border-warning').addClass('border-success');
+                                setTimeout(() => $input.removeClass('border-success'), 1000);
+                                updateMainListCustomizers(groupId);
+                            }
+                        });
                 }, 1000);
             });
 
             // Close search on click outside
-            $(document).on('click', function(e) {
+            $(document).on('click', function (e) {
                 if (!$(e.target).closest('#customizerSearch, #customizerSearchResults').length) {
                     $custResults.addClass('d-none');
                 }
@@ -893,12 +1007,12 @@
             }
 
             // Also allow opening from the "Manage Customizers" buttons on the page
-            $(document).on('click', '.open-customizer-btn', function() {
+            $(document).on('click', '.open-customizer-btn', function () {
                 const groupId = $(this).data('group-id');
                 if (groupId) openCustomizerModal(groupId);
             });
 
-            $(document).on('click', 'button:contains("ניהול קסטומייזרים")', function() {
+            $(document).on('click', 'button:contains("ניהול קסטומייזרים")', function () {
                 if ($(this).hasClass('open-customizer-btn')) return; // handled above
                 const $card = $(this).closest('.group-card');
                 const groupId = $card.data('group-id');
@@ -987,7 +1101,7 @@
                     .then(data => {
                         let options = '<option value="">---------</option>';
                         const colors = (Array.isArray(data) ? data : data.results) || [];
-                        
+
                         if (colors.length === 0) {
                             $basicColorFramesSelect.prop('disabled', true);
                             $basicColorFramesSelect.html(options).val('').trigger('change');
@@ -1134,7 +1248,7 @@
                 updateHeaderFramesState();
 
                 // Enable disabled fields before submit so they are sent
-                $editHeaderForm.on('submit', function() {
+                $editHeaderForm.on('submit', function () {
                     $colorFrames.prop('disabled', false);
                 });
             }
@@ -1163,7 +1277,7 @@
                 updateGroupPanelsState();
                 updateGroupFramesState();
 
-                $modal.find('form').on('submit', function() {
+                $modal.find('form').on('submit', function () {
                     $panelColorField.prop('disabled', false);
                     $frameColorField.prop('disabled', false);
                     $basicColorFramesSelect.prop('disabled', false);
@@ -1230,24 +1344,24 @@
                         csrfmiddlewaretoken: csrfToken
                     })
                 })
-                .then(res => res.json())
-                .then(data => {
-                    $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
-                    if (data.status === 'ok') {
-                        const modalEl = document.getElementById('saveSpecificationModal');
-                        // noinspection JSUnresolvedVariable
-                        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-                        modal.hide();
-                        showSuccessNotification('המפרט נשמר בהצלחה!');
-                    } else {
-                        alert(data.message || 'שגיאה בשמירת המפרט');
-                    }
-                })
-                .catch(err => {
-                    $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
-                    console.error('Error saving spec:', err);
-                    alert('שגיאה בשמירת המפרט');
-                });
+                    .then(res => res.json())
+                    .then(data => {
+                        $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
+                        if (data.status === 'ok') {
+                            const modalEl = document.getElementById('saveSpecificationModal');
+                            // noinspection JSUnresolvedVariable
+                            const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                            modal.hide();
+                            showSuccessNotification('המפרט נשמר בהצלחה!');
+                        } else {
+                            alert(data.message || 'שגיאה בשמירת המפרט');
+                        }
+                    })
+                    .catch(err => {
+                        $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
+                        console.error('Error saving spec:', err);
+                        alert('שגיאה בשמירת המפרט');
+                    });
             });
 
             let currentSpecifications = [];
@@ -1365,7 +1479,8 @@
                     $specCardsGrid.append(cardHtml);
                 });
             }
-			// noinspection JSUnresolvedVariable
+
+            // noinspection JSUnresolvedVariable
             function loadSpecifications(targetGroupId) {
                 $specLoadingIndicator.removeClass('d-none');
                 $specCardsGrid.empty();
@@ -1455,20 +1570,20 @@
                         csrfmiddlewaretoken: csrfToken
                     })
                 })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'ok') {
-                        window.location.reload();
-                    } else {
-                        alert(data.message || 'שגיאה בהחלת המפרט');
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            window.location.reload();
+                        } else {
+                            alert(data.message || 'שגיאה בהחלת המפרט');
+                            $btn.prop('disabled', false).html('<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error applying spec:', err);
+                        alert('שגיאה בהחלת המפרט');
                         $btn.prop('disabled', false).html('<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו');
-                    }
-                })
-                .catch(err => {
-                    console.error('Error applying spec:', err);
-                    alert('שגיאה בהחלת המפרט');
-                    $btn.prop('disabled', false).html('<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו');
-                });
+                    });
             });
 
             // Create new group from spec
@@ -1494,20 +1609,20 @@
                         csrfmiddlewaretoken: csrfToken
                     })
                 })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'ok') {
-                        window.location.reload();
-                    } else {
-                        alert(data.message || 'שגיאה ביצירת קבוצה ממפרט');
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            window.location.reload();
+                        } else {
+                            alert(data.message || 'שגיאה ביצירת קבוצה ממפרט');
+                            $btn.prop('disabled', false).html('<i class="bi bi-plus-circle me-1"></i>הוסף');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error creating group from spec:', err);
+                        alert('שגיאה ביצירת קבוצה ממפרט');
                         $btn.prop('disabled', false).html('<i class="bi bi-plus-circle me-1"></i>הוסף');
-                    }
-                })
-                .catch(err => {
-                    console.error('Error creating group from spec:', err);
-                    alert('שגיאה ביצירת קבוצה ממפרט');
-                    $btn.prop('disabled', false).html('<i class="bi bi-plus-circle me-1"></i>הוסף');
-                });
+                    });
             });
 
             // Delete specification
@@ -1531,19 +1646,19 @@
                         csrfmiddlewaretoken: csrfToken
                     })
                 })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'ok') {
-                        const targetGroupId = $loadSpecTargetGroupId.val();
-                        loadSpecifications(targetGroupId);
-                    } else {
-                        alert(data.message || 'שגיאה במחיקת המפרט');
-                    }
-                })
-                .catch(err => {
-                    console.error('Error deleting spec:', err);
-                    alert('שגיאה במחיקת המפרט');
-                });
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            const targetGroupId = $loadSpecTargetGroupId.val();
+                            loadSpecifications(targetGroupId);
+                        } else {
+                            alert(data.message || 'שגיאה במחיקת המפרט');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error deleting spec:', err);
+                        alert('שגיאה במחיקת המפרט');
+                    });
             });
 
             function showSuccessNotification(message) {
@@ -1565,7 +1680,7 @@
 
                 setTimeout(() => {
                     // noinspection JSUnresolvedFunction
-                    $toast.fadeOut(500, function() {
+                    $toast.fadeOut(500, function () {
                         // noinspection JSUnresolvedFunction
                         $toast.remove();
                     });

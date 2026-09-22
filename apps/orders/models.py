@@ -14,6 +14,7 @@ class OrderStatus(models.TextChoices):
     IN_PRODUCTION_PHASE1 = 'PHASE1_PRODUCTION', 'ייצור שלב א (משקופים)'
     PHASE1_READY = 'PHASE1_READY', 'שלב א מוכן (ממתין להמשך)'
     IN_PRODUCTION_PHASE2 = 'PHASE2_PRODUCTION', 'ייצור שלב ב'
+    COMPLETION_PRODUCTION = 'COMPLETION_PRODUCTION', 'ייצור השלמות'
     READY = 'READY', 'מוכן למשלוח'
     COMPLETED = 'COMPLETED', 'הושלם'
     CANCELED = 'CANCELED', 'בוטל'
@@ -50,7 +51,7 @@ class Order(models.Model):
         verbose_name="לקוח",
     )
     status = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=OrderStatus.choices,
         default=OrderStatus.NEW,
         db_index=True,
@@ -176,13 +177,25 @@ class Order(models.Model):
             self.phase2_validated = False
             self.phase2_spec_cache = None
 
+    def invalidate_cache_if_unlocked(self):
+        """Invalidates spec cache and reset validation flags in DB if the order is not locked."""
+        if not self.is_locked:
+            self.reset_validation()
+            type(self).objects.filter(pk=self.pk).update(
+                phase1_validated=False,
+                phase2_validated=False,
+                phase1_spec_cache=None,
+                phase2_spec_cache=None,
+            )
+
     @property
     def is_locked(self):
-        """Check if order is in production or completed."""
+        """Check if the order is in production or completed."""
         return self.status in [
             OrderStatus.IN_PRODUCTION,
             OrderStatus.IN_PRODUCTION_PHASE1,
             OrderStatus.IN_PRODUCTION_PHASE2,
+            OrderStatus.COMPLETION_PRODUCTION,
             OrderStatus.PHASE1_READY,
             OrderStatus.READY,
             OrderStatus.COMPLETED,
@@ -190,13 +203,15 @@ class Order(models.Model):
 
     @property
     def has_split_installation(self):
-        return self.groups.filter(is_split_installation=True).exists()
-
+        return self.groups.filter(is_split_installation=True).exclude(
+            production_state=OrderItemsGroup.ProductionState.CANCELED
+        ).exists()
+    
     def get_production_stations(self):
         """
         Returns all unique production stations for all items in this order,
         considering their routes and customizers.
-        Also filters based on order status for phased production.
+        Also, filters are based on order status for phased production.
         """
         from apps.production.models import ProductionRoute
         all_stations = []
@@ -276,12 +291,27 @@ class OrderItemsGroup(models.Model):
         MAIN_COLOR = 'MAIN_COLOR', 'גוון ראשי'
         SPECIAL_COLOR = 'SPECIAL_COLOR', 'גוון מיוחד'
 
+    class ProductionState(models.TextChoices):
+        NEW = 'NEW', 'חדש'
+        WAITING = 'WAITING', 'ממתין'
+        IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
+        COMPLETED = 'COMPLETED', 'הושלם'
+        CANCELED = 'CANCELED', 'בוטל'
+
     # Django will automatically create an `order_id` field in the DB
     order = models.ForeignKey(
         "Order",
         on_delete=models.CASCADE,
         related_name="groups",
         verbose_name="הזמנה",
+    )
+
+    production_state = models.CharField(
+        max_length=20,
+        choices=ProductionState.choices,
+        default=ProductionState.NEW,
+        db_index=True,
+        verbose_name="סטטוס ייצור של הקבוצה",
     )
 
     quantity = models.PositiveIntegerField(
@@ -386,13 +416,32 @@ class OrderItemsGroup(models.Model):
         from apps.catalog.models import Color
         return Color.objects.filter(active=True).order_by('id')
 
+    def auto_populate_required_customizers(self):
+        """
+        Automatically adds required customizers for the group's product with empty/default values.
+        Required parameters (parX_required=True) are set to empty string.
+        Non-required parameters can take the default value from the customizer (parX_value or '').
+        """
+        if not self.product:
+            return
+        required_customizers = self.product.get_required_customizers()
+        for cust in required_customizers:
+            if not self.customizers.filter(customizer=cust).exists():
+                OrderItemsGroupCustomizer.objects.create(
+                    group=self,
+                    customizer=cust,
+                    par1='' if cust.par1_required else (cust.par1_value or ''),
+                    par2='' if cust.par2_required else (cust.par2_value or ''),
+                    par3='' if cust.par3_required else (cust.par3_value or ''),
+                    par4='' if cust.par4_required else (cust.par4_value or ''),
+                    par5='' if cust.par5_required else (cust.par5_value or ''),
+                )
+
     def save(self, *args, **kwargs):
         # Approach 3: Freeze state if order is locked
         if self.order and self.order.is_locked:
             # In a production environment, we should raise a ValidationError
             pass
-
-        is_new = self.pk is None  # Check if the record is being created for the first time
 
         # Pull default values from Parent Order
         if self.order_id:
@@ -406,18 +455,22 @@ class OrderItemsGroup(models.Model):
                 self.color_panels = self.order.color_panels
             elif self.panel_paint_option == self.PaintOption.NO_PAINT:
                 self.color_panels = None
-            # For SPECIAL_COLOR, color_panels should already be set by user
+            # For SPECIAL_COLOR, user should already set color_panels
 
             # Logic for Frames
             if self.frame_paint_option == self.PaintOption.MAIN_COLOR:
                 self.color_frames = self.order.color_frames
             elif self.frame_paint_option == self.PaintOption.NO_PAINT:
                 self.color_frames = None
-            # For SPECIAL_COLOR, color_frames should already be set by user
+            # For SPECIAL_COLOR, user should already set color_frames
 
         # Save group and items in one transaction
         with transaction.atomic():
             super().save(*args, **kwargs)
+
+            # Autopopulate required customizers
+            if self.product:
+                self.auto_populate_required_customizers()
 
             # Sync physical doors (OrderItems) with group quantity
             if self.quantity is not None:
@@ -446,15 +499,8 @@ class OrderItemsGroup(models.Model):
             OrderProductionService.recalculate_item_marks(self.order)
 
             # Approach 1: Reset parent order validation
-            if not self.order.is_locked:
-                self.order.reset_validation()
-                # Save order without triggering its save() logic that might be complex
-                type(self.order).objects.filter(pk=self.order.pk).update(
-                    phase1_validated=False,
-                    phase2_validated=False,
-                    phase1_spec_cache=None,
-                    phase2_spec_cache=None
-                )
+            if self.order_id:
+                self.order.invalidate_cache_if_unlocked()
 
     def delete(self, *args, **kwargs):
         order = self.order
@@ -464,14 +510,8 @@ class OrderItemsGroup(models.Model):
         OrderProductionService.recalculate_item_marks(order)
 
         # Approach 1: Reset parent order validation
-        if not order.is_locked:
-            order.reset_validation()
-            type(order).objects.filter(pk=order.pk).update(
-                phase1_validated=False,
-                phase2_validated=False,
-                phase1_spec_cache=None,
-                phase2_spec_cache=None
-            )
+        if order:
+            order.invalidate_cache_if_unlocked()
 
     def duplicate(self):
         """
@@ -495,14 +535,16 @@ class OrderItemsGroup(models.Model):
                 comments=self.comments,
             )
             for cust in self.customizers.all():
-                OrderItemsGroupCustomizer.objects.create(
+                OrderItemsGroupCustomizer.objects.update_or_create(
                     group=new_group,
                     customizer=cust.customizer,
-                    par1=cust.par1,
-                    par2=cust.par2,
-                    par3=cust.par3,
-                    par4=cust.par4,
-                    par5=cust.par5
+                    defaults={
+                        'par1': cust.par1,
+                        'par2': cust.par2,
+                        'par3': cust.par3,
+                        'par4': cust.par4,
+                        'par5': cust.par5,
+                    }
                 )
             return new_group
 
@@ -536,10 +578,11 @@ class OrderItemsGroupCustomizer(models.Model):
         super().clean()
         errors = {}
         product_model = getattr(self.group, 'product', None)
-        
+
         # Check if the customizer itself is available for the product
         if product_model and not self.customizer.is_available_for(product_model):
-             errors['customizer'] = f"Customizer '{self.customizer.name}' is not available for product '{product_model}'."
+            errors[
+                'customizer'] = f"Customizer '{self.customizer.name}' is not available for product '{product_model}'."
 
         for i in range(1, 6):
             field_name = f"par{i}"
@@ -556,9 +599,11 @@ class OrderItemsGroupCustomizer(models.Model):
                         all_options = self.customizer.get_parameter_options(i)
                         all_keys = [opt[0] for opt in all_options]
                         if stripped_value in all_keys:
-                             errors[field_name] = f"Selected hardware '{stripped_value}' is incompatible with the product model."
+                            errors[
+                                field_name] = f"Selected hardware '{stripped_value}' is incompatible with the product model."
                         else:
-                             errors[field_name] = f"Selected value '{stripped_value}' is not a valid option. Allowed: {', '.join(valid_keys)}"
+                            errors[
+                                field_name] = f"Selected value '{stripped_value}' is not a valid option. Allowed: {', '.join(valid_keys)}"
 
         if errors:
             raise ValidationError(errors)
@@ -567,27 +612,14 @@ class OrderItemsGroupCustomizer(models.Model):
         if self.group.order.is_locked:
             pass
         super().save(*args, **kwargs)
-        order = self.group.order
-        if not order.is_locked:
-            order.reset_validation()
-            type(order).objects.filter(pk=order.pk).update(
-                phase1_validated=False,
-                phase2_validated=False,
-                phase1_spec_cache=None,
-                phase2_spec_cache=None
-            )
+        if self.group_id and self.group.order_id:
+            self.group.order.invalidate_cache_if_unlocked()
 
     def delete(self, *args, **kwargs):
         order = self.group.order
         super().delete(*args, **kwargs)
-        if not order.is_locked:
-            order.reset_validation()
-            type(order).objects.filter(pk=order.pk).update(
-                phase1_validated=False,
-                phase2_validated=False,
-                phase1_spec_cache=None,
-                phase2_spec_cache=None
-            )
+        if order:
+            order.invalidate_cache_if_unlocked()
 
 
 # ==========================================
@@ -716,7 +748,8 @@ class OrderItem(models.Model):
     def __str__(self):
         return f"פריט #{self.id} (קבוצה מס' {self.group_id})"
 
-    def format_decimal(self, value):
+    @staticmethod
+    def format_decimal(value):
         if value is None:
             return ""
         # Truncate to 1 decimal place (already done in save, but just in case)
@@ -757,29 +790,14 @@ class OrderItem(models.Model):
                 setattr(self, field, truncated)
 
         super().save(*args, **kwargs)
-
-        # Approach 1: Reset parent order validation
-        order = self.group.order
-        if not order.is_locked:
-            order.reset_validation()
-            type(order).objects.filter(pk=order.pk).update(
-                phase1_validated=False,
-                phase2_validated=False,
-                phase1_spec_cache=None,
-                phase2_spec_cache=None
-            )
+        if self.group_id and self.group.order_id:
+            self.group.order.invalidate_cache_if_unlocked()
 
     def delete(self, *args, **kwargs):
         order = self.group.order
         super().delete(*args, **kwargs)
-        if not order.is_locked:
-            order.reset_validation()
-            type(order).objects.filter(pk=order.pk).update(
-                phase1_validated=False,
-                phase2_validated=False,
-                phase1_spec_cache=None,
-                phase2_spec_cache=None
-            )
+        if order:
+            order.invalidate_cache_if_unlocked()
 
 
 # ==========================================

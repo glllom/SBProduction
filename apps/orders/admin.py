@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Order, OrderChangeLog, OrderItem
+from .models import Order, OrderChangeLog
 from .models import OrderItemsGroup, GroupSpecification, GroupSpecificationCustomizer
 
 
@@ -10,6 +10,7 @@ class OrderItemsGroupInline(admin.TabularInline):
     fields = (
         "product",
         "quantity",
+        "production_state",
         "series",
         "front",
         "basic_color_frames",
@@ -26,6 +27,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
         "order",
         "product",
         "quantity",
+        "production_state",
         "series",
         "front",
         "basic_color_frames",
@@ -35,6 +37,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
     )
 
     list_filter = (
+        "production_state",
         "is_split_installation",
         "series",
         "product",
