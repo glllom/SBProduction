@@ -139,6 +139,7 @@ class PanelDimensionStep(SpecStep):
         # Base dimensions from item
         h = float(item.height or 0)
         w = float(item.width or 0)
+        bottom_correction = float(getattr(item, 'bottom_correction', 0) or 0)
 
         # 1. Calculate Inner Opening Dimensions (Always)
         spec.inner_height = h + float(pf.frame_inner_height_reduction or 0)
@@ -153,11 +154,12 @@ class PanelDimensionStep(SpecStep):
             return
 
         # Calculate leaf height (adding negative clearances reduces the size)
-        h_panel = spec.inner_height + float(pf.leaf_top_clearance or 0) + float(pf.leaf_bottom_clearance or 0)
+        h_panel = spec.inner_height + float(pf.leaf_top_clearance or 0) + float(
+            pf.leaf_bottom_clearance or 0) - bottom_correction
 
         if not context.data.get('is_double'):
             # Single door
-            w_panel = spec.inner_width + 2 * float(pf.leaf_side_clearance or 0)
+            w_panel = spec.inner_width + float(pf.leaf_side_clearance or 0)
             spec.panel_dimensions = [{'width': round(w_panel, 2), 'height': round(h_panel, 2)}]
         else:
             # Double door
@@ -196,7 +198,7 @@ class BaseItemStep(SpecStep):
         spec.height = float(item.height or 0)
         spec.width = float(item.width or 0)
         spec.wall = float(item.wall or 0)
-        spec.addition_cut = float(item.addition_cut) if item.addition_cut else None
+        spec.addition_cut = float(item.bottom_correction) if item.bottom_correction else None
 
         spec.direction_code = item.direction or ""
         spec.opening_code = item.opening or ""

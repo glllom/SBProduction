@@ -11,12 +11,12 @@ from apps.catalog.models import ProductModel, Front
 class OrderStatus(models.TextChoices):
     NEW = 'NEW', 'חדש'
     IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
-    IN_PRODUCTION_PHASE1 = 'PHASE1_PRODUCTION', 'ייצור שלב א (משקופים)'
+    PHASE1_PRODUCTION = 'PHASE1_PRODUCTION', 'ייצור שלב א (משקופים)'
     PHASE1_READY = 'PHASE1_READY', 'שלב א מוכן (ממתין להמשך)'
-    IN_PRODUCTION_PHASE2 = 'PHASE2_PRODUCTION', 'ייצור שלב ב'
+    PHASE2_PRODUCTION = 'PHASE2_PRODUCTION', 'ייצור שלב ב'
     COMPLETION_PRODUCTION = 'COMPLETION_PRODUCTION', 'ייצור השלמות'
-    READY = 'READY', 'מוכן למשלוח'
-    COMPLETED = 'COMPLETED', 'הושלם'
+    PARTIALLY_READY = 'PARTIALLY_READY', 'מוכן חלקית (ממתין להשלמות)'
+    COMPLETED = 'COMPLETED', 'ההזמנה מוכנה'
     CANCELED = 'CANCELED', 'בוטל'
 
 
@@ -191,22 +191,22 @@ class Order(models.Model):
     @property
     def is_locked(self):
         """Check if the order is in production or completed."""
-        return self.status in [
-            OrderStatus.IN_PRODUCTION,
-            OrderStatus.IN_PRODUCTION_PHASE1,
-            OrderStatus.IN_PRODUCTION_PHASE2,
-            OrderStatus.COMPLETION_PRODUCTION,
-            OrderStatus.PHASE1_READY,
-            OrderStatus.READY,
-            OrderStatus.COMPLETED,
-        ]
+        # return self.status in [
+        #     OrderStatus.IN_PRODUCTION,
+        #     OrderStatus.PHASE1_PRODUCTION,
+        #     OrderStatus.PHASE2_PRODUCTION,
+        #     OrderStatus.COMPLETION_PRODUCTION,
+        #     OrderStatus.PHASE1_READY,
+        #     OrderStatus.COMPLETED,
+        # ]
+        return False
 
     @property
     def has_split_installation(self):
         return self.groups.filter(is_split_installation=True).exclude(
             production_state=OrderItemsGroup.ProductionState.CANCELED
         ).exists()
-    
+
     def get_production_stations(self):
         """
         Returns all unique production stations for all items in this order,
@@ -225,10 +225,10 @@ class Order(models.Model):
             for s in group_stations:
                 if s.id not in seen_ids:
                     # Filter for staged production
-                    if self.status == OrderStatus.IN_PRODUCTION_PHASE1:
+                    if self.status == OrderStatus.PHASE1_PRODUCTION:
                         if not s.is_phase1:
                             continue
-                    elif self.status == OrderStatus.IN_PRODUCTION_PHASE2:
+                    elif self.status == OrderStatus.PHASE2_PRODUCTION:
                         if s.is_phase1:
                             continue
 
@@ -430,11 +430,11 @@ class OrderItemsGroup(models.Model):
                 OrderItemsGroupCustomizer.objects.create(
                     group=self,
                     customizer=cust,
-                    par1='' if cust.par1_required else (cust.par1_value or ''),
-                    par2='' if cust.par2_required else (cust.par2_value or ''),
-                    par3='' if cust.par3_required else (cust.par3_value or ''),
-                    par4='' if cust.par4_required else (cust.par4_value or ''),
-                    par5='' if cust.par5_required else (cust.par5_value or ''),
+                    par1=cust.par1_value or '',
+                    par2=cust.par2_value or '',
+                    par3=cust.par3_value or '',
+                    par4=cust.par4_value or '',
+                    par5=cust.par5_value or '',
                 )
 
     def save(self, *args, **kwargs):
@@ -669,11 +669,12 @@ class OrderItem(models.Model):
         null=True,
         verbose_name="צד פתיחה",
     )
-    addition_cut = models.DecimalField(
+    bottom_correction = models.DecimalField(
         max_digits=5,
         decimal_places=1,
         blank=True,
         null=True,
+        default=0,
         verbose_name="חיתוך / קיצור נוסף",
     )
 

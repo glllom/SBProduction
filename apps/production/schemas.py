@@ -128,3 +128,30 @@ class OrderSpec(BaseModel):
 
     order: OrderHeaderSpec
     items: List[ProductionSpec]
+
+class OrderSpecBatchContainer(BaseModel):
+    """
+    Container for partitioned specifications (batches / waves).
+    e.g. {"batch_1": OrderSpec, "batch_2": OrderSpec}
+    """
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    batches: Dict[str, OrderSpec] = Field(default_factory=dict)
+
+    def get_all_items(self) -> List[ProductionSpec]:
+        """Collects items from all batches in chronological order."""
+        res = []
+        for batch_key in sorted(self.batches.keys()):
+            res.extend(self.batches[batch_key].items)
+        return res
+
+    def get_aggregated_spec(self, order) -> OrderSpec:
+        """Returns unified OrderSpec containing all items across all batches."""
+        return OrderSpec(
+            order=OrderHeaderSpec(
+                number=str(order.order_number or ""),
+                customer=order.customer or "",
+                status=order.status
+            ),
+            items=self.get_all_items()
+        )

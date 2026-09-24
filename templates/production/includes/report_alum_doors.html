@@ -1,19 +1,20 @@
 <div class="station-report-section">
     <div style="display: flex;
                 justify-content: space-between"
-         class="report-header mb-3">
-        <h4 class="my-1">
-            {{ report_label|default:"כנפיים / דלתות" }} <span class="text-danger">{{ stage_label }}</span>
-        </h4>
-        <div>
-            <p class="fs-5">הזמנה: <span class="fw-bold">{{ order.order_number }}</span></p>
+         class="report-header mb-1">
+        <div class="btn-group btn-group-sm p-0 w-25 mb-0"
+             role="group"
+             aria-label="">
+            <button type="button"
+                    class="btn bg-secondary border border-dark m-0 p-0 text-secondary pe-none">משקופים</button>
+            <button type="button" class="btn m-0 p-0 btn-dark pe-none fa-bold">כנפיים</button>
+            <button type="button"
+                    class="btn bg-secondary border border-dark m-0 p-0 text-secondary pe-none">פנלים</button>
         </div>
-        <div>
-            <p>לקוח: {{ order.customer }}</p>
-        </div>
-        <div>
-            <p><strong>תאריך:</strong> {{ now|date:"d/m/Y H:i" }}</p>
-        </div>
+        <p class="text-danger fw-bold mb-0">{{ stage_label }}</p>
+        <p class="fs-6 mb-0">הזמנה: <span class="fw-bold">{{ order.order_number }}</span></p>
+        <p class="mb-0">לקוח: <strong>{{ order.customer }}</strong></p>
+        <p class="mb-0">תאריך: {{ now|date:"d/m/Y" }}</p>
     </div>
     {% regroup order_spec.items by product_family as family_list %}
     {% for family in family_list %}

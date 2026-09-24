@@ -60,11 +60,11 @@ def run_usb_sync() -> dict:
                         continue
 
                     # Update status based on current state
-                    if order.status == OrderStatus.IN_PRODUCTION_PHASE1:
+                    if order.status == OrderStatus.PHASE1_PRODUCTION:
                         order.status = OrderStatus.PHASE1_READY
                         order.save(update_fields=["status"])
                         processed_orders.append(order_num)
-                    elif order.status in (OrderStatus.IN_PRODUCTION, OrderStatus.IN_PRODUCTION_PHASE2):
+                    elif order.status in (OrderStatus.IN_PRODUCTION, OrderStatus.PHASE2_PRODUCTION):
                         order.status = OrderStatus.READY
                         order.save(update_fields=["status"])
                         processed_orders.append(order_num)
@@ -73,7 +73,6 @@ def run_usb_sync() -> dict:
                     order_folder = os.path.join(mecal_dir, order_num)
                     if os.path.isdir(order_folder):
                         shutil.rmtree(order_folder, ignore_errors=True)
-
 
     # 2. Clear USB jobs directory
     try:
@@ -90,7 +89,6 @@ def run_usb_sync() -> dict:
                 os.remove(item_path)
             except OSError:
                 pass
-
 
     # 3. Copy remaining files from the server to USB jobs/
     copied_count = 0

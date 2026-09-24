@@ -1,6 +1,6 @@
 from django import forms
 
-from apps.catalog.models import Front, Color, ProductType, ProductFamily, Series, ProductModel, Material
+from apps.catalog.models import Front, ProductType, ProductFamily, Series, ProductModel, Material
 from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer, OrderItem
 
 
@@ -74,7 +74,7 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
         model = OrderItem
         fields = [
             'mark', 'place', 'width', 'height', 'wall',
-            'direction', 'opening', 'addition_cut', 'comment',
+            'direction', 'opening', 'bottom_correction', 'comment',
             'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
             'custom_hinge3', 'custom_hinge4', 'custom_hinge5',
             'sketch'
@@ -87,7 +87,7 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
             'wall': 'עובי קיר עבור המשקוף במילימטרים',
             'direction': 'כיוון פתיחת הדלת (פנימה / החוצה)',
             'opening': 'יד פתיחה (L = שמאל, R = ימין)',
-            'addition_cut': 'חיתוך תחתון נוסף במילימטרים (עבור ריצוף או שטיח)',
+            'bottom_correction': 'חיתוך תחתון נוסף במילימטרים (עבור ריצוף או שטיח)',
             'comment': 'הערה ספציפית לפריט זה',
             'custom_lock_height': 'גובה מרכז מנעול חריג מהרצפה במילימטרים',
             'custom_hinge1': 'גובה ציר 1 חריג מהרצפה במילימטרים',
@@ -104,7 +104,7 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
             'wall': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'עובי קיר'}),
             'direction': TooltipSelect(attrs={'class': 'form-select'}),
             'opening': TooltipSelect(attrs={'class': 'form-select'}),
-            'addition_cut': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'רווח נוסף'}),
+            'bottom_correction': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'רווח נוסף'}),
             'place': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'מיקום'}),
             'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'הערה'}),
             'custom_lock_height': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'גובה מנעול'}),
@@ -396,12 +396,14 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
         # Populate basic_color_frames queryset
         if product:
             available_frames = product.available_frames
-            self.fields['basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.none()
+            self.fields[
+                'basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.none()
         elif series_id:
             series = Series.objects.filter(id=series_id).first()
             if series:
                 available_frames = series.available_frames
-                self.fields['basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.none()
+                self.fields[
+                    'basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.none()
             else:
                 self.fields['basic_color_frames'].queryset = Material.objects.none()
         else:

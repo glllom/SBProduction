@@ -214,7 +214,7 @@ class OrderItemAdmin(admin.ModelAdmin):
     search_fields = (
         "place",
         "comment",
-        "addition_cut",
+        "bottom_correction",
         "group__order__order_number",
     )
 
@@ -236,7 +236,7 @@ class OrderItemAdmin(admin.ModelAdmin):
                     "wall",
                     "opening",
                     "direction",
-                    "addition_cut",
+                    "bottom_correction",
                 ),
             },
         ),

@@ -28,14 +28,17 @@ def order_transfer_to_production(request, pk):
     """
     order = get_object_or_404(Order, pk=pk)
 
-    # NEW: Form for Phase 2 transition (if starting from Phase 1 Ready)
+    # Form for Phase 2 transition (if starting from Phase 1 Ready)
     if order.status == OrderStatus.PHASE1_READY:
         try:
             # We use Phase 1 spec to pre-fill values and show info (like lock/hinge names)
-            spec_obj, spec_json = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
+            spec_obj, spec_cache = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
         except Exception as e:
             messages.error(request, f"Error building spec: {str(e)}")
             return redirect('order-detail', pk=pk)
+
+        # Extract items directly from Pydantic spec_obj
+        spec_items = [item.model_dump() for item in spec_obj.items]
 
         if request.method == 'POST':
             change_logs = []
@@ -50,7 +53,7 @@ def order_transfer_to_production(request, pk):
                 )
             }
 
-            for item_spec in spec_json.get('items', []):
+            for item_spec in spec_items:
                 item_id = item_spec.get('item_id')
                 order_item = items_by_id.get(item_id)
                 if not order_item:
@@ -69,8 +72,6 @@ def order_transfer_to_production(request, pk):
                     if key in request.POST:
                         try:
                             val = request.POST.get(key)
-                            # User entered Inner (Gross). Convert to External for saving.
-                            # For wall, reduction is 0 (it's absolute).
                             new_inner = float(val) if val else None
                             new_val_to_save = (new_inner - reduction) if new_inner is not None else None
 
@@ -96,7 +97,6 @@ def order_transfer_to_production(request, pk):
                     val = request.POST.get(lh_key)
                     try:
                         new_gross = float(val) if val else None
-                        # Net = Gross + Clearance (clearance is negative)
                         new_net = new_gross + clearance if new_gross is not None else None
 
                         old_net = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
@@ -116,7 +116,7 @@ def order_transfer_to_production(request, pk):
                         pass
 
                 # 3. Hinge Heights (Input is Gross, save Net)
-                spec_hinges_net = item_spec.get('hinge_heights', [])
+                spec_hinges_net = item_spec.get('hinge_heights', []) or []
                 for i in range(5):
                     hh_key = f"item_{item_id}_hinge_height_{i}"
                     field_name = f"custom_hinge{i + 1}"
@@ -168,7 +168,7 @@ def order_transfer_to_production(request, pk):
         # GET logic
         items_data = []
         items_by_id = {item.id: item for item in OrderItem.objects.filter(group__order=order)}
-        for item_spec in spec_json.get('items', []):
+        for item_spec in spec_items:
             item_id = item_spec.get('item_id')
             order_item = items_by_id.get(item_id)
             if not order_item:
@@ -194,7 +194,7 @@ def order_transfer_to_production(request, pk):
 
             # Show Hinge Heights (Gross)
             hinge_heights_gross = []
-            spec_hinges_gross = item_spec.get('hinge_heights_on_frame', [])
+            spec_hinges_gross = item_spec.get('hinge_heights_on_frame', []) or []
             for i in range(1, 6):
                 val_net = getattr(order_item, f"custom_hinge{i}")
                 if val_net is not None:
@@ -240,7 +240,7 @@ def order_transfer_to_completion_production(request, pk):
 @login_required
 def group_toggle_state(request, pk, group_id):
     """
-    Toggles or sets the production state of an OrderItemsGroup (e.g. unfreezing completed group back to WAITING).
+    Toggles or sets the production state of an OrderItemsGroup (unfreezing the completed group back to WAITING).
     """
     order = get_object_or_404(Order, pk=pk)
     group = get_object_or_404(order.groups, pk=group_id)
@@ -297,28 +297,35 @@ def order_transfer_to_phase1(request, pk):
 def order_complete_phase1(request, pk):
     """
     Marks Phase 1 production as completed.
-    Now with a form to adjust spec values before transitioning to PHASE1_READY.
+    Form to adjust spec values before transitioning to PHASE1_READY.
     """
     order = get_object_or_404(Order, pk=pk)
 
-    # We only allow this transition from IN_PRODUCTION_PHASE1
-    if order.status != OrderStatus.IN_PRODUCTION_PHASE1:
+    if order.status != OrderStatus.PHASE1_PRODUCTION:
         messages.error(request, "Order is not in Phase 1 production.")
         return redirect('order-detail', pk=pk)
 
     try:
-        spec_obj, spec_json = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
+        spec_obj, spec_cache = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
     except Exception as e:
         messages.error(request, f"Error building spec: {str(e)}")
         return redirect('order-detail', pk=pk)
 
+    # Extract flat items list from Pydantic spec_obj
+    spec_items = [item.model_dump() for item in spec_obj.items]
+
     if request.method == 'POST':
         modified_cache = False
         change_logs = []
-        # Load all items for this order to update them in DB
         items_by_id = {item.id: item for item in OrderItem.objects.filter(group__order=order)}
 
-        for item_spec in spec_json.get('items', []):
+        # Locate the batch dictionary to update cache properly
+        target_batch_dict = spec_cache.get('batch_1', spec_cache)
+        cached_items_map = {
+            item['item_id']: item for item in target_batch_dict.get('items', [])
+        }
+
+        for item_spec in spec_items:
             item_id = item_spec.get('item_id')
             mark = item_spec.get('mark', str(item_id))
             order_item = items_by_id.get(item_id)
@@ -326,6 +333,7 @@ def order_complete_phase1(request, pk):
                 continue
 
             item_modified = False
+            cached_item = cached_items_map.get(item_id)
 
             # Lock height
             lh_key = f"item_{item_id}_lock_height"
@@ -333,14 +341,13 @@ def order_complete_phase1(request, pk):
                 val = request.POST.get(lh_key)
                 try:
                     new_val = float(val) if val else None
-                    # ALWAYS save to OrderItem
                     order_item.custom_lock_height = new_val
                     item_modified = True
 
-                    # Update cache and log ONLY if changed compared to cache
                     old_cache_val = item_spec.get('lock_height')
                     if new_val != old_cache_val:
-                        item_spec['lock_height'] = new_val
+                        if cached_item:
+                            cached_item['lock_height'] = new_val
                         modified_cache = True
                         change_logs.append(OrderChangeLog(
                             order=order,
@@ -367,17 +374,16 @@ def order_complete_phase1(request, pk):
                             pass
 
             if hinges_in_post:
-                # ALWAYS update OrderItem fields
                 for i in range(5):
                     field_name = f"custom_hinge{i + 1}"
                     val = new_hinge_heights[i] if i < len(new_hinge_heights) else None
                     setattr(order_item, field_name, val)
                 item_modified = True
 
-                # Update cache and log ONLY if changed compared to cache
                 old_hinges = item_spec.get('hinge_heights', [])
                 if new_hinge_heights != old_hinges:
-                    item_spec['hinge_heights'] = new_hinge_heights
+                    if cached_item:
+                        cached_item['hinge_heights'] = new_hinge_heights
                     modified_cache = True
                     change_logs.append(OrderChangeLog(
                         order=order,
@@ -391,7 +397,7 @@ def order_complete_phase1(request, pk):
                 order_item.save()
 
         if modified_cache:
-            order.phase1_spec_cache = spec_json
+            order.phase1_spec_cache = spec_cache
             order.save(update_fields=['phase1_spec_cache'])
             if change_logs:
                 OrderChangeLog.objects.bulk_create(change_logs)
@@ -406,8 +412,8 @@ def order_complete_phase1(request, pk):
 
     # Prepare data for template (padded hinges)
     items_data = []
-    for item in spec_json.get('items', []):
-        hinges = item.get('hinge_heights', [])
+    for item in spec_items:
+        hinges = item.get('hinge_heights', []) or []
         padded_hinges = (hinges + [None] * 5)[:5]
         item_copy = item.copy()
         item_copy['padded_hinges'] = padded_hinges
@@ -465,9 +471,9 @@ def station_report(request, pk):
         station_code = 'ALL'
 
     # Determine stage label based on order status
-    if order.status in [OrderStatus.IN_PRODUCTION_PHASE1]:
+    if order.status in [OrderStatus.PHASE1_PRODUCTION]:
         stage_label = "שלב א'"
-    elif order.status in [OrderStatus.IN_PRODUCTION_PHASE2, OrderStatus.PHASE1_READY]:
+    elif order.status in [OrderStatus.PHASE2_PRODUCTION, OrderStatus.PHASE1_READY]:
         stage_label = "שלב ב'"
     else:
         stage_label = "קומפלט"
@@ -633,10 +639,8 @@ def split_measurer_report(request, pk):
         messages.error(request, "This report is only available for split installations.")
         return redirect('order-detail', pk=pk)
 
-    # User said: button strictly after phase 1 and before phase 2.
-    # However, we'll allow access if phase 1 is ready or phase 2 is in production.
-    if order.status not in [OrderStatus.PHASE1_READY, OrderStatus.IN_PRODUCTION_PHASE2]:
-        # We can be strict or loose here. Let's be helpful but follow the prompt logic for the button visibility later.
+    if order.status not in [OrderStatus.PHASE1_READY, OrderStatus.PHASE2_PRODUCTION]:
+        # We can be strict or lose here. Let's be helpful but follow the prompt logic for the button visibility later.
         pass
 
     try:
@@ -670,7 +674,7 @@ def order_compare_snapshots(request, pk):
         messages.error(request, "Access denied. Admins only.")
         return redirect('order-detail', pk=pk)
 
-    if order.status != OrderStatus.IN_PRODUCTION_PHASE2:
+    if order.status != OrderStatus.PHASE2_PRODUCTION:
         messages.error(request, "Comparison is only available for orders in Phase 2 Production.")
         return redirect('order-detail', pk=pk)
 
@@ -725,7 +729,7 @@ def order_compare_snapshots(request, pk):
             'changed': hh1 != hh2
         })
 
-        # 3. Changed fields that were in Phase 1
+        # 3. Changed fields in Phase 1
         for field_key, label in spec_labels.items():
             val1 = item1.get(field_key)
             val2 = item2.get(field_key)

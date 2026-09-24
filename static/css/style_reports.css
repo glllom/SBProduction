@@ -1,0 +1,84 @@
+* {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background-color: #f0f0f0;
+}
+
+.page {
+    background: white;
+    width: 297mm;
+    min-height: 190mm;
+    padding: 20mm;
+    margin: 10mm auto;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+table {
+    width: 100%;
+    margin-top: 20px;
+}
+
+th, td {
+    border: 1px solid #000;
+    padding: 8px;
+}
+
+th {
+    background-color: #f2f2f2;
+}
+
+.no-print {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* Ограничиваем стили только верхними сервисными кнопками, чтобы не ломать Bootstrap-кнопки в отчёте */
+.no-print .btn {
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    margin: 0 5px;
+}
+
+.no-print .btn-secondary {
+    background-color: #6c757d;
+}
+
+/* Класс для гарантированной чёрной заливки на печати (работает даже если в браузере снят чекбокс фонов) */
+.indicator-active {
+    background-color: #000 !important;
+    color: #fff !important;
+    box-shadow: inset 0 0 0 1000px #000 !important;
+}
+
+@media print {
+    @page {
+        size: landscape;
+        margin: 10mm;
+    }
+
+    body {
+        background-color: white;
+        margin: 0;
+    }
+
+    .page {
+        margin: 0;
+        box-shadow: none;
+        width: 100%;
+        padding: 0;
+    }
+
+    .no-print {
+        display: none;
+    }
+}

@@ -233,12 +233,12 @@ class OrderValidationServiceTests(TestCase):
         # start_phase1 should succeed
         OrderProductionService.start_phase1(order, user=self.user)
         order.refresh_from_db()
-        self.assertEqual(order.status, OrderStatus.IN_PRODUCTION_PHASE1)
+        self.assertEqual(order.status, OrderStatus.PHASE1_PRODUCTION)
 
         # start_production without handle should NOT raise ValueError if in Phase 1 and split
         # because it only does partial validation
         OrderProductionService.start_production(order, user=self.user)
-        self.assertEqual(order.status, OrderStatus.IN_PRODUCTION_PHASE1)
+        self.assertEqual(order.status, OrderStatus.PHASE1_PRODUCTION)
 
         # Complete Phase 1
         OrderProductionService.complete_phase1(order, user=self.user)
@@ -258,7 +258,7 @@ class OrderValidationServiceTests(TestCase):
 
         OrderProductionService.start_production(order, user=self.user)
         order.refresh_from_db()
-        self.assertEqual(order.status, OrderStatus.IN_PRODUCTION_PHASE2)
+        self.assertEqual(order.status, OrderStatus.PHASE2_PRODUCTION)
 
 
 class ProductionReportAndZipValidationTests(TestCase):
@@ -281,7 +281,7 @@ class ProductionReportAndZipValidationTests(TestCase):
         order = Order.objects.create(
             order_number='ORD-REP-P1', customer='Client A',
             series=self.series, front=self.front, handle=None,
-            status=OrderStatus.IN_PRODUCTION_PHASE1
+            status=OrderStatus.PHASE1_PRODUCTION
         )
         group = OrderItemsGroup.objects.create(
             order=order, product=self.pm, series=self.series, front=self.front,
@@ -489,7 +489,7 @@ class OrderStatusTransitionValidationTests(TestCase):
         resp = self.client.get(reverse('production:order-transfer-to-phase1', args=[order.pk]))
         self.assertEqual(resp.status_code, 302)
         order.refresh_from_db()
-        self.assertEqual(order.status, OrderStatus.IN_PRODUCTION_PHASE1)
+        self.assertEqual(order.status, OrderStatus.PHASE1_PRODUCTION)
 
     def test_transfer_to_production_fails_when_handle_missing(self):
         """
@@ -712,7 +712,7 @@ class PhasedProductionFilteringTests(TestCase):
         self.assertEqual(len(stations), 2)
 
         # 2. PHASE1_PRODUCTION status - only phase 1 stations
-        order.status = OrderStatus.IN_PRODUCTION_PHASE1
+        order.status = OrderStatus.PHASE1_PRODUCTION
         order.save()
         stations = order.get_production_stations()
         station_ids = [s.id for s in stations]
@@ -721,7 +721,7 @@ class PhasedProductionFilteringTests(TestCase):
         self.assertEqual(len(stations), 1)
 
         # 3. PHASE2_PRODUCTION status - only phase 2 stations
-        order.status = OrderStatus.IN_PRODUCTION_PHASE2
+        order.status = OrderStatus.PHASE2_PRODUCTION
         order.save()
         stations = order.get_production_stations()
         station_ids = [s.id for s in stations]
