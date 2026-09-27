@@ -23,4 +23,5 @@ urlpatterns = [
     path('order/<int:pk>/compare-snapshots/', views.order_compare_snapshots, name='order-compare-snapshots'),
     path('order/<int:pk>/dev-rebuild-spec/', views.order_dev_force_rebuild_spec, name='order-dev-rebuild-spec'),
     path("sync-usb/", views.sync_usb_view, name="sync_usb"),
+    path('orders/<int:pk>/reports/sketches/', views.order_sketches_report, name='order-sketches-report'),
 ]

@@ -483,6 +483,72 @@ class TechnicalSpecService:
         return pipeline.execute(order, items)
 
 
+def _calculate_sandwich_svg_layers(layers, total_width=200, total_height=100):
+    if not layers:
+        return []
+
+    min_h = 12.0
+    nominal_total = sum(
+        float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 1))
+        for l in layers
+    ) or 1.0
+
+    raw_heights = [
+        max(min_h,
+            (float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 1)) / nominal_total) * total_height)
+        for l in layers
+    ]
+    scale = total_height / sum(raw_heights)
+    actual_heights = [h * scale for h in raw_heights]
+
+    svg_layers = []
+    curr_y = 0.0
+    for l, h in zip(layers, actual_heights):
+        name = l.name if hasattr(l, 'name') else l.get('name', '')
+        th = float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 0))
+        bg = l.bg_color if hasattr(l, 'bg_color') else l.get('bg_color', '#ddd')
+        pat = l.pattern_code if hasattr(l, 'pattern_code') else l.get('pattern_code', 'solid')
+
+        svg_layers.append({
+            'y': round(curr_y, 1),
+            'height': round(h, 1),
+            'bg_color': bg,
+            'pattern_code': pat,
+            'label': f"{name} ({th:g})" if th >= 1 else str(th),
+            'text_y': round(curr_y + (h / 2), 1),
+        })
+        curr_y += h
+    return svg_layers
+
+
+def _calculate_frame_svg(frame_spec, width=100, height=200):
+    is_double = getattr(frame_spec, 'is_double_perimeter', False) if hasattr(frame_spec,
+                                                                             'is_double_perimeter') else frame_spec.get(
+        'is_double_perimeter', False)
+    has_closer = getattr(frame_spec, 'has_closer', False) if hasattr(frame_spec, 'has_closer') else frame_spec.get(
+        'has_closer', False)
+    has_drop_seal = getattr(frame_spec, 'has_drop_seal', False) if hasattr(frame_spec,
+                                                                           'has_drop_seal') else frame_spec.get(
+        'has_drop_seal', False)
+    has_handle = getattr(frame_spec, 'has_handle_reinforcement', False) if hasattr(frame_spec,
+                                                                                   'has_handle_reinforcement') else frame_spec.get(
+        'has_handle_reinforcement', False)
+
+    rim = 14.0 if is_double else 8.0
+    return {
+        'rim_thickness': rim,
+        'rim_right_x': width - rim,
+        'rim_bottom_y': height - rim,
+        'has_closer': has_closer,
+        'has_drop_seal': has_drop_seal,
+        'has_handle_reinforcement': has_handle,
+        'closer': {'x': rim, 'y': rim, 'w': width - (rim * 2), 'h': 16.0},
+        'drop_seal': {'x': rim, 'y': height - rim - 10.0, 'w': width - (rim * 2), 'h': 10.0},
+        'lock': {'x': rim, 'y': (height / 2) - 16.0, 'w': 18.0, 'h': 32.0},
+        'handle': {'x': rim, 'y': (height / 2) - 28.0, 'w': 22.0, 'h': 56.0},
+    }
+
+
 class ProductionDataService:
     class ReportType(models.TextChoices):
         PHASE1_FRAMES = 'PHASE1_PRODUCTION', 'Phase A Frames'
@@ -702,6 +768,7 @@ class ProductionDataService:
             'report_label': label,
             'stage_label': stage_label,
             'groups_data': self.prepare_grouped_data(order_spec_for_report),
+            'panel_groups': self.prepare_press_groups_data(order_spec_for_report),
             'now': timezone.now(),
         }
         return render_to_string(template, context)
@@ -837,6 +904,67 @@ class ProductionDataService:
                 'items_specs': items_specs,
             })
         return groups_data
+
+    def prepare_press_groups_data(self, order_spec):
+        groups_map = {}
+
+        for item in order_spec.items:
+            has_door = getattr(item, 'has_door', True)
+            sandwich = getattr(item, 'sandwich_spec', None)
+            frame = getattr(item, 'frame_spec', None)
+
+            if not has_door or not sandwich or not frame:
+                continue
+
+            layers = getattr(sandwich, 'layers', [])
+            layers_key = tuple(
+                (getattr(l, 'common_name', ''), getattr(l, 'thickness', 0.0))
+                for l in layers
+            )
+
+            group_key = (
+                getattr(sandwich, 'title', ''),
+                getattr(frame, 'title', ''),
+                layers_key,
+                getattr(frame, 'is_double_perimeter', False),
+                getattr(frame, 'has_closer', False),
+                getattr(frame, 'has_drop_seal', False),
+                getattr(frame, 'has_handle_reinforcement', False),
+            )
+
+            if group_key not in groups_map:
+                groups_map[group_key] = {
+                    'composition_title': getattr(sandwich, 'title', ''),
+                    'frame_title': getattr(frame, 'title', ''),
+                    'svg_layers': _calculate_sandwich_svg_layers(layers),
+                    'svg_frame': _calculate_frame_svg(frame),
+                    'counter': Counter(),
+                }
+
+            cut_sheets = getattr(item, 'cut_sheets', [])
+            for sheet in cut_sheets:
+                panel = sheet.get('exterior_panel') if isinstance(sheet, dict) else getattr(sheet, 'exterior_panel', {})
+                if isinstance(panel, dict):
+                    w = panel.get('width')
+                    h = panel.get('height')
+                else:
+                    w = getattr(panel, 'width', None)
+                    h = getattr(panel, 'height', None)
+
+                if w and h:
+                    groups_map[group_key]['counter'][(float(w), float(h))] += 1
+
+        panel_groups = []
+        for grp in groups_map.values():
+            raw_counter = grp.pop('counter')
+            sorted_dims = sorted(raw_counter.items(), key=lambda x: (x[0][1], x[0][0]), reverse=True)
+            grp['dimensions'] = [
+                {'width': w, 'height': h, 'qty': count}
+                for (w, h), count in sorted_dims
+            ]
+            panel_groups.append(grp)
+
+        return panel_groups
 
 
 class OrderProductionService:

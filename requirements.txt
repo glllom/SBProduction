@@ -5,3 +5,4 @@ djangorestframework
 openpyxl
 holidays
 pydantic
+django-qrcode

@@ -15,8 +15,16 @@
         <p class="fs-6 mb-0">הזמנה: <span class="fw-bold">{{ order.order_number }}</span></p>
         <p class="mb-0">לקוח: <strong>{{ order.customer }}</strong></p>
         <p class="mb-0">תאריך: {{ now|date:"d/m/Y" }}</p>
+        {% if order_qr %}
+            <div class="d-flex flex-column align-items-center">
+                <img src="data:image/svg+xml;base64,{{ order_qr }}"
+                     alt="QR"
+                     style="width: 42px;
+                            height: 42px">
+            </div>
+        {% endif %}
     </div>
-    {% regroup order_spec.items by product_family as family_list %}
+    {% regroup enriched_doors_items by product_family as family_list %}
     {% for family in family_list %}
         {% regroup family.list by series as series_list %}
         {% for series in series_list %}
@@ -32,18 +40,27 @@
                     </div>
                 </div>
                 <table class="table table-sm table-bordered mt-0">
-                    <thead>
-                        <tr class="table-secondary">
-                            <th style="width: 6%;">#</th>
-                            <th style="width: 15%;">מידות כנף</th>
-                            <th style="width: 10%;">פתיחה</th>
-                            <th style="width: 17%;">מ: <span class="text-danger fw-bold fs-5">{{ series.list.0.lock_name }}</span></th>
-                            <th style="width: 25%;">צ: <span class="text-danger fw-bold fs-5">{{ series.list.0.hinge_name }}</span></th>
-                            <th>תוספות</th>
-                        </tr>
-                    </thead>
+                    <colgroup>
+                        <col style="width: 6%;">
+                        <col style="width: 15%;">
+                        <col style="width: 10%;">
+                        <col style="width: 17%;">
+                        <col style="width: 25%;">
+                        <col>
+                    </colgroup>
                     <tbody>
                         {% for spec in series.list %}
+                            {# Промежуточная строка с названиями замка и петель при смене фурнитуры #}
+                            {% if spec.show_hardware_subhead %}
+                                <tr class="table-light border-top border-bottom border-dark border-2">
+                                    <th style="width: 6%;">#</th>
+                                    <th style="width: 15%;">מידות כנף</th>
+                                    <th style="width: 10%;">פתיחה</th>
+                                    <th style="width: 17%;">מ: <span class="text-danger">{{ spec.lock_name }}</span></th>
+                                    <th style="width: 25%;">צ: <span class="text-danger">{{ spec.hinge_name }}</span></th>
+                                    <th>תוספות</th>
+                                </tr>
+                            {% endif %}
                             <tr>
                                 <td class="fw-bolder fs-5">{{ spec.mark }}</td>
                                 <td class="fw-bolder fs-5">
@@ -59,11 +76,11 @@
                                     {% endif %}
                         {% endfor %}
                     </td>
-                    {% if forloop.first %}
-                        <td rowspan="{{ series.list|length }}"
-                            class="fs-6 fst-italic align-middle">
+                    {# Объединение ячеек кастомизаторов только для одинаковых смежных строк #}
+                    {% if spec.addons_rowspan > 0 %}
+                        <td rowspan="{{ spec.addons_rowspan }}" class="fs-6 py-1 align-middle">
                             {% if spec.comment %}
-                                <div>{{ spec.comment }}</div>
+                                <div class="fst-italic text-secondary">{{ spec.comment }}</div>
                             {% endif %}
                             {% if spec.doors_report_customizers %}
                                 <div class="mt-1">

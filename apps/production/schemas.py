@@ -111,6 +111,10 @@ class ProductionSpec(BaseModel):
     bom_items: List[SpecBOMItem] = Field(default_factory=list)
     profiles: List[str] = Field(default_factory=list)
 
+    # Пресс и раскрой
+    sandwich_spec: Optional[SandwichSpec] = None
+    frame_spec: Optional[FrameStructureSpec] = None
+
     # Additional
     frames_report_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
     doors_report_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
@@ -128,6 +132,7 @@ class OrderSpec(BaseModel):
 
     order: OrderHeaderSpec
     items: List[ProductionSpec]
+
 
 class OrderSpecBatchContainer(BaseModel):
     """
@@ -155,3 +160,27 @@ class OrderSpecBatchContainer(BaseModel):
             ),
             items=self.get_all_items()
         )
+
+
+class SandwichLayerSpec(BaseModel):
+    name: str  # Отображаемое имя (MDF, פלקסבורד, עופרת)
+    common_name: str  # Базовый идентификатор без привязки к размеру листа
+    thickness: float  # Толщина в мм (6.0, 34.0, 0.5)
+    pattern_code: str = ""  # Код паттерна: 'tubular', 'foam', 'lead', 'solid'
+    bg_color: str = "#e0e0e0"  # Фоновый цвет для SVG
+
+
+class SandwichSpec(BaseModel):
+    title: str = ""  # Текстовое описание состава: "פלקסבורד 34 + כיסוי MDF 6"
+    total_thickness: float = 0.0
+    layers: List[SandwichLayerSpec] = Field(default_factory=list)
+
+
+class FrameStructureSpec(BaseModel):
+    title: str = "אורן סטנדרט"
+    is_double_perimeter: bool = False  # Двойная рамка
+    has_closer: bool = False  # Закладная под верхний доводчик
+    has_drop_seal: bool = False  # Скрытый порог снизу
+    has_handle_reinforcement: bool = False  # Усиление под ручку-скобу
+    lock_block: bool = True  # Закладная под замок (почти всегда True)
+    lock_height: float = 0.0  # Высота замка для позиционирования

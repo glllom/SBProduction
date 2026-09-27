@@ -1,22 +1,108 @@
+import base64
+import json
+from io import BytesIO
+
+import qrcode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import redirect
-from django.shortcuts import render, get_object_or_404
-from django.utils import timezone
 from django.views.decorators.http import require_POST
+from qrcode.image.svg import SvgPathImage
 
-from apps.orders.models import Order, OrderStatus, OrderChangeLog, OrderItem, OrderItemsGroup
+from apps.orders.models import OrderChangeLog, OrderItem
+from apps.orders.models import OrderItemsGroup, OrderStatus
 from .decorators import require_order_spec
 from .models import ProductionStation
 from .services import (
     OrderProductionService,
     ProductionDataService,
-    TechnicalSpecService,
     OrderValidationError,
     OrderValidationService,
 )
 from .usb_sync import run_usb_sync
+
+
+def enrich_report_doors_spec(items):
+    """
+    Размечает элементы для вывода в таблице дверей:
+    1. Помечает элементы сменившейся фурнитуры (show_hardware_subhead).
+    2. Вычисляет addons_rowspan для одинаковых идущих подряд кастомизаторов/комментариев.
+    """
+
+    def get_addons_signature(item_dict):
+        # Читаем из словаря через .get()
+        cmz = item_dict.get('doors_report_customizers', []) or []
+        comment = item_dict.get('comment', '') or ''
+
+        # В dict кастомизаторы уже сериализованы в словари через model_dump()
+        return json.dumps({
+            'c': str(comment),
+            'cmz': cmz
+        }, sort_keys=True, default=str)
+
+    items_data = [
+        item.model_dump() if hasattr(item, 'model_dump') else item
+        for item in items
+    ]
+    n = len(items_data)
+
+    # 1. Смена фурнитуры внутри серии
+    current_key = None
+    for item in items_data:
+        group_key = (item.get('product_family'), item.get('series'))
+        hw_key = (item.get('lock_name'), item.get('hinge_name'))
+
+        if current_key is None or current_key[0] != group_key or current_key[1] != hw_key:
+            item['show_hardware_subhead'] = True
+            current_key = (group_key, hw_key)
+        else:
+            item['show_hardware_subhead'] = False
+
+    # 2. Подсчет rowspan со строгим разрывом
+    i = 0
+    while i < n:
+        sig = get_addons_signature(items_data[i])
+        curr_group = (items_data[i].get('product_family'), items_data[i].get('series'))
+        curr_hw = (items_data[i].get('lock_name'), items_data[i].get('hinge_name'))
+
+        run_len = 1
+        while i + run_len < n:
+            next_group = (items_data[i + run_len].get('product_family'), items_data[i + run_len].get('series'))
+            next_hw = (items_data[i + run_len].get('lock_name'), items_data[i + run_len].get('hinge_name'))
+
+            # Разрываем rowspan, если изменились модель, серия, фурнитура или состав кастомизаторов
+            if (next_group != curr_group or
+                    next_hw != curr_hw or
+                    get_addons_signature(items_data[i + run_len]) != sig):
+                break
+            run_len += 1
+
+        items_data[i]['addons_rowspan'] = run_len
+        for j in range(1, run_len):
+            items_data[i + j]['addons_rowspan'] = 0
+
+        i += run_len
+
+    return items_data
+
+
+def get_qr_base64(data: str) -> str:
+    """Генерирует QR-код в формате Base64 SVG."""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,  # 15% повреждений восстанавливается
+        box_size=10,
+        border=1,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+
+    buffer = BytesIO()
+    img = qr.make_image(image_factory=SvgPathImage)
+    img.save(buffer)
+
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 
 # === 1. Production Lifecycle & Status Actions ===
@@ -189,8 +275,6 @@ def order_transfer_to_production(request, pk):
             lock_h_net = order_item.custom_lock_height
             if lock_h_net is not None:
                 item_data['lock_height'] = float(lock_h_net) - clearance
-            else:
-                item_data['lock_height'] = item_spec.get('lock_height_on_frame')
 
             # Show Hinge Heights (Gross)
             hinge_heights_gross = []
@@ -467,6 +551,9 @@ def station_report(request, pk):
     order = get_object_or_404(Order, pk=pk)
     station_code = request.GET.get('station') or request.GET.get('type')
 
+    if station_code and station_code.upper() in ['PRESS', 'CUTTING_PRESS']:
+        return report_cutting_press(request, pk)
+
     if not station_code:
         station_code = 'ALL'
 
@@ -479,6 +566,8 @@ def station_report(request, pk):
         stage_label = "קומפלט"
 
     service = ProductionDataService(order)
+
+    barcode_data = f"{order.order_number};{order.status}"
 
     if station_code.upper() in ['ALL', 'IN_PRODUCTION', 'FULL', 'FULL_PRODUCTION']:
         # Master print mode: aggregate all stations
@@ -579,6 +668,8 @@ def station_report(request, pk):
     filtered_item_ids = [item.id for item in filtered_items]
     spec_obj.items = [item for item in spec_obj.items if item.item_id in filtered_item_ids]
 
+    enriched_doors_items = enrich_report_doors_spec(spec_obj.items)
+
     return render(request, template_name, {
         'order': order,
         'order_spec': spec_obj,
@@ -588,6 +679,9 @@ def station_report(request, pk):
         'groups_data': service.prepare_grouped_data(spec_obj),
         'stage_label': stage_label,
         'now': timezone.now(),
+        'enriched_doors_items': enriched_doors_items,
+        'order_qr': get_qr_base64(barcode_data),
+        'barcode_text': barcode_data
     })
 
 
@@ -766,3 +860,229 @@ def sync_usb_view(request):
     else:
         messages.error(request, result["message"])
     return redirect(request.META.get("HTTP_REFERER", "/"))
+
+
+@login_required
+def order_sketches_report(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+
+    # Исключаем группы в статусах WAITING и CANCELED
+    groups_qs = order.groups.exclude(
+        production_state__in=[
+            OrderItemsGroup.ProductionState.WAITING,
+            OrderItemsGroup.ProductionState.CANCELED,
+        ]
+    )
+
+    # Если это дозаказ (השלמות), исключаем уже закрытые группы
+    if order.status == OrderStatus.COMPLETION_PRODUCTION:
+        groups_qs = groups_qs.exclude(
+            production_state=OrderItemsGroup.ProductionState.COMPLETED
+        )
+
+    # Собираем позиции строго с чертежами, сортируя по номеру позиции
+    sketches = []
+    items_qs = (
+        order.groups.filter(id__in=groups_qs.values_list('id', flat=True))
+        .prefetch_related('items')
+    )
+
+    all_items = []
+    for group in items_qs:
+        all_items.extend(list(group.items.all()))
+
+    # Сортируем по числовому значению mark (или по ID)
+    def parse_mark(it):
+        try:
+            return int(it.mark)
+        except (ValueError, TypeError):
+            return 999999
+
+    all_items.sort(key=parse_mark)
+
+    for it in all_items:
+        # Проверяем наличие файла: либо поле ImageField/FileField, либо sketch_url
+        url = None
+        if hasattr(it, 'sketch') and it.sketch:
+            try:
+                url = it.sketch.url
+            except ValueError:
+                pass
+        elif hasattr(it, 'sketch_url') and it.sketch_url:
+            url = it.sketch_url
+
+        if url:
+            sketches.append({
+                'item_id': it.id,
+                'mark': it.mark,
+                'place': it.place or '',
+                'image_url': url,
+            })
+
+    return render(request, 'production/order_sketches_report.html', {
+        'order': order,
+        'sketches': sketches,
+        'now': timezone.now(),
+    })
+
+
+from collections import Counter
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
+from apps.orders.models import Order
+from .services import TechnicalSpecService
+
+
+def _calculate_sandwich_svg_layers(layers, total_width=200, total_height=100):
+    if not layers:
+        return []
+
+    min_h = 12.0
+    nominal_total = sum(
+        float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 1))
+        for l in layers
+    ) or 1.0
+
+    raw_heights = []
+    for l in layers:
+        th = float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 1))
+        raw_heights.append(max(min_h, (th / nominal_total) * total_height))
+
+    scale = total_height / sum(raw_heights)
+    actual_heights = [h * scale for h in raw_heights]
+
+    svg_layers = []
+    curr_y = 0.0
+    for l, h in zip(layers, actual_heights):
+        name = l.name if hasattr(l, 'name') else l.get('name', '')
+        th = float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 0))
+        bg = l.bg_color if hasattr(l, 'bg_color') else l.get('bg_color', '#ddd')
+        pat = l.pattern_code if hasattr(l, 'pattern_code') else l.get('pattern_code', 'solid')
+
+        svg_layers.append({
+            'y': round(curr_y, 1),
+            'height': round(h, 1),
+            'bg_color': bg,
+            'pattern_code': pat,
+            'label': f"{name} ({th:g})" if th >= 1 else str(th),
+            'text_y': round(curr_y + (h / 2), 1),
+        })
+        curr_y += h
+    return svg_layers
+
+
+def _calculate_frame_svg(frame_spec, width=100, height=200):
+    is_double = getattr(frame_spec, 'is_double_perimeter', False) if hasattr(frame_spec,
+                                                                             'is_double_perimeter') else frame_spec.get(
+        'is_double_perimeter', False)
+    has_closer = getattr(frame_spec, 'has_closer', False) if hasattr(frame_spec, 'has_closer') else frame_spec.get(
+        'has_closer', False)
+    has_drop_seal = getattr(frame_spec, 'has_drop_seal', False) if hasattr(frame_spec,
+                                                                           'has_drop_seal') else frame_spec.get(
+        'has_drop_seal', False)
+    has_handle = getattr(frame_spec, 'has_handle_reinforcement', False) if hasattr(frame_spec,
+                                                                                   'has_handle_reinforcement') else frame_spec.get(
+        'has_handle_reinforcement', False)
+
+    rim = 14.0 if is_double else 8.0
+    return {
+        'rim_thickness': rim,
+        'rim_right_x': width - rim,
+        'rim_bottom_y': height - rim,
+        'has_closer': has_closer,
+        'has_drop_seal': has_drop_seal,
+        'has_handle_reinforcement': has_handle,
+        'closer': {'x': rim, 'y': rim, 'w': width - (rim * 2), 'h': 16.0},
+        'drop_seal': {'x': rim, 'y': height - rim - 10.0, 'w': width - (rim * 2), 'h': 10.0},
+        'lock': {'x': rim, 'y': (height / 2) - 16.0, 'w': 18.0, 'h': 32.0},
+        'handle': {'x': rim, 'y': (height / 2) - 28.0, 'w': 22.0, 'h': 56.0},
+    }
+
+
+@login_required
+def report_cutting_press(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+    order_spec, raw_cache = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
+
+    # Проверяем, откуда брать items (из Pydantic или из сырого dict)
+    items = []
+    if hasattr(order_spec, 'items') and order_spec.items:
+        items = order_spec.items
+    elif isinstance(raw_cache, dict):
+        batch = raw_cache.get('batch_1', {})
+        items = batch.get('items', [])
+
+    print(f"--- DEBUG CUTTING_PRESS ---")
+    print(f"Total items found: {len(items)}")
+
+    groups_map = {}
+
+    for idx, item in enumerate(items):
+        # Поддержка как Pydantic-объекта, так и словаря
+        is_obj = not isinstance(item, dict)
+
+        has_door = getattr(item, 'has_door', True) if is_obj else item.get('has_door', True)
+        sandwich = getattr(item, 'sandwich_spec', None) if is_obj else item.get('sandwich_spec')
+        frame = getattr(item, 'frame_spec', None) if is_obj else item.get('frame_spec')
+        cut_sheets = getattr(item, 'cut_sheets', []) if is_obj else item.get('cut_sheets', [])
+
+        print(
+            f"Item #{idx + 1}: has_door={has_door}, sandwich={bool(sandwich)}, frame={bool(frame)}, cut_sheets_len={len(cut_sheets)}")
+
+        if not has_door or not sandwich or not frame:
+            print(f"Item #{idx + 1} SKIPPED by header check")
+            continue
+
+        # Получаем слои
+        layers = getattr(sandwich, 'layers', []) if is_obj else sandwich.get('layers', [])
+        sw_title = getattr(sandwich, 'title', '') if is_obj else sandwich.get('title', '')
+        fr_title = getattr(frame, 'title', '') if is_obj else frame.get('title', '')
+
+        # Уникальный ключ группы
+        group_key = (sw_title, fr_title)
+
+        if group_key not in groups_map:
+            groups_map[group_key] = {
+                'composition_title': sw_title,
+                'frame_title': fr_title,
+                'svg_layers': _calculate_sandwich_svg_layers(layers),
+                'svg_frame': _calculate_frame_svg(frame if is_obj else type('obj', (), frame)()),
+                'counter': Counter(),
+            }
+
+        # Сбор размеров заготовок
+        sheet_count = 0
+        for sheet in cut_sheets:
+            panel = sheet.get('exterior_panel') if isinstance(sheet, dict) else getattr(sheet, 'exterior_panel', {})
+            if isinstance(panel, dict):
+                w = panel.get('width')
+                h = panel.get('height')
+            else:
+                w = getattr(panel, 'width', None)
+                h = getattr(panel, 'height', None)
+
+            if w and h:
+                groups_map[group_key]['counter'][(float(w), float(h))] += 1
+                sheet_count += 1
+
+        print(f"Item #{idx + 1} added sheets: {sheet_count}")
+
+    panel_groups = []
+    for grp in groups_map.values():
+        raw_counter = grp.pop('counter')
+        sorted_dims = sorted(raw_counter.items(), key=lambda x: (x[0][1], x[0][0]), reverse=True)
+        grp['dimensions'] = [
+            {'width': w, 'height': h, 'qty': count}
+            for (w, h), count in sorted_dims
+        ]
+        panel_groups.append(grp)
+
+    print(f"Total panel_groups generated: {len(panel_groups)}")
+    print(f"---------------------------")
+
+    return render(request, 'production/report_press.html', {
+        'order': order,
+        'panel_groups': panel_groups,
+        'now': timezone.now(),
+    })

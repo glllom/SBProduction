@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>דוח חיתוך וכבישה - הזמנה {{ order.order_number }}</title>
+        <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+        {% load static %}
+        <link rel="stylesheet" href="{% static 'css/style_reports.css' %}">
+        <style>
+        @page {
+            size: A4 portrait;
+            margin: 8mm;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #fff;
+            color: #111;
+        }
+
+        .no-print {
+            margin-bottom: 12px;
+        }
+
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            body {
+                padding: 0;
+            }
+        }
+
+        .report-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            border-bottom: 2px solid #000;
+            padding-bottom: 4px;
+            margin-bottom: 6mm;
+        }
+
+        .panel-group-block {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            margin-bottom: 6mm;
+        }
+
+        .group-header-card {
+            display: flex;
+            gap: 14px;
+            align-items: stretch;
+            border: 1px solid #333;
+            padding: 8px 12px;
+            background: #fdfdfd;
+            break-after: avoid;
+        }
+
+        .svg-frame-box {
+            width: 70px;
+            height: 140px;
+            flex-shrink: 0;
+        }
+
+        .group-meta-side {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .svg-sandwich-box {
+            width: 190px;
+            height: 80px;
+        }
+
+        .composition-text {
+            font-size: 0.95rem;
+            line-height: 1.35;
+        }
+
+        /* 2 колонки размеров */
+        .dims-container {
+            column-count: 2;
+            column-gap: 15mm;
+            border: 1px solid #333;
+            border-top: none;
+            padding: 8px 12px;
+            background: #fff;
+        }
+
+        .dim-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-family: monospace;
+            font-size: 1.15rem;
+            font-weight: bold;
+            padding: 2px 4px;
+            border-bottom: 1px dotted #ccc;
+            break-inside: avoid;
+        }
+
+        .dim-qty {
+            color: #c92a2a;
+            font-size: 1.15rem;
+        }
+
+        .group-separator {
+            border: 0;
+            border-top: 2px solid #000;
+            margin: 6mm 0;
+        }
+        </style>
+    </head>
+    <body>
+        <div class="no-print text-center">
+            <button onclick="window.print()" class="btn btn-primary btn-sm px-4">הדפס דוח חיתוך וכבישה</button>
+            <button onclick="window.close()" class="btn btn-secondary btn-sm px-3">סגור</button>
+        </div>
+        <!-- Векторные паттерны -->
+        <svg width="0" height="0" style="position:absolute">
+            <defs>
+            <pattern id="pat-tubular" width="20" height="20" patternUnits="userSpaceOnUse">
+            <rect width="20" height="20" fill="#a0522d" />
+            <circle cx="10" cy="10" r="7.5" fill="#ffffff" />
+            </pattern>
+            <pattern id="pat-foam" width="16" height="16" patternUnits="userSpaceOnUse">
+            <rect width="16" height="16" fill="#ffffff" />
+            <circle cx="8" cy="8" r="6" fill="none" stroke="#222" stroke-width="1.2" />
+            <circle cx="2" cy="2" r="2.5" fill="none" stroke="#222" stroke-width="0.8" />
+            </pattern>
+            <pattern id="pat-lead" width="10" height="10" patternUnits="userSpaceOnUse">
+            <rect width="10" height="10" fill="#495057" />
+            <line x1="0" y1="0" x2="10" y2="10" stroke="#343a40" stroke-width="1.5" />
+            </pattern>
+            </defs>
+        </svg>
+        <!-- Шапка отчёта -->
+        <div class="report-header">
+            <h4 class="mb-0">הזמנה: <strong>{{ order.order_number }}</strong></h4>
+            <span class="fs-5 text-muted">תאריך: {{ now|date:"d/m/Y" }}</span>
+        </div>
+        <!-- Список групп заготовок -->
+        {% for grp in panel_groups %}
+            <div class="panel-group-block">
+                <div class="group-header-card">
+                    <!-- Каркас двери (1:2) -->
+                    <div class="svg-frame-box">
+                        <svg viewBox="0 0 100 200" width="100%" height="100%">
+                            <rect x="0" y="0" width="100" height="200" fill="#f8f9fa" stroke="#000" stroke-width="2" />
+                            {% if grp.svg_frame.has_closer %}
+                                <rect x="{{ grp.svg_frame.closer.x }}" y="{{ grp.svg_frame.closer.y }}" width="{{ grp.svg_frame.closer.w }}" height="{{ grp.svg_frame.closer.h }}" fill="#e9ecef" stroke="#000" stroke-dasharray="2,2" />
+                            {% endif %}
+                            {% if grp.svg_frame.has_handle_reinforcement %}
+                                <rect x="{{ grp.svg_frame.handle.x }}" y="{{ grp.svg_frame.handle.y }}" width="{{ grp.svg_frame.handle.w }}" height="{{ grp.svg_frame.handle.h }}" fill="#ffd43b" stroke="#000" stroke-width="1" />
+                            {% endif %}
+                            <!-- Закладная замка -->
+                            <rect x="{{ grp.svg_frame.lock.x }}" y="{{ grp.svg_frame.lock.y }}" width="{{ grp.svg_frame.lock.w }}" height="{{ grp.svg_frame.lock.h }}" fill="#ced4da" stroke="#000" stroke-width="1" />
+                            {% if grp.svg_frame.has_drop_seal %}
+                                <rect x="{{ grp.svg_frame.drop_seal.x }}" y="{{ grp.svg_frame.drop_seal.y }}" width="{{ grp.svg_frame.drop_seal.w }}" height="{{ grp.svg_frame.drop_seal.h }}" fill="#adb5bd" stroke="#000" />
+                            {% endif %}
+                            <!-- Бруски периметра -->
+                            <rect x="0" y="0" width="100" height="{{ grp.svg_frame.rim_thickness }}" fill="#d97706" opacity="0.85" />
+                            <rect x="0" y="0" width="{{ grp.svg_frame.rim_thickness }}" height="200" fill="#d97706" opacity="0.85" />
+                            <rect x="{{ grp.svg_frame.rim_right_x }}" y="0" width="{{ grp.svg_frame.rim_thickness }}" height="200" fill="#d97706" opacity="0.85" />
+                            <rect x="0" y="{{ grp.svg_frame.rim_bottom_y }}" width="100" height="{{ grp.svg_frame.rim_thickness }}" fill="#d97706" opacity="0.85" />
+                            <rect x="0" y="0" width="100" height="200" fill="none" stroke="#000" stroke-width="2" />
+                        </svg>
+                    </div>
+                    <!-- Пирог торца (2:1) + описание -->
+                    <div class="group-meta-side">
+                        <div class="svg-sandwich-box">
+                            <svg viewBox="0 0 200 100" width="100%" height="100%">
+                                {% for l in grp.svg_layers %}
+                                    <rect x="0" y="{{ l.y }}" width="200" height="{{ l.height }}" fill="{% if l.pattern_code != 'solid' %}url(#pat-{{ l.pattern_code }}){% else %}{{ l.bg_color }}{% endif %}" stroke="#000" stroke-width="1.5" />
+                                    <text x="100" y="{{ l.text_y }}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="bold" fill="#000" style="paint-order: stroke; stroke: #fff; stroke-width: 2.5px;">
+                                    {{ l.label }}
+                                    </text>
+                                {% endfor %}
+                                <rect x="0" y="0" width="200" height="100" fill="none" stroke="#000" stroke-width="2" />
+                            </svg>
+                        </div>
+                        <div class="composition-text">
+                            <div><strong>הרכב:</strong> {{ grp.composition_title }}</div>
+                            <div><strong>מסגרת:</strong> {{ grp.frame_title }}</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Размеры заготовок (2 колонки) -->
+                <div class="dims-container">
+                    {% for d in grp.dimensions %}
+                        <div class="dim-line">
+                            <span>{{ d.width|floatformat:1 }} \ {{ d.height|floatformat:1 }}</span>
+                            <span class="dim-qty">x{{ d.qty }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% if not forloop.last %}
+                <hr class="group-separator">
+            {% endif %}
+        {% empty %}
+            <div class="alert alert-warning text-center mt-4">לא נמצאו פנלים לחיתוך וכבישה בהזמנה זו.</div>
+        {% endfor %}
+    </body>
+</html>

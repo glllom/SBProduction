@@ -781,7 +781,7 @@ class OrderItem(models.Model):
         decimal_fields = [
             'width', 'height', 'wall', 'custom_lock_height',
             'custom_hinge1', 'custom_hinge2', 'custom_hinge3',
-            'custom_hinge4', 'custom_hinge5', 'addition_cut'
+            'custom_hinge4', 'custom_hinge5', 'bottom_correction'
         ]
         for field in decimal_fields:
             val = getattr(self, field)

@@ -15,6 +15,12 @@
         <p class="fs-6 mb-0">הזמנה: <span class="fw-bold">{{ order.order_number }}</span></p>
         <p class="mb-0">לקוח: <strong>{{ order.customer }}</strong></p>
         <p class="mb-0">תאריך: {{ now|date:"d/m/Y" }}</p>
+        <div class="d-flex flex-column align-items-center">
+            <img src="data:image/svg+xml;base64,{{ order_qr }}"
+                 alt="QR"
+                 style="width: 42px;
+                        height: 42px">
+        </div>
     </div>
     {% regroup order_spec.items by product_family as family_list %}
     {% for family in family_list %}
@@ -81,27 +87,30 @@
                                                     {% if not forloop.last %}\ {% endif %}{% endfor %}
                                             </span>
                                         </td>
-                                        <td class="py-1 border-top-0">
-                                            {% if spec.frames_report_customizers %}
-                                                {% for cmz in spec.frames_report_customizers %}
-                                                    <div>
-                                                        {{ cmz.name }}
-                                                        {% if cmz.params %}
-                                                            ({% for p in cmz.params %}{{ p.label }}:
-                                                                <span class="{% if p.is_custom %}text-danger{% endif %}">{{ p.value }}</span>
-                                                                {% if not forloop.last %},{% endif %}{% endfor %})
+                                        {% if spec.addons_rowspan > 0 %}
+                                            <td rowspan="{{ spec.addons_rowspan }}" class="fs-6 py-1 align-middle">
+                                                {% if spec.comment %}
+                                                    <div class="fst-italic text-secondary">{{ spec.comment }}</div>
                                                 {% endif %}
-                                                </div>
-                                            {% endfor %}
+                                                {% if spec.doors_report_customizers %}
+                                                    <div class="mt-1">
+                                                        {% for cmz in spec.doors_report_customizers %}
+                                                            <div class="fw-bold text-primary">
+                                                                {{ cmz.name }}
+                                                                {% if cmz.params %}
+                                                                    <span class="fw-normal text-dark">
+                                                                        ({% for p in cmz.params %}{{ p.label }}:
+                                                                            {{ p.value }}{% if not forloop.last %},
+                                                                {% endif %}{% endfor %})
+                                                            </span>
+                                                        {% endif %}
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                    </td>
                                 {% endif %}
-                            </td>
-                        </tr>
-                        {% if spec.comment %}
-                            <tr>
-                                <td colspan="3"></td>
-                                <td colspan="3" class="pt-0 pb-2 fst-italic text-secondary">{{ spec.comment }}</td>
                             </tr>
-                        {% endif %}
                 {% endfor %}
                 </tbody>
                 </table>

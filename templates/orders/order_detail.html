@@ -253,6 +253,11 @@
                                     </a>
                                 {% endif %}
                             {% endfor %}
+                            <a href="{% url 'production:order-sketches-report' order.id %}"
+                               target="_blank"
+                               class="btn btn-outline-dark btn-sm">
+                                <i class="bi bi-file-earmark-image"></i> הדפסת סקיצות
+                            </a>
                             {% if order.has_split_installation %}
                                 <a href="{% url 'production:split-measurer-report' order.pk %}"
                                    target="_blank"

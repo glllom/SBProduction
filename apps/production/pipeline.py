@@ -9,7 +9,7 @@ from .bom_calculator import BOMCalculator
 from .models import LockStandardHeight, HingeStandardHeight
 from .schemas import (
     ProductionSpec, SpecBOMItem, SpecCustomizerParam, SpecCustomizerReport,
-    OrderHeaderSpec, OrderSpec
+    OrderHeaderSpec, OrderSpec, SandwichSpec, SandwichLayerSpec, FrameStructureSpec
 )
 
 
@@ -971,6 +971,7 @@ class SpecPipeline:
             HingeSelectionStep(),
             LockPositionStep(),
             HingePositionStep(),
+            SandwichAndFrameStep(),
             MeasurerDataStep(),
             TechnicalDataStep(),
             MediaStep(),
@@ -1110,3 +1111,129 @@ class OrderSpecPipeline:
     def execute_for_order(self, order, phase='phase1') -> OrderSpec:
         """Alias for executing to match architectural specification."""
         return self.execute(order, phase=phase)
+
+
+class SandwichAndFrameStep(SpecStep):
+    """
+    Формирует структуру пирога полотна (sandwich_spec) и каркаса (frame_spec)
+    для отчёта участков раскроя и пресса.
+    Priority 520 (после расчета BOM и замков).
+    """
+    priority = 520
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        if not spec.has_door or context.phase == 'phase1':
+            return
+
+        # 1. Извлекаем базовые материалы из BOM
+        filling_bom = next((b for b in spec.bom_items if b.tag == 'filling'), None)
+        base_bom = next((b for b in spec.bom_items if b.tag == 'base'), None)
+        cover_bom = next((b for b in spec.bom_items if b.tag == 'covering'), None)
+
+        # 2. Проверяем кастомизаторы на спец-слои (свинец, двойная рамка, доводчик)
+        # Ищем по тегам среди всех кастомизаторов группы
+        all_tags = set()
+        for gc in context.customizers:
+            tag_str = (gc.customizer.tag or "").upper()
+            all_tags.update(t.strip() for t in tag_str.replace(',', ' ').split() if t.strip())
+
+        has_lead = bool(all_tags & {'LEAD', 'RADIATION_PROTECTION', 'עופרת'})
+        has_closer = bool(all_tags & {'CLOSER', 'DOOR_CLOSER', 'A875', 'מחזיר שמן'})
+        has_drop_seal = bool(all_tags & {'DROP_SEAL', 'SEAL', 'סף אקטיבי'})
+        has_double_frame = bool(all_tags & {'DOUBLE_FRAME', 'REINFORCED_FRAME'})
+        has_handle_reinforcement = bool(all_tags & {'HANDLE_REINFORCEMENT', 'חיזוק ידית'})
+
+        # 3. Сборка слоёв пирога (Sandwich)
+        layers: List[SandwichLayerSpec] = []
+
+        # Получаем данные о базовых материалах через common_name
+        cov_mat = Material.objects.filter(id=cover_bom.item_id).first() if cover_bom else None
+        base_mat = Material.objects.filter(id=base_bom.item_id).first() if base_bom else None
+        fill_mat = Material.objects.filter(id=filling_bom.item_id).first() if filling_bom else None
+
+        cov_common = cov_mat.common_name if cov_mat else (spec.front_name or "MDF")
+        base_common = base_mat.common_name if base_mat else ""
+        fill_common = fill_mat.common_name if fill_mat else "flexboard"
+
+        cov_thick = float(getattr(cov_mat, 'thickness', 0) or 4.0)
+        base_thick = float(getattr(base_mat, 'thickness', 0) or 0.0)
+        fill_thick = float(getattr(fill_mat, 'thickness', 0) or 34.0)
+
+        # Правило кастомизатора: СВИНЕЦ (HPL -> Foam -> Lead -> MDF -> HPL)
+        if has_lead:
+            # Внешняя облицовка
+            layers.append(
+                SandwichLayerSpec(name=cov_common, common_name=cov_common, thickness=cov_thick, pattern_code="solid",
+                                  bg_color="#d2b48c"))
+            # Пенопласт (Foam / קלקר)
+            layers.append(SandwichLayerSpec(name="קלקר", common_name="foam", thickness=25.0, pattern_code="foam",
+                                            bg_color="#ffffff"))
+            # Лист свинца
+            layers.append(SandwichLayerSpec(name="עופרת 0.5", common_name="lead", thickness=0.5, pattern_code="lead",
+                                            bg_color="#495057"))
+            # Внутренний стабилизирующий лист MDF
+            layers.append(SandwichLayerSpec(name="MDF 6", common_name="mdf_6", thickness=6.0, pattern_code="solid",
+                                            bg_color="#c8ad7f"))
+            # Внутренняя облицовка
+            layers.append(
+                SandwichLayerSpec(name=cov_common, common_name=cov_common, thickness=cov_thick, pattern_code="solid",
+                                  bg_color="#d2b48c"))
+            title = f"אקוסטי מוגן קרינה | עופרת 0.5 + קלקר + {cov_common}"
+
+        else:
+            # Стандартная схема: Облицовка -> [Подложка] -> Наполнитель -> [Подложка] -> Облицовка
+            pattern_code = "tubular" if "flex" in fill_common.lower() else (
+                "foam" if "foam" in fill_common.lower() or "קלקר" in fill_common else "solid")
+            bg_color = "#8b5a2b" if pattern_code == "tubular" else "#ffffff"
+
+            # 1. Лицевая сторона
+            layers.append(
+                SandwichLayerSpec(name=cov_common, common_name=cov_common, thickness=cov_thick, pattern_code="solid",
+                                  bg_color="#d2b48c"))
+            if base_mat:
+                layers.append(SandwichLayerSpec(name=base_common, common_name=base_common, thickness=base_thick,
+                                                pattern_code="solid", bg_color="#c8ad7f"))
+
+            # 2. Наполнитель двери (ядро)
+            layers.append(
+                SandwichLayerSpec(name=f"{fill_common} {fill_thick:g}", common_name=fill_common, thickness=fill_thick,
+                                  pattern_code=pattern_code, bg_color=bg_color))
+
+            # 3. Внутренняя сторона
+            if base_mat:
+                layers.append(SandwichLayerSpec(name=base_common, common_name=base_common, thickness=base_thick,
+                                                pattern_code="solid", bg_color="#c8ad7f"))
+            layers.append(
+                SandwichLayerSpec(name=cov_common, common_name=cov_common, thickness=cov_thick, pattern_code="solid",
+                                  bg_color="#d2b48c"))
+
+            title = f"{fill_common} {fill_thick:g} מ\"מ + {cov_common}"
+            if base_mat:
+                title += f" + בסיס {base_common}"
+
+        total_th = sum(l.thickness for l in layers)
+        spec.sandwich_spec = SandwichSpec(
+            title=title,
+            total_thickness=round(total_th, 1),
+            layers=layers
+        )
+
+        # 4. Сборка структуры каркаса (Frame)
+        frame_title_parts = ["אורן כפול" if has_double_frame else "אורן סטנדרט"]
+        if has_closer:
+            frame_title_parts.append("חיזוק מחזיר שמן")
+        if has_drop_seal:
+            frame_title_parts.append("הכנה לסף אקטיבי")
+        if has_handle_reinforcement:
+            frame_title_parts.append("חיזוק ידית")
+
+        spec.frame_spec = FrameStructureSpec(
+            title=" + ".join(frame_title_parts),
+            is_double_perimeter=has_double_frame,
+            has_closer=has_closer,
+            has_drop_seal=has_drop_seal,
+            has_handle_reinforcement=has_handle_reinforcement,
+            lock_block=True,
+            lock_height=float(spec.lock_height or 0.0)
+        )
