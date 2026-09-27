@@ -463,3 +463,76 @@ class OrderSpecificationSnapshot(models.Model):
 
     def __str__(self):
         return f"סנאפשוט {self.get_snapshot_type_display()} - הזמנה {self.order.order_number} ({self.created_at.strftime('%d/%m/%Y %H:%M')})"
+
+
+from django.db import models
+from apps.orders.models import Order, OrderItem
+
+
+class DoorLabel(models.Model):
+    # Label types
+    class LabelType(models.IntegerChoices):
+        PRE_ROUGHING = 0, 'Черновая обгонка (до вкладного канта)'
+        ROUGHING = 1, 'Стандартная обгонка'
+        FINISHING = 2, 'Фурнитура и замки'
+
+    # Target CNC machines
+    class TargetMachine(models.TextChoices):
+        ESSEPIGI = 'ESSEPIGI', 'Essepigi'
+        ACCORD_STD = 'ACCORD_STD', 'Accord (Библиотека)'
+        ACCORD_CUSTOM = 'ACCORD_CUSTOM', 'Accord (Ручной проект)'
+
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name='door_labels'
+    )
+    order_item = models.ForeignKey(
+        OrderItem, on_delete=models.CASCADE, related_name='labels'
+    )
+
+    # Context & Counters
+    order_number = models.CharField(max_length=64, db_index=True)
+    client_name = models.CharField(max_length=255, blank=True, default='')
+    item_mark = models.CharField(max_length=32)
+    total_items = models.PositiveIntegerField(default=1)
+    label_type = models.IntegerField(choices=LabelType.choices, default=LabelType.ROUGHING)
+    print_count = models.PositiveIntegerField(default=0)
+    last_printed_at = models.DateTimeField(null=True, blank=True)
+
+    # Geometry & Specs
+    width = models.FloatField(null=True, blank=True)
+    height = models.FloatField(null=True, blank=True)
+    thickness = models.FloatField(null=True, blank=True)
+    direction = models.CharField(max_length=32, blank=True, default='')
+    opening = models.CharField(max_length=32, blank=True, default='')
+    edge_type = models.CharField(max_length=64, blank=True, default='')
+    is_paint = models.BooleanField(default=False)
+
+    # Hardware & Addons
+    lock_name = models.CharField(max_length=128, blank=True, default='')
+    lock_height = models.FloatField(null=True, blank=True)
+    hinge_name = models.CharField(max_length=128, blank=True, default='')
+    hinge_1 = models.FloatField(null=True, blank=True)
+    hinge_2 = models.FloatField(null=True, blank=True)
+    hinge_3 = models.FloatField(null=True, blank=True)
+    hinge_4 = models.FloatField(null=True, blank=True)
+    hinge_5 = models.FloatField(null=True, blank=True)
+    addons_summary = models.TextField(blank=True, default='')
+    icon_filename = models.CharField(max_length=128, blank=True, default='')
+    comment = models.TextField(blank=True, default='')
+
+    # CNC & Payload
+    target_machine = models.CharField(
+        max_length=32, choices=TargetMachine.choices, default=TargetMachine.ACCORD_STD
+    )
+    qr_payload = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['item_mark', 'label_type']
+        indexes = [
+            models.Index(fields=['order_number', 'print_count']),
+            models.Index(fields=['order', 'label_type']),
+        ]
+
+    def __str__(self):
+        return f"{self.order_number} - Item {self.item_mark} (Type {self.label_type})"

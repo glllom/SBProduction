@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}דוח ייצור משקופי עץ - הזמנה {{ order.order_number }}{% endblock %}
+{% block content %}
+    <div class="report-page a4-portrait">
+        <!-- Шапка отчёта -->
+        <div class="report-header d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+            <div>
+                <h3 class="m-0">דוח ייצור משקופי עץ</h3>
+                <div class="text-muted">
+                    הזמנה: <strong>{{ order.order_number }}</strong> | לקוח:
+                    <strong>{{ order.customer_name }}</strong>
+                </div>
+            </div>
+            <div class="text-end">
+                <div>תאריך: {{ now|date:"d/m/Y H:i" }}</div>
+                {% if order_qr %}
+                    <img src="data:image/svg+xml;base64,{{ order_qr }}"
+                         width="50"
+                         height="50"
+                         alt="QR">
+                {% endif %}
+            </div>
+        </div>
+        <!-- Таблица проёмов и параметров коробок -->
+        <table class="table table-bordered table-sm text-center align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 50px;">מס'</th>
+                    <th style="width: 120px;">מיקום</th>
+                    <th>רוחב פתח</th>
+                    <th>גובה פתח</th>
+                    <th>עובי קיר</th>
+                    <th>כיוון פתיחה</th>
+                    <th>גוון / גימור</th>
+                    <th>מנעול</th>
+                    <th>צירים</th>
+                    <th>הערות</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for it in frames_data %}
+                    <tr>
+                        <td class="fw-bold">{{ it.mark }}</td>
+                        <td>{{ it.place }}</td>
+                        <td>{{ it.opening_width }}</td>
+                        <td>{{ it.opening_height }}</td>
+                        <td>{{ it.wall_thickness }}</td>
+                        <td>{{ it.direction }} {{ it.opening }}</td>
+                        <td>{{ it.color_frames }}</td>
+                        <td>{{ it.lock_name }}</td>
+                        <td>{{ it.hinge_name }}</td>
+                        <td class="text-muted small">{{ it.comment }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="10" class="text-center py-3 text-muted">אין פריטים עם משקופי עץ בהזמנה זו</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

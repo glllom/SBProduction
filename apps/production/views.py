@@ -13,6 +13,7 @@ from qrcode.image.svg import SvgPathImage
 from apps.orders.models import OrderChangeLog, OrderItem
 from apps.orders.models import OrderItemsGroup, OrderStatus
 from .decorators import require_order_spec
+from .label_services import DoorLabelService
 from .models import ProductionStation
 from .services import (
     OrderProductionService,
@@ -624,7 +625,7 @@ def station_report(request, pk):
                     'include_template': include_template,
                 })
 
-        return render(request, 'production/master_report.html', {
+        return render(request, 'production/reports/master_report.html', {
             'order': order,
             'sections': sections,
             'stage_label': stage_label,
@@ -645,6 +646,7 @@ def station_report(request, pk):
         val_res = OrderValidationService.validate_for_report(order, report_type=station_code, station=station)
         val_res.raise_if_invalid()
         spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
+
     except Exception as e:
         errors = getattr(e, 'errors', [str(e)])
         return render(request, 'production/report_validation_error.html', {
@@ -656,6 +658,28 @@ def station_report(request, pk):
             'report_label': (station.label if station else (station.name if station else station_code)) or "דוח ייצור"
         })
 
+    if station_code and station_code.upper() in ['WOODEN_FRAMES', 'WOOD_FRAMES']:
+        frames_data = service.get_wooden_frames_data(spec_obj)
+        return render(request, 'production/reports/report_wooden_frames.html', {
+            'order': order,
+            'order_spec': spec_obj,
+            'frames_data': frames_data,
+            'report_label': 'דוח משקופי עץ',
+            'now': timezone.now(),
+            'order_qr': get_qr_base64(barcode_data),
+        })
+
+    if station_code and station_code.upper() in ['WAREHOUSE', 'HARDWARE', 'PICK_LIST']:
+        hardware_summary = service.get_warehouse_hardware_summary(spec_obj)
+        return render(request, 'production/reports/report_warehouse_hardware.html', {
+            'order': order,
+            'order_spec': spec_obj,
+            'hardware_summary': hardware_summary,
+            'report_label': 'דוח ליקוט פירזול',
+            'now': timezone.now(),
+            'order_qr': get_qr_base64(barcode_data),
+        })
+    
     if station:
         filtered_items = service.get_filtered_items(station=station)
         template_name = station.template_name or 'production/alum_frames_report.html'
@@ -713,6 +737,8 @@ def order_dev_force_rebuild_spec(request, pk):
     try:
         TechnicalSpecService.get_or_build_spec(order, phase='phase1')
         messages.success(request, f"Spec for Order {order.order_number} was forcefully rebuilt.")
+        spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
+        DoorLabelService.generate_labels_for_order(order, spec_obj)
     except Exception as e:
         messages.error(request, f"Rebuild failed: {str(e)}")
         return redirect('order-detail', pk=pk)
@@ -748,7 +774,7 @@ def split_measurer_report(request, pk):
             'phase': 'phase1'
         })
 
-    return render(request, 'production/split_measurer_report.html', {
+    return render(request, 'production/reports/split_measurer_report.html', {
         'order': order,
         'order_spec': spec_obj,
         'report_label': "דו''ח מדידה לאחר שלב א'",
@@ -919,7 +945,7 @@ def order_sketches_report(request, pk):
                 'image_url': url,
             })
 
-    return render(request, 'production/order_sketches_report.html', {
+    return render(request, 'production/reports/order_sketches_report.html', {
         'order': order,
         'sketches': sketches,
         'now': timezone.now(),
@@ -1081,8 +1107,49 @@ def report_cutting_press(request, pk):
     print(f"Total panel_groups generated: {len(panel_groups)}")
     print(f"---------------------------")
 
-    return render(request, 'production/report_press.html', {
+    return render(request, 'production/reports/report_press.html', {
         'order': order,
         'panel_groups': panel_groups,
         'now': timezone.now(),
     })
+
+
+from django.views.decorators.csrf import csrf_exempt
+from .models import DoorLabel
+
+
+@csrf_exempt
+@require_POST
+def bartender_confirm_print(request):
+    """
+    Write-back endpoint for BarTender:
+    Accepts label_id or (order_number + item_mark + label_type)
+    Increments print_count and updates last_printed_at.
+    """
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        data = request.POST
+
+    label_id = data.get('label_id')
+    if label_id:
+        labels = DoorLabel.objects.filter(pk=label_id)
+    else:
+        labels = DoorLabel.objects.filter(
+            order_number=data.get('order_number'),
+            item_mark=data.get('item_mark'),
+            label_type=data.get('label_type')
+        )
+
+    if not labels.exists():
+        return JsonResponse({'status': 'error', 'message': 'Label not found'}, status=404)
+
+    updated_count = 0
+    now = timezone.now()
+    for lbl in labels:
+        lbl.print_count += 1
+        lbl.last_printed_at = now
+        lbl.save(update_fields=['print_count', 'last_printed_at'])
+        updated_count += 1
+
+    return JsonResponse({'status': 'ok', 'updated': updated_count})

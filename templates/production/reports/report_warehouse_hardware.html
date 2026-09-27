@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}דוח ליקוט מחסן - הזמנה {{ order.order_number }}{% endblock %}
+{% block content %}
+    <div class="report-page a4-portrait">
+        <!-- Шапка отчёта -->
+        <div class="report-header d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+            <div>
+                <h3 class="m-0">דוח ליקוט פירזול מחסן (Pick List)</h3>
+                <div class="text-muted">
+                    הזמנה: <strong>{{ order.order_number }}</strong> | לקוח:
+                    <strong>{{ order.customer_name }}</strong>
+                </div>
+            </div>
+            <div class="text-end">
+                <div>תאריך: {{ now|date:"d/m/Y H:i" }}</div>
+                {% if order_qr %}
+                    <img src="data:image/svg+xml;base64,{{ order_qr }}"
+                         width="50"
+                         height="50"
+                         alt="QR">
+                {% endif %}
+            </div>
+        </div>
+        <!-- Таблица комплектации -->
+        <table class="table table-bordered table-sm align-middle">
+            <thead class="table-light text-center">
+                <tr>
+                    <th style="width: 25%;">קטגוריה (Категория)</th>
+                    <th>תיאור פריט (Наименование)</th>
+                    <th style="width: 15%;">כמות (Кол-во)</th>
+                    <th style="width: 15%;">אישור ליקוט (Собрано)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for it in hardware_summary %}
+                    <tr>
+                        <td class="fw-bold">{{ it.category }}</td>
+                        <td>{{ it.name }}</td>
+                        <td class="text-center fs-5 fw-bold">{{ it.quantity }}</td>
+                        <td class="text-center">
+                            <span style="display: inline-block;
+                                         width: 20px;
+                                         height: 20px;
+                                         border: 1px solid #333"></span>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center py-3 text-muted">לא נמצא פירזול לליקוט בהזמנה זו</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

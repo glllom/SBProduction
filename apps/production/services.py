@@ -2,6 +2,7 @@ import io
 import os
 import shutil
 import zipfile
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -12,6 +13,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 from apps.orders.models import OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
+from .label_services import DoorLabelService
 from .models import (
     ProductionStation, OrderSpecificationSnapshot,
 )
@@ -966,6 +968,77 @@ class ProductionDataService:
 
         return panel_groups
 
+    def get_wooden_frames_data(self, spec_obj):
+        """
+        Собирает данные для отчёта по деревянным коробкам из элементов спецификации.
+        Берёт проёмы (ширина, высота, толщина стены) и сторонность.
+        """
+        frames_items = []
+        for item in getattr(spec_obj, 'items', []):
+            # Пропускаем, если позиция не имеет коробки или это скрытый алюминиевый короб
+            is_hidden = getattr(item, 'is_hidden_frame', False)
+            has_frame = getattr(item, 'has_frame', True)
+            if not has_frame or is_hidden:
+                continue
+
+            frames_items.append({
+                'mark': getattr(item, 'mark', ''),
+                'place': getattr(item, 'place', '') or '',
+                'opening_width': getattr(item, 'opening_width', None) or getattr(item, 'width', ''),
+                'opening_height': getattr(item, 'opening_height', None) or getattr(item, 'height', ''),
+                'wall_thickness': getattr(item, 'wall', '') or getattr(item, 'wall_thickness', ''),
+                'direction': getattr(item, 'direction', ''),
+                'opening': getattr(item, 'opening', ''),
+                'color_frames': getattr(item, 'color_frames', '') or getattr(item, 'color', ''),
+                'lock_name': getattr(item, 'lock_name', ''),
+                'hinge_name': getattr(item, 'hinge_name', ''),
+                'comment': getattr(item, 'comment', ''),
+            })
+        return frames_items
+
+    def get_warehouse_hardware_summary(self, spec_obj):
+        """
+        Агрегирует фурнитуру под заказ для складской комплектации:
+        замки, ручки, петли (с учетом их фактического количества).
+        """
+        from collections import defaultdict
+
+        locks = defaultdict(int)
+        handles = defaultdict(int)
+        hinges = defaultdict(int)
+
+        for item in getattr(spec_obj, 'items', []):
+            # Замки
+            lock = getattr(item, 'lock_name', None) or (item.get('lock_name') if isinstance(item, dict) else None)
+            if lock:
+                locks[lock] += 1
+
+            # Ручки
+            handle = getattr(item, 'handle_name', None) or (item.get('handle_name') if isinstance(item, dict) else None)
+            if handle:
+                handles[handle] += 1
+
+            # Петли (считаем количество высот врезки)
+            hinge = getattr(item, 'hinge_name', None) or (item.get('hinge_name') if isinstance(item, dict) else None)
+            if hinge:
+                raw_hinges = getattr(item, 'hinge_heights', []) or (
+                    item.get('hinge_heights', []) if isinstance(item, dict) else [])
+                count = len([h for h in raw_hinges if h is not None])
+                # Если высоты не заполнены, берем минимум 3 по умолчанию
+                hinges[hinge] += count if count > 0 else 3
+
+        summary_list = []
+        for name, qty in sorted(locks.items()):
+            summary_list.append({'category': 'מנעולים (Замки)', 'name': name, 'quantity': qty})
+        for name, qty in sorted(handles.items()):
+            summary_list.append({'category': 'ידיות (Ручки)', 'name': name, 'quantity': qty})
+        for name, qty in sorted(hinges.items()):
+            summary_list.append({'category': 'צירים (Петли)', 'name': name, 'quantity': qty})
+
+        return summary_list
+
+
+
 
 class OrderProductionService:
     """
@@ -1039,6 +1112,8 @@ class OrderProductionService:
         val_res.raise_if_invalid()
 
         old_status = order.status
+        spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
+        DoorLabelService.generate_labels_for_order(order, spec_obj)
 
         with transaction.atomic():
             order.groups.filter(

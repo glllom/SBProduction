@@ -24,4 +24,5 @@ urlpatterns = [
     path('order/<int:pk>/dev-rebuild-spec/', views.order_dev_force_rebuild_spec, name='order-dev-rebuild-spec'),
     path("sync-usb/", views.sync_usb_view, name="sync_usb"),
     path('orders/<int:pk>/reports/sketches/', views.order_sketches_report, name='order-sketches-report'),
+    path('api/bartender/confirm-print/', views.bartender_confirm_print, name='bartender-confirm-print'),
 ]
