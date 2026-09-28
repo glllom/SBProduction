@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import redirect
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from qrcode.image.svg import SvgPathImage
 
@@ -14,6 +15,7 @@ from apps.orders.models import OrderChangeLog, OrderItem
 from apps.orders.models import OrderItemsGroup, OrderStatus
 from .decorators import require_order_spec
 from .label_services import DoorLabelService
+from .models import DoorLabel
 from .models import ProductionStation
 from .services import (
     OrderProductionService,
@@ -73,6 +75,67 @@ def enrich_report_doors_spec(items):
             next_hw = (items_data[i + run_len].get('lock_name'), items_data[i + run_len].get('hinge_name'))
 
             # Разрываем rowspan, если изменились модель, серия, фурнитура или состав кастомизаторов
+            if (next_group != curr_group or
+                    next_hw != curr_hw or
+                    get_addons_signature(items_data[i + run_len]) != sig):
+                break
+            run_len += 1
+
+        items_data[i]['addons_rowspan'] = run_len
+        for j in range(1, run_len):
+            items_data[i + j]['addons_rowspan'] = 0
+
+        i += run_len
+
+    return items_data
+
+
+def enrich_report_frames_spec(items):
+    """
+    Размечает элементы для вывода в таблице коробок:
+    1. Помечает элементы сменившейся фурнитуры (show_hardware_subhead) внутри группы профиля.
+    2. Вычисляет addons_rowspan для одинаковых идущих подряд кастомизаторов/комментариев
+       с учетом FRAMES_REPORT.
+    """
+
+    def get_addons_signature(item_dict):
+        # Берем именно кастомизаторы коробок
+        cmz = item_dict.get('frames_report_customizers', []) or []
+        comment = item_dict.get('comment', '') or ''
+        return json.dumps({
+            'c': str(comment),
+            'cmz': cmz
+        }, sort_keys=True, default=str)
+
+    items_data = [
+        item.model_dump() if hasattr(item, 'model_dump') else item
+        for item in items
+    ]
+    n = len(items_data)
+
+    current_key = None
+    for item in items_data:
+        group_key = (item.get('product_family'), item.get('series'), item.get('frame'))
+        hw_key = (item.get('lock_name'), item.get('hinge_name'))
+
+        if current_key is None or current_key[0] != group_key or current_key[1] != hw_key:
+            item['show_hardware_subhead'] = True
+            current_key = (group_key, hw_key)
+        else:
+            item['show_hardware_subhead'] = False
+
+    i = 0
+    while i < n:
+        sig = get_addons_signature(items_data[i])
+        curr_group = (items_data[i].get('product_family'), items_data[i].get('series'), items_data[i].get('frame'))
+        curr_hw = (items_data[i].get('lock_name'), items_data[i].get('hinge_name'))
+
+        run_len = 1
+        while i + run_len < n:
+            next_group = (items_data[i + run_len].get('product_family'), items_data[i + run_len].get('series'),
+                          items_data[i + run_len].get('frame'))
+            next_hw = (items_data[i + run_len].get('lock_name'), items_data[i + run_len].get('hinge_name'))
+
             if (next_group != curr_group or
                     next_hw != curr_hw or
                     get_addons_signature(items_data[i + run_len]) != sig):
@@ -679,20 +742,21 @@ def station_report(request, pk):
             'now': timezone.now(),
             'order_qr': get_qr_base64(barcode_data),
         })
-    
+
     if station:
         filtered_items = service.get_filtered_items(station=station)
-        template_name = station.template_name or 'production/alum_frames_report.html'
+        template_name = station.template_name
         report_label = station.label or station.name
     else:
         filtered_items = service.get_filtered_items(report_type=station_code)
-        template_name = 'production/alum_frames_report.html'
+        template_name = 'production/reports/alum_frames_report.html'
         report_label = station_code
 
     filtered_item_ids = [item.id for item in filtered_items]
     spec_obj.items = [item for item in spec_obj.items if item.item_id in filtered_item_ids]
 
     enriched_doors_items = enrich_report_doors_spec(spec_obj.items)
+    enriched_frames_items = enrich_report_frames_spec(spec_obj.items)
 
     return render(request, template_name, {
         'order': order,
@@ -704,6 +768,7 @@ def station_report(request, pk):
         'stage_label': stage_label,
         'now': timezone.now(),
         'enriched_doors_items': enriched_doors_items,
+        'enriched_frames_items': enriched_frames_items,
         'order_qr': get_qr_base64(barcode_data),
         'barcode_text': barcode_data
     })
@@ -1112,10 +1177,6 @@ def report_cutting_press(request, pk):
         'panel_groups': panel_groups,
         'now': timezone.now(),
     })
-
-
-from django.views.decorators.csrf import csrf_exempt
-from .models import DoorLabel
 
 
 @csrf_exempt

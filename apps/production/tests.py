@@ -201,7 +201,7 @@ class OrderValidationServiceTests(TestCase):
         self.assertTrue(any('Special' in err for err in res_full.errors))
 
         # Once color is set, full validation passes
-        group.color_panels = 'RAL 9005'
+        group.color_panel_outside = 'RAL 9005'
         group.save()
         res_full = OrderValidationService.validate_full(order)
         self.assertTrue(res_full.is_valid, f"Expected valid, got: {res_full.errors}")

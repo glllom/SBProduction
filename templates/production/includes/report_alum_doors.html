@@ -12,9 +12,9 @@
                     class="btn bg-secondary border border-dark m-0 p-0 text-secondary pe-none">פנלים</button>
         </div>
         <p class="text-danger fw-bold mb-0">{{ stage_label }}</p>
-        <p class="fs-6 mb-0">הזמנה: <span class="fw-bold">{{ order.order_number }}</span></p>
+        <p class="fs-5">הזמנה: <span class="fw-bold">{{ order.order_number }}</span></p>
         <p class="mb-0">לקוח: <strong>{{ order.customer }}</strong></p>
-        <p class="mb-0">תאריך: {{ now|date:"d/m/Y" }}</p>
+        <p class="mb-0">תאריך סיום: {{ order_spec.order.completion_date }}</p>
         {% if order_qr %}
             <div class="d-flex flex-column align-items-center">
                 <img src="data:image/svg+xml;base64,{{ order_qr }}"

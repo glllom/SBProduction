@@ -1,7 +1,7 @@
 /**
  * Order Measurements Management Script
  * Handles inline editing, AJAX updates, and exporting to Excel.
- * 
+ *
  * This script is designed to work with the order_measurements.html template.
  * It uses jQuery for DOM manipulation and AJAX calls.
  */
@@ -43,7 +43,7 @@ function renderStaticRowContent(data) {
         <td class="field-height">${formatNum(data.height)}</td>
         <td class="field-wall">${formatNum(data.wall)}</td>
         <td class="field-opening small">${combinedText}</td>
-        <td class="field-addition-cut small">${formatNum(data.additionCut)}</td>
+        <td class="field-bottom-correction small">${formatNum(data.bottomCorrection)}</td>
         <td class="field-comment small text-start">${data.comment || ''}</td>
         <td class="no-print text-nowrap">
             ${data.sketchUrl ? `
@@ -105,14 +105,14 @@ function exportToExcel() {
     document.querySelectorAll('.card').forEach(card => {
         const header = card.querySelector('h5');
         if (!header) return;
-        
+
         csv.push(header.innerText.trim());
-        
+
         const table = card.querySelector('table');
         if (!table) return;
-        
+
         const rows = table.querySelectorAll('tr');
-        
+
         rows.forEach(row => {
             const cols = row.querySelectorAll('th, td');
             let rowData = [];
@@ -130,7 +130,7 @@ function exportToExcel() {
     });
 
     const csvContent = csv.join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csvContent], {type: 'text/csv;charset=utf-8;'});
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
@@ -144,12 +144,12 @@ function exportToExcel() {
 // Attach exportToExcel to window so it can be called from onclick in HTML
 window.exportToExcel = exportToExcel;
 
-$(document).ready(function() {
+$(document).ready(function () {
     /**
      * Filters input to allow only numbers and a single decimal point.
      * Prevents invalid numeric entry in measurement fields.
      */
-    $(document).on('input', '.numeric-input', function() {
+    $(document).on('input', '.numeric-input', function () {
         this.value = this.value.replace(/[^0-9.]/g, '');
         if ((this.value.match(/\./g) || []).length > 1) {
             this.value = this.value.replace(/\.$/, '');
@@ -160,34 +160,34 @@ $(document).ready(function() {
      * Enters edit mode when clicking a row.
      * Replaces static cells with input fields.
      */
-    $('.clickable-row').on('click', function(e) {
+    $('.clickable-row').on('click', function (e) {
         if (!config.canEdit) return;
         if ($(this).hasClass('edit-mode')) return;
         // Do not enter edit mode if click was on a link, button, or file input
         if ($(e.target).closest('a, button, input, select').length) return;
-        
+
         const $row = $(this);
         const itemId = $row.data('item-id');
         const data = $row.data();
-        
+
         // Save current HTML to restore if canceled
         $row.data('old-html', $row.html());
         $row.addClass('edit-mode');
         // Hide the static custom heights row while editing
         $(`#display-custom-${itemId}`).addClass('d-none');
-        
+
         const openingOptions = `
             <option value="">-</option>
             <option value="IN" ${data.opening === 'IN' ? 'selected' : ''}>פ</option>
             <option value="OUT" ${data.opening === 'OUT' ? 'selected' : ''}>ח</option>
         `;
-        
+
         const directionOptions = `
             <option value="">-</option>
             <option value="L" ${data.direction === 'L' ? 'selected' : ''}>L</option>
             <option value="R" ${data.direction === 'R' ? 'selected' : ''}>R</option>
         `;
-        
+
         const sketchBtnClass = data.sketchUrl ? 'btn-primary' : 'btn-outline-primary';
 
         let html = `
@@ -203,7 +203,7 @@ $(document).ready(function() {
 
                 </div>
             </td>
-            <td><input type="text" class="form-control form-control-sm numeric-input" name="addition_cut" value="${data.additionCut || ''}" placeholder="רווח נוסף" data-bs-toggle="tooltip" title="חיתוך תחתון נוסף במילימטרים (לריצוף או שטיח)"></td>
+            <td><input type="text" class="form-control form-control-sm numeric-input" name="bottom_correction" value="${data.additionCut || ''}" placeholder="רווח נוסף" data-bs-toggle="tooltip" title="חיתוך תחתון נוסף במילימטרים (לריצוף או שטיח)"></td>
             <td><input type="text" class="form-control form-control-sm" name="comment" value="${data.comment || ''}" placeholder="הערה" style="width: 100%; min-width: 100px;" data-bs-toggle="tooltip" title="הערה ספציפית לפריט זה"></td>
             <td class="text-nowrap">
                 <button class="btn btn-sm btn-success btn-save" data-bs-toggle="tooltip" title="שמור שינויים בפריט"><i class="bi bi-check-lg"></i></button>
@@ -222,7 +222,7 @@ $(document).ready(function() {
                 <button class="btn btn-sm btn-outline-secondary btn-cancel" data-bs-toggle="tooltip" title="ביטול שינויים"><i class="bi bi-x-lg"></i></button>
             </td>
         `;
-        
+
         $row.html(html);
 
         // Add custom heights row for engineering adjustments
@@ -261,12 +261,12 @@ $(document).ready(function() {
             </tr>
         `;
         $row.after(customHtml);
-        
+
         if (window.initTooltips) {
             window.initTooltips($row[0]);
             window.initTooltips($(`#custom-row-${itemId}`)[0]);
         }
-        
+
         // Auto-focus the first field for faster entry
         $row.find('input[name="place"]').focus();
     });
@@ -274,7 +274,7 @@ $(document).ready(function() {
     /**
      * Toggles the display of the engineering custom heights row.
      */
-    $(document).on('click', '.btn-toggle-custom', function(e) {
+    $(document).on('click', '.btn-toggle-custom', function (e) {
         e.stopPropagation();
         const itemId = $(this).closest('tr').data('item-id');
         $(`#custom-row-${itemId}`).toggleClass('d-none');
@@ -283,7 +283,7 @@ $(document).ready(function() {
     /**
      * Proxies click to hidden file input for sketch upload.
      */
-    $(document).on('click', '.btn-sketch-upload', function(e) {
+    $(document).on('click', '.btn-sketch-upload', function (e) {
         e.stopPropagation();
         $(this).closest('div').find('.sketch-file-input').click();
     });
@@ -291,7 +291,7 @@ $(document).ready(function() {
     /**
      * Marks a sketch for deletion in the form data.
      */
-    $(document).on('click', '.btn-sketch-delete', function(e) {
+    $(document).on('click', '.btn-sketch-delete', function (e) {
         e.stopPropagation();
         const $container = $(this).closest('div');
         $container.find('.delete-sketch-input').val('true');
@@ -302,7 +302,7 @@ $(document).ready(function() {
     /**
      * Changes upload button style when a file is staged for upload.
      */
-    $(document).on('change', '.sketch-file-input', function() {
+    $(document).on('change', '.sketch-file-input', function () {
         const file = this.files[0];
         const $btn = $(this).prev('.btn-sketch-upload');
         if (file) {
@@ -313,17 +313,17 @@ $(document).ready(function() {
     /**
      * Cancels editing mode and restores the original row state.
      */
-    $(document).on('click', '.btn-cancel', function(e) {
+    $(document).on('click', '.btn-cancel', function (e) {
         e.stopPropagation();
         const $row = $(this).closest('tr');
         const itemId = $row.data('item-id');
-        
+
         // Dispose active tooltips before replacing HTML
-        $row.find('[data-bs-toggle="tooltip"]').each(function() {
+        $row.find('[data-bs-toggle="tooltip"]').each(function () {
             const inst = bootstrap.Tooltip.getInstance(this);
             if (inst) inst.dispose();
         });
-        $(`#custom-row-${itemId}`).find('[data-bs-toggle="tooltip"]').each(function() {
+        $(`#custom-row-${itemId}`).find('[data-bs-toggle="tooltip"]').each(function () {
             const inst = bootstrap.Tooltip.getInstance(this);
             if (inst) inst.dispose();
         });
@@ -338,15 +338,15 @@ $(document).ready(function() {
      * Validates and saves measurement data via AJAX.
      * On success, updates data attributes and re-renders the static view.
      */
-    $(document).on('click', '.btn-save', function(e) {
+    $(document).on('click', '.btn-save', function (e) {
         e.stopPropagation();
         const $row = $(this).closest('tr');
         const itemId = $row.data('item-id');
         const $customRow = $(`#custom-row-${itemId}`);
         const formData = new FormData();
-        
+
         // Collect data from the main row
-        $row.find('input, select').each(function() {
+        $row.find('input, select').each(function () {
             if (this.type === 'file') {
                 if (this.files[0]) formData.append('sketch', this.files[0]);
             } else if (this.className.includes('delete-sketch-input')) {
@@ -358,7 +358,7 @@ $(document).ready(function() {
 
         // Collect data from the custom heights row if it exists
         if ($customRow.length) {
-            $customRow.find('input').each(function() {
+            $customRow.find('input').each(function () {
                 if (this.name) formData.append(this.name, $(this).val());
             });
         }
@@ -373,14 +373,14 @@ $(document).ready(function() {
             processData: false,
             contentType: false,
             headers: {'X-CSRFToken': config.csrfToken},
-            success: function(response) {
+            success: function (response) {
                 if (response.status === 'ok') {
                     // Dispose tooltips before replacing HTML
-                    $row.find('[data-bs-toggle="tooltip"]').each(function() {
+                    $row.find('[data-bs-toggle="tooltip"]').each(function () {
                         const inst = bootstrap.Tooltip.getInstance(this);
                         if (inst) inst.dispose();
                     });
-                    $customRow.find('[data-bs-toggle="tooltip"]').each(function() {
+                    $customRow.find('[data-bs-toggle="tooltip"]').each(function () {
                         const inst = bootstrap.Tooltip.getInstance(this);
                         if (inst) inst.dispose();
                     });
@@ -392,10 +392,10 @@ $(document).ready(function() {
                     $row.data('opening', formData.get('opening'));
                     $row.data('direction', formData.get('direction'));
                     $row.data('place', formData.get('place'));
-                    $row.data('addition-cut', formatNum(formData.get('addition_cut')));
+                    $row.data('bottom-correction', formatNum(formData.get('bottom_correction')));
                     $row.data('comment', formData.get('comment'));
                     $row.data('sketch-url', response.sketch_url);
-                    
+
                     const customFields = ['custom_lock_height', 'custom_hinge1', 'custom_hinge2', 'custom_hinge3', 'custom_hinge4', 'custom_hinge5'];
                     customFields.forEach(f => {
                         $row.data(f.replace(/_/g, '-'), formatNum(formData.get(f)));
@@ -423,7 +423,7 @@ $(document).ready(function() {
                     $btnSave.prop('disabled', false).html('<i class="bi bi-check-lg"></i>');
                 }
             },
-            error: function() {
+            error: function () {
                 alert('שגיאת תקשורת עם השרת');
                 $btnSave.prop('disabled', false).html('<i class="bi bi-check-lg"></i>');
             }
@@ -433,17 +433,30 @@ $(document).ready(function() {
     /**
      * Copies measurements from current row to all other items in the same product group.
      */
-    $(document).on('click', '.btn-duplicate', function(e) {
+    $(document).on('click', '.btn-duplicate', function (e) {
         e.stopPropagation();
         const $row = $(this).closest('tr');
         const itemId = $row.data('item-id');
-        const formData = {};
-        
-        $row.find('input, select').each(function() {
-            if (this.name && this.type !== 'file') {
-                formData[this.name] = $(this).val();
+        const $customRow = $(`#custom-row-${itemId}`);
+        const formData = new FormData();
+
+        formData.append('csrfmiddlewaretoken', config.csrfToken);
+
+        // Сбор данных из основной строки
+        $row.find('input, select').each(function () {
+            if (this.name && this.type !== 'file' && !this.className.includes('delete-sketch-input')) {
+                formData.append(this.name, $(this).val());
             }
         });
+
+        // Сбор данных из строки кастомных высот (если открыта)
+        if ($customRow.length) {
+            $customRow.find('input').each(function () {
+                if (this.name) {
+                    formData.append(this.name, $(this).val());
+                }
+            });
+        }
 
         if (!confirm('האם להעתיק את הנתונים לכל שאר השורות בקבוצה זו?')) return;
 
@@ -454,34 +467,29 @@ $(document).ready(function() {
             url: `/orders/items/${itemId}/duplicate-measurements/`,
             method: 'POST',
             data: formData,
+            processData: false,
+            contentType: false,
             headers: {'X-CSRFToken': config.csrfToken},
-            success: function(response) {
+            success: function (response) {
                 if (response.status === 'ok') {
-                    // Reloading is the most reliable way to sync labels, data attributes, and marks.
                     location.reload();
                 } else {
-                    alert('Ошибка при дублировании');
+                    alert(response.message || 'שגיאה בשכפול הנתונים');
                     $btnDup.prop('disabled', false).html('<i class="bi bi-files"></i>');
                 }
             },
-            error: function() {
-                alert('Ошибка связи с сервером');
+            error: function (xhr) {
+                console.error('Duplicate error details:', xhr.responseText);
+                alert('שגיאת תקשורת עם השרת (код: ' + xhr.status + ')');
                 $btnDup.prop('disabled', false).html('<i class="bi bi-files"></i>');
             }
         });
     });
-    
-    /**
-     * Prevents row click events when interacting with form controls inside a row.
-     */
-    $(document).on('click', 'input, select', function(e) {
-        e.stopPropagation();
-    });
-    
+
     /**
      * Allows submitting the current row by pressing the Enter key.
      */
-    $(document).on('keypress', 'input', function(e) {
+    $(document).on('keypress', 'input', function (e) {
         if (e.which === 13) {
             $(this).closest('tr').find('.btn-save').click();
         }

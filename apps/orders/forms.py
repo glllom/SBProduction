@@ -150,7 +150,7 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
             # Clear door-only fields if they were somehow submitted
             cleaned_data['direction'] = None
             cleaned_data['opening'] = None
-            cleaned_data['addition_cut'] = None
+            cleaned_data['bottom_correction'] = None
             cleaned_data['custom_lock_height'] = None
             cleaned_data['custom_hinge1'] = None
             cleaned_data['custom_hinge2'] = None
@@ -162,6 +162,17 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
 
 
 class OrderForm(TooltipFormMixin, forms.ModelForm):
+    """
+    Единая форма для создания и редактирования заказа (ранее дублировалась с OrderHeaderForm).
+    """
+    # Служебный UI-тумблер: по умолчанию выключен (две стороны одинаковые)
+    different_door_sides = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="צדדים שונים (חוץ / פנים)",
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'toggle-different-sides'})
+    )
+
     class Meta:
         model = Order
         fields = [
@@ -170,7 +181,8 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
             'series',
             'front',
             'handle',
-            'color_panels',
+            'color_panel_outside',
+            'color_panel_inside',
             'is_frames_to_paint',
             'color_frames',
             'comments'
@@ -181,7 +193,8 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
             'series': 'סדרת הדלתות (פרופיל / מבנה)',
             'front': 'חזית או גימור הכנף',
             'handle': 'דגם ידית נבחר',
-            'color_panels': 'גוון צבע עבור כנפי הדלתות',
+            'color_panel_outside': 'גוון צבע עבור כנפי הדלתות (צד חוץ / ברירת מחדל)',
+            'color_panel_inside': 'גוון צבע עבור כנפי הדלתות (צד פנים)',
             'is_frames_to_paint': 'האם לצבוע את המשקופים בצבע ייעודי',
             'color_frames': 'גוון צבע עבור המשקופים',
             'comments': 'הערות והנחיות מיוחדות להזמנה',
@@ -192,16 +205,43 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
             'series': TooltipSelect(attrs={'class': 'form-select'}),
             'front': TooltipSelect(attrs={'class': 'form-select'}),
             'handle': TooltipSelect(attrs={'class': 'form-select'}),
-            'color_panels': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע פנלים (כנף)'}),
-            'is_frames_to_paint': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'color_frames': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע משקופים'}),
+            'color_panel_outside': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'צבע כנף (חוץ / דו-צדדי)',
+                'id': 'id_color_panel_outside'
+            }),
+            'color_panel_inside': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'צבע כנף פנים',
+                'id': 'id_color_panel_inside'
+            }),
+            'is_frames_to_paint': forms.CheckboxInput(attrs={
+                'class': 'form-check-input',
+                'id': 'toggle-paint-frames'
+            }),
+            'color_frames': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'צבע משקופים',
+                'id': 'id_color_frames'
+            }),
             'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'הערות להזמנה'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Initialize front queryset based on series
+        # Если заказ уже существует, делаем order_number readonly или скрываем
+        if self.instance and self.instance.pk:
+            if 'order_number' in self.fields:
+                self.fields['order_number'].widget.attrs['readonly'] = True
+
+            # Если стороны уже отличаются, взводим чекбокс
+            c_out = self.instance.color_panel_outside or ''
+            c_in = self.instance.color_panel_inside or ''
+            if c_in and c_in != c_out:
+                self.fields['different_door_sides'].initial = True
+
+        # Инициализация списка front по series
         series_id = None
         if 'series' in self.data:
             try:
@@ -218,58 +258,20 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
 
         self.apply_tooltips()
 
+    def clean(self):
+        cleaned_data = super().clean()
+        diff_sides = cleaned_data.get('different_door_sides')
+        c_out = cleaned_data.get('color_panel_outside')
 
-class OrderHeaderForm(TooltipFormMixin, forms.ModelForm):
-    class Meta:
-        model = Order
-        fields = [
-            'customer',
-            'series',
-            'front',
-            'handle',
-            'color_panels',
-            'is_frames_to_paint',
-            'color_frames',
-            'comments'
-        ]
-        help_texts = {
-            'customer': 'שם הלקוח או הפרויקט',
-            'series': 'סדרת הדלתות (פרופיל / מבנה)',
-            'front': 'חזית או גימור הכנף',
-            'handle': 'דגם ידית נבחר',
-            'color_panels': 'גוון צבע עבור כנפי הדלתות',
-            'is_frames_to_paint': 'האם לצבוע את המשקופים בצבע ייעודי',
-            'color_frames': 'גוון צבע עבור המשקופים',
-            'comments': 'הערות והנחיות מיוחדות להזמנה',
-        }
-        widgets = {
-            'customer': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'שם הלקוח'}),
-            'series': TooltipSelect(attrs={'class': 'form-select'}),
-            'front': TooltipSelect(attrs={'class': 'form-select'}),
-            'handle': TooltipSelect(attrs={'class': 'form-select'}),
-            'color_panels': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע פנלים (כנף)'}),
-            'is_frames_to_paint': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'color_frames': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע משקופים'}),
-            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'הערות להזמנה'}),
-        }
+        # Если тумблер выключен, дублируем наружный цвет внутрь
+        if not diff_sides:
+            cleaned_data['color_panel_inside'] = c_out
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        series_id = None
-        if 'series' in self.data:
-            try:
-                series_id = int(self.data.get('series'))
-            except (ValueError, TypeError):
-                series_id = None
-        elif self.instance.pk and self.instance.series:
-            series_id = self.instance.series_id
+        # Если коробки не красятся, сбрасываем краску коробки
+        if not cleaned_data.get('is_frames_to_paint'):
+            cleaned_data['color_frames'] = ''
 
-        if series_id:
-            self.fields['front'].queryset = Front.objects.filter(series_id=series_id, active=True).order_by('name')
-        else:
-            self.fields['front'].queryset = Front.objects.none()
-
-        self.apply_tooltips()
+        return cleaned_data
 
 
 class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
@@ -291,45 +293,26 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
     class Meta:
         model = OrderItemsGroup
         fields = [
-            'product_type',
-            'product_family',
-            'quantity',
-            'product',
-            'series',
-            'front',
-            'basic_color_frames',
-            'panel_paint_option',
-            'color_panels',
-            'frame_paint_option',
-            'color_frames',
-            'is_split_installation',
-            'comments'
+            'product_type', 'product_family', 'series', 'front',
+            'basic_color_frames', 'quantity', 'product',
+            'panel_paint_option', 'is_door_inside_different_color',
+            'color_panel_outside', 'color_panel_inside',
+            'frame_paint_option', 'color_frames',
+            'is_split_installation', 'comments'
         ]
-        help_texts = {
-            'quantity': 'כמות פריטים זהים (דלתות) בקבוצה זו',
-            'product': 'דגם מוצר ספציפי מתוך המשפחה והסדרה',
-            'series': 'סדרה ספציפית לקבוצה זו (אם ריק - יימשך מההזמנה)',
-            'front': 'חזית ספציפית לקבוצה זו (אם ריק - יימשך מההזמנה)',
-            'basic_color_frames': 'צבע משקוף בסיסי לקבוצה זו',
-            'panel_paint_option': 'בחירת אופן צביעת כנפי הדלתות',
-            'color_panels': 'גוון צבע עבור כנפי הדלתות בקבוצה זו',
-            'frame_paint_option': 'בחירת אופן צביעת המשקופים',
-            'color_frames': 'גוון צבע עבור המשקופים בקבוצה זו',
-            'is_split_installation': 'התקנה מפוצלת: ייצור ואספקת משקופים בשלב א, ודלתות בשלב ב',
-            'comments': 'הערות והנחיות מיוחדות לקבוצה זו',
-        }
         widgets = {
-            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'placeholder': 'כמות'}),
-            'product': TooltipSelect(attrs={'class': 'form-select'}),
-            'series': TooltipSelect(attrs={'class': 'form-select'}),
-            'front': TooltipSelect(attrs={'class': 'form-select'}),
-            'basic_color_frames': TooltipSelect(attrs={'class': 'form-select'}),
-            'panel_paint_option': TooltipRadioSelect(attrs={'class': 'form-check-input'}),
-            'color_panels': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע פנלים'}),
-            'frame_paint_option': TooltipRadioSelect(attrs={'class': 'form-check-input'}),
-            'color_frames': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'צבע משקופים'}),
+            'panel_paint_option': forms.Select(attrs={'class': 'form-select form-select-sm group-panel-option-select'}),
+            'frame_paint_option': forms.Select(attrs={'class': 'form-select form-select-sm group-frame-option-select'}),
+            'is_door_inside_different_color': forms.CheckboxInput(
+                attrs={'class': 'form-check-input group-toggle-diff-sides'}),
+            'color_panel_outside': forms.TextInput(
+                attrs={'class': 'form-control form-control-sm', 'placeholder': 'קוד צבע'}),
+            'color_panel_inside': forms.TextInput(
+                attrs={'class': 'form-control form-control-sm', 'placeholder': 'קוד צבע פנים'}),
+            'color_frames': forms.TextInput(
+                attrs={'class': 'form-control form-control-sm', 'placeholder': 'קוד צבע משקוף'}),
+            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'הערות לקבוצה...'}),
             'is_split_installation': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'הערות לקבוצה'}),
         }
 
     def __init__(self, *args, **kwargs):

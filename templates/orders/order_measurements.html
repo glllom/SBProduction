@@ -98,7 +98,7 @@
                         data-opening="{{ item.opening|default:'' }}"
                         data-direction="{{ item.direction|default:'' }}"
                         data-place="{{ item.place|default:'' }}"
-                        data-addition-cut="{{ item.addition_cut|default:'' }}"
+                        data-bottom-correction="{{ item.bottom_correction|default:'' }}"
                         data-comment="{{ item.comment|default:'' }}"
                         data-custom-lock-height="{{ item.custom_lock_height|default:'' }}"
                         data-custom-hinge1="{{ item.custom_hinge1|default:'' }}"
@@ -123,11 +123,12 @@
                                 -
                             {% endif %}
                         </td>
-                        <td class="field-addition-cut small">{{ item.addition_cut|default:'' }}</td>
+                        <td class="field-bottom-correction small">{{ item.bottom_correction|default:'' }}</td>
                         <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
                         <td class="no-print text-nowrap">
                             {% if order.sketch or item.sketch %}
                                 <a href="
+
 												{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
                                    target="_blank"
                                    class="btn btn-sm btn-primary py-0"

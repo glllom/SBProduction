@@ -13,6 +13,11 @@ from .schemas import (
 )
 
 
+def format_spec_date(d) -> str:
+    """Helper to format a DateField into dd/mm/yyyy string."""
+    return d.strftime("%d/%m/%y") if d else ""
+
+
 class PipelineError(Exception):
     """Base class for pipeline errors that should be collected and shown to the user."""
     pass
@@ -298,9 +303,11 @@ class AppearanceStep(SpecStep):
         elif order and order.front:
             spec.front_name = order.front.name
 
-        # Colors
-        spec.color_panels = group.color_panels or ""
-        spec.color_frames = group.color_frames or ""
+        # Colors (через динамические effective properties группы)
+        spec.color_panel_outside = group.effective_color_panel_outside or ""
+        spec.color_panel_inside = group.effective_color_panel_inside or ""
+        spec.color_frames = group.effective_color_frames or ""
+
         spec.panel_paint_option = group.panel_paint_option
         spec.frame_paint_option = group.frame_paint_option
         spec.basic_color_frames = str(group.basic_color_frames) if group.basic_color_frames else ""
@@ -1032,7 +1039,10 @@ class OrderSpecContext:
             order=OrderHeaderSpec(
                 number=str(order.order_number or ""),
                 customer=order.customer or "",
-                status=order.status
+                status=order.status,
+                painting_completion_date=format_spec_date(order.painting_completion_date),
+                phase1_completion_date=format_spec_date(order.phase1_completion_date),
+                completion_date=format_spec_date(order.completion_date),
             ),
             items=[]
         )

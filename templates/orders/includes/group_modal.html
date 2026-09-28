@@ -60,7 +60,7 @@
                             </label>
                             <div class="product-info-display alert alert-info py-2 mb-0"
                                  style="min-height: 38px">
-                                <small class="text-secondry">בחר סדרה ומשפחה לחיפוש מוצר...</small>
+                                <small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>
                             </div>
                             <div class="d-none">{{ group_form.product }}</div>
                         </div>
@@ -72,73 +72,101 @@
                             </label>
                             {{ group_form.quantity }}
                         </div>
-                        <hr class="my-3">
-                        <!-- Painting Options: Panel & Frame side-by-side -->
-                        <div class="col-md-6 border-end">
-                            <label class="form-label fw-bold d-block"
-                                   data-bs-toggle="tooltip"
-                                   title="בחירת אופן צביעת כנפי הדלתות">
-                                אופציית צביעת פנל (דלת) <i class="bi bi-info-circle help-hint-icon"></i>
-                            </label>
-                            <div class="d-flex gap-4 mb-2">
-                                {% for radio in group_form.panel_paint_option %}
-                                    <div class="form-check"
-                                         data-bs-toggle="tooltip"
-                                         title="{{ radio.choice_label }}">
-                                        {{ radio.tag }}
-                                        <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+                        <!-- Row 4: הגדרות צבע וגמר לקבוצה -->
+                        <div class="col-12">
+                            <div class="card border bg-light shadow-none">
+                                <div class="card-header bg-white py-1 px-3 fw-bold small text-muted">הגדרות צבע וגמר לקבוצה</div>
+                                <div class="card-body p-3">
+                                    <div class="row g-3">
+                                        <!-- משקוף (Правая колонка в RTL) -->
+                                        <div class="col-md-6 border-start">
+                                            <label class="form-label fw-bold mb-1">
+                                                צביעת משקוף: <i class="bi bi-info-circle help-hint-icon"></i>
+                                            </label>
+                                            {{ group_form.frame_paint_option }}
+                                            <div id="group-frame-special-color-wrap"
+                                                 class="mt-2"
+                                                 style="display: none">
+                                                <label class="form-label small text-muted mb-1">
+                                                    גוון משקוף
+                                                    מותאם:
+                                                </label>
+                                                <div class="input-group input-group-sm">
+                                                    {{ group_form.color_frames }}
+                                                    <button class="btn btn-outline-secondary"
+                                                            type="button"
+                                                            id="btn-group-copy-door">כמו הכנף</button>
+                                                    <button class="btn btn-outline-secondary"
+                                                            type="button"
+                                                            onclick="setColorTBD('id_color_frames')">לבחירה</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- כנף (Левая колонка в RTL) -->
+                                        <div class="col-md-6">
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <label class="form-label fw-bold mb-0">
+                                                    צביעת כנף: <i class="bi bi-info-circle help-hint-icon"></i>
+                                                </label>
+                                                <div class="form-check form-switch m-0"
+                                                     id="group-diff-sides-switch-wrap"
+                                                     style="display: none">
+                                                    {{ group_form.is_door_inside_different_color }}
+                                                    <label class="form-check-label small ms-1"
+                                                           for="{{ group_form.is_door_inside_different_color.id_for_label }}">
+                                                        צדדים שונים
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            {{ group_form.panel_paint_option }}
+                                            <div id="group-panel-special-color-wrap"
+                                                 class="mt-2"
+                                                 style="display: none">
+                                                <label class="form-label small text-muted mb-1" id="group-label-panel-out">גוון כנף:</label>
+                                                <div class="input-group input-group-sm mb-2">
+                                                    {{ group_form.color_panel_outside }}
+                                                    <button class="btn btn-outline-secondary"
+                                                            type="button"
+                                                            onclick="setColorTBD('id_color_panel_outside')">
+                                                        לבחירה
+                                                    </button>
+                                                </div>
+                                                <div id="group-panel-inside-wrap" style="display: none;">
+                                                    <label class="form-label small text-muted mb-1">
+                                                        גוון כנף צד
+                                                        פנים:
+                                                    </label>
+                                                    <div class="input-group input-group-sm">
+                                                        {{ group_form.color_panel_inside }}
+                                                        <button class="btn btn-outline-secondary"
+                                                                type="button"
+                                                                onclick="setColorTBD('id_color_panel_inside')">
+                                                            לבחירה
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                {% endfor %}
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label fw-bold"
-                                       data-bs-toggle="tooltip"
-                                       title="קוד или שם הגוון המיוחד לכנפיים">
-                                    צבע פנלים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
-                                </label>
-                                {{ group_form.color_panels }}
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-6 ps-md-4">
-                            <label class="form-label fw-bold d-block"
-                                   data-bs-toggle="tooltip"
-                                   title="בחירת אופן צביעת המשקופים">
-                                אופציית צביעת משקוף <i class="bi bi-info-circle help-hint-icon"></i>
-                            </label>
-                            <div class="d-flex gap-4 mb-2">
-                                {% for radio in group_form.frame_paint_option %}
-                                    <div class="form-check"
-                                         data-bs-toggle="tooltip"
-                                         title="{{ radio.choice_label }}">
-                                        {{ radio.tag }}
-                                        <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
-                                    </div>
-                                {% endfor %}
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label fw-bold"
-                                       data-bs-toggle="tooltip"
-                                       title="קוד или שם הגוון המיוחד למשקופים">
-                                    צבע משקופים (גוון מיוחד) <i class="bi bi-info-circle help-hint-icon"></i>
-                                </label>
-                                {{ group_form.color_frames }}
-                            </div>
-                        </div>
-                        <hr class="my-3">
-                        <div class="col-md-6">
-                            <div class="form-check pt-2"
+                        <!-- Row 5: התקנה מפוצלת והערות -->
+                        <div class="col-md-4 d-flex align-items-center">
+                            <div class="form-check form-switch m-0 pt-2"
                                  data-bs-toggle="tooltip"
                                  title="{{ group_form.is_split_installation.help_text|default:'התקנה מפוצלת: שלב א משקופים, שלב ב דלתות' }}">
                                 {{ group_form.is_split_installation }}
-                                <label class="form-check-label fw-bold"
+                                <label class="form-check-label fw-bold ms-1"
                                        for="{{ group_form.is_split_installation.id_for_label }}">
                                     התקנה מפוצלת <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
                             </div>
                         </div>
-                        <div class="col-md-6"
-                             data-bs-toggle="tooltip"
-                             title="הערות והנחיות מיוחדות לקבוצה">{{ group_form.comments }}</div>
+                        <div class="col-md-8">
+                            <label class="form-label fw-bold small text-muted mb-1">הערות לקבוצה:</label>
+                            {{ group_form.comments }}
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">

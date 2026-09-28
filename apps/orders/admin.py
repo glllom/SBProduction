@@ -31,7 +31,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
         "series",
         "front",
         "basic_color_frames",
-        "color_panels",
+        "color_panel_outside",
         "color_frames",
         "is_split_installation",
     )
@@ -46,7 +46,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
     search_fields = (
         "order__order_number",
         "comments",
-        "color_panels",
+        "color_panel_outside",
         "color_frames",
     )
 
@@ -66,7 +66,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
                     "series",
                     "front",
                     "basic_color_frames",
-                    "color_panels",
+                    "color_panel_outside",
                     "color_frames",
                 ),
             },
@@ -143,7 +143,7 @@ class OrderAdmin(admin.ModelAdmin):
                     "series",
                     "front",
                     "handle",
-                    "color_panels",
+                    "color_panel_outside",
                     "is_frames_to_paint",
                     "color_frames",
                 )

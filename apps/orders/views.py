@@ -2,7 +2,7 @@ import json
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import PermissionDenied, ObjectDoesNotExist
+from django.core.exceptions import PermissionDenied, ObjectDoesNotExist, ValidationError
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
@@ -14,7 +14,7 @@ from django.views.generic.edit import FormMixin
 from rest_framework import viewsets, permissions
 
 from apps.catalog.models import ProductFamily, Series, ProductType
-from .forms import OrderForm, OrderHeaderForm, OrderItemsGroupForm, OrderItemForm
+from .forms import OrderForm, OrderItemsGroupForm, OrderItemForm
 from .models import (
     Order, OrderItemsGroup, OrderItem, OrderChangeLog,
     OrderItemsGroupCustomizer, OrderStatus,
@@ -167,7 +167,7 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
         context['families'] = ProductFamily.objects.all()
         context['series'] = Series.objects.all()
         context['product_types'] = ProductType.objects.filter(active=True)
-        context['header_form'] = OrderHeaderForm(instance=self.object)
+        context['header_form'] = OrderForm(instance=self.object)
         context['group_form'] = OrderItemsGroupForm(order=self.object)
         context['saved_specifications'] = GroupSpecification.objects.all().select_related(
             'product', 'product__product_family__product_type', 'product__product_family',
@@ -209,7 +209,9 @@ class OrderMeasurementsView(LoginRequiredMixin, DetailView):
 
 class OrderHeaderUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, UpdateView):
     model = Order
-    form_class = OrderHeaderForm
+    form_class = OrderForm
+    template_name = 'orders/order_form.html'
+    context_object_name = 'order'
 
     def form_valid(self, form):
         order = self.get_object()
@@ -316,7 +318,7 @@ def update_item_measurements(request, pk):
 
     fields = [
         'height', 'width', 'wall', 'direction', 'opening', 'mark',
-        'place', 'addition_cut', 'comment',
+        'place', 'bottom_correction', 'comment',
         'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
         'custom_hinge3', 'custom_hinge4', 'custom_hinge5'
     ]
@@ -342,21 +344,43 @@ def update_item_measurements(request, pk):
 @require_POST
 def duplicate_item_measurements(request, pk):
     item = get_object_or_404(OrderItem, pk=pk)
-    check_order_editable(item.group.order, request.user)
-    group = item.group
 
+    # 1. Безопасная проверка прав
+    try:
+        check_order_editable(item.group.order, request.user)
+    except (PermissionDenied, ValidationError) as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=403)
+
+    group = item.group
     items_to_update = OrderItem.objects.filter(group=group, id__gte=item.id)
-    fields = [
-        'height', 'width', 'wall', 'direction', 'opening',
-        'place', 'addition_cut', 'comment',
+
+    # Числовые поля (пустая строка превращается в None)
+    numeric_fields = [
+        'height', 'width', 'wall', 'bottom_correction',
         'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
         'custom_hinge3', 'custom_hinge4', 'custom_hinge5'
     ]
+
+    # Текстовые поля (пустая строка остается "")
+    char_fields = ['direction', 'opening', 'place', 'comment']
+
     update_data = {}
-    for field in fields:
+
+    for field in numeric_fields:
         if field in request.POST:
-            val = request.POST.get(field)
-            update_data[field] = None if val == '' else val
+            val = request.POST.get(field, '').strip()
+            if val == '':
+                update_data[field] = None
+            else:
+                try:
+                    update_data[field] = float(val)
+                except (ValueError, TypeError):
+                    update_data[field] = None
+
+    for field in char_fields:
+        if field in request.POST:
+            val = request.POST.get(field, '')
+            update_data[field] = val.strip() if val else ''
 
     if update_data:
         items_to_update.update(**update_data)

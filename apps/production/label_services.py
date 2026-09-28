@@ -73,7 +73,7 @@ class DoorLabelService:
 
         items = getattr(spec_obj, 'items', [])
         total_items = len(items)
-        client_name = getattr(order, 'customer_name', '') or str(order.user or '')
+        client_name = getattr(order, 'customer', '')
         labels_to_create = []
 
         for item in items:

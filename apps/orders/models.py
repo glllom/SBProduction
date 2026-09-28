@@ -95,12 +95,25 @@ class Order(models.Model):
         default=False,
         verbose_name="לצבוע משקופים?",
     )
-    color_panels = models.CharField(
+
+    is_door_inside_different_color = models.BooleanField(
+        default=False,
+        verbose_name="צד שני צבע אחר",
+    )
+
+    color_panel_outside = models.CharField(
         max_length=100,
         blank=True,
         null=True,
-        verbose_name="צבע פנלים (כנף)",
+        verbose_name="צבע כנף בחוץ ",
     )
+    color_panel_inside = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע כנף בפנים ",
+    )
+
     color_frames = models.CharField(
         max_length=100,
         blank=True,
@@ -155,7 +168,8 @@ class Order(models.Model):
 
         # Approach 1: Reset validation on technical fields change (if not already locked)
         if old_instance and not old_instance.is_locked:
-            tech_fields = ['series_id', 'front_id', 'handle_id', 'is_frames_to_paint', 'color_panels', 'color_frames']
+            tech_fields = ['series_id', 'front_id', 'handle_id', 'is_frames_to_paint', 'color_panel_inside',
+                           'color_panel_outside', 'color_frames']
             for field in tech_fields:
                 if getattr(self, field) != getattr(old_instance, field):
                     self.reset_validation()
@@ -353,14 +367,25 @@ class OrderItemsGroup(models.Model):
         max_length=20,
         choices=PaintOption.choices,
         default=PaintOption.MAIN_COLOR,
-        verbose_name="אופציית צביעת פנל",
+        verbose_name="אופציית צביעת כנף",
     )
-    color_panels = models.CharField(
+    is_door_inside_different_color = models.BooleanField(
+        default=False,
+        verbose_name="צדדים שונים (חוץ/פנים)",
+    )
+    color_panel_outside = models.CharField(
         max_length=100,
         blank=True,
         null=True,
-        verbose_name="צבע פנלים (כנף)",
+        verbose_name="צבע כנף חוץ (מיוחד)",
     )
+    color_panel_inside = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע כנף פנים (מיוחד)",
+    )
+
     frame_paint_option = models.CharField(
         max_length=20,
         choices=PaintOption.choices,
@@ -371,7 +396,7 @@ class OrderItemsGroup(models.Model):
         max_length=100,
         blank=True,
         null=True,
-        verbose_name="צבע משקופים",
+        verbose_name="צבע משקוף (מיוחד)",
     )
 
     is_split_installation = models.BooleanField(
@@ -437,49 +462,77 @@ class OrderItemsGroup(models.Model):
                     par5=cust.par5_value or '',
                 )
 
+    # ---------------------------------------------------------
+    # ДИНАМИЧЕСКИЕ СВОЙСТВА (Effective Colors)
+    # ---------------------------------------------------------
+    @property
+    def effective_color_panel_outside(self):
+        if self.panel_paint_option == self.PaintOption.NO_PAINT:
+            return None
+        if self.panel_paint_option == self.PaintOption.SPECIAL_COLOR and self.color_panel_outside:
+            return self.color_panel_outside
+        # Fallback на цвет из шапки заказа
+        return getattr(self.order, 'color_panel_outside', None)
+
+    @property
+    def effective_color_panel_inside(self):
+        if self.panel_paint_option == self.PaintOption.NO_PAINT:
+            return None
+        if self.panel_paint_option == self.PaintOption.SPECIAL_COLOR:
+            if self.is_door_inside_different_color and self.color_panel_inside:
+                return self.color_panel_inside
+            return self.effective_color_panel_outside
+        # Если MAIN_COLOR:
+        # Если в шапке задан внутренний цвет — берем его, иначе наружный
+        order_inside = getattr(self.order, 'color_panel_inside', None)
+        return order_inside or getattr(self.order, 'color_panel_outside', None)
+
+    @property
+    def effective_color_frames(self):
+        if self.frame_paint_option == self.PaintOption.NO_PAINT:
+            return None
+        if self.frame_paint_option == self.PaintOption.SPECIAL_COLOR and self.color_frames:
+            return self.color_frames
+        # Fallback на цвет коробки из шапки заказа
+        return getattr(self.order, 'color_frames', None)
+
     def save(self, *args, **kwargs):
-        # Approach 3: Freeze state if order is locked
+        # 1. Защита от изменения заблокированного заказа
         if self.order and self.order.is_locked:
-            # In a production environment, we should raise a ValidationError
             pass
 
-        # Pull default values from Parent Order
+        # 2. Наследование серии и фронта по умолчанию из заказа
         if self.order_id:
             if not self.series and getattr(self.order, "series", None):
                 self.series = self.order.series
             if not self.front and getattr(self.order, "front", None):
                 self.front = self.order.front
 
-            # Logic for Panels
-            if self.panel_paint_option == self.PaintOption.MAIN_COLOR:
-                self.color_panels = self.order.color_panels
-            elif self.panel_paint_option == self.PaintOption.NO_PAINT:
-                self.color_panels = None
-            # For SPECIAL_COLOR, user should already set color_panels
+        # 3. Новая логика цветов: очищаем поля, если выбран не SPECIAL_COLOR
+        if self.panel_paint_option != self.PaintOption.SPECIAL_COLOR:
+            self.color_panel_outside = None
+            self.color_panel_inside = None
+            self.is_door_inside_different_color = False
+        elif not self.is_door_inside_different_color:
+            self.color_panel_inside = None
 
-            # Logic for Frames
-            if self.frame_paint_option == self.PaintOption.MAIN_COLOR:
-                self.color_frames = self.order.color_frames
-            elif self.frame_paint_option == self.PaintOption.NO_PAINT:
-                self.color_frames = None
-            # For SPECIAL_COLOR, user should already set color_frames
+        if self.frame_paint_option != self.PaintOption.SPECIAL_COLOR:
+            self.color_frames = None
 
-        # Save group and items in one transaction
+        # 4. Сохранение группы, синхронизация дверей и пересчет позиций
         with transaction.atomic():
             super().save(*args, **kwargs)
 
-            # Autopopulate required customizers
+            # Автозаполнение обязательных кастомизаторов
             if self.product:
                 self.auto_populate_required_customizers()
 
-            # Sync physical doors (OrderItems) with group quantity
+            # Синхронизация физических дверей (OrderItem) с количеством в группе
             if self.quantity is not None:
-                # Get existing items for this group
                 existing_items = self.items.all().order_by('id')
                 current_count = existing_items.count()
 
                 if current_count < self.quantity:
-                    # Create missing items
                     items_to_create = [
                         OrderItem(
                             group=self,
@@ -490,18 +543,17 @@ class OrderItemsGroup(models.Model):
                     ]
                     OrderItem.objects.bulk_create(items_to_create)
                 elif current_count > self.quantity:
-                    # Remove excess items from the end
                     items_to_delete = existing_items[self.quantity:]
                     OrderItem.objects.filter(id__in=[item.id for item in items_to_delete]).delete()
 
-            # After syncing items in this group, recalculate marks for the entire order
+            # Пересчет маркировок (mark) по всему заказу
             from apps.production.services import OrderProductionService
             OrderProductionService.recalculate_item_marks(self.order)
 
-            # Approach 1: Reset parent order validation
+            # Сброс кеша валидации заказа
             if self.order_id:
                 self.order.invalidate_cache_if_unlocked()
-
+                
     def delete(self, *args, **kwargs):
         order = self.order
         super().delete(*args, **kwargs)
@@ -528,7 +580,7 @@ class OrderItemsGroup(models.Model):
                 front=self.front,
                 basic_color_frames=self.basic_color_frames,
                 panel_paint_option=self.panel_paint_option,
-                color_panels=self.color_panels,
+                color_panels=self.color_panel_outside,
                 frame_paint_option=self.frame_paint_option,
                 color_frames=self.color_frames,
                 is_split_installation=self.is_split_installation,
@@ -912,7 +964,7 @@ class GroupSpecification(models.Model):
                 front=group.front,
                 basic_color_frames=group.basic_color_frames,
                 panel_paint_option=group.panel_paint_option,
-                color_panels=group.color_panels,
+                color_panels=group.color_panel_outside,
                 frame_paint_option=group.frame_paint_option,
                 color_frames=group.color_frames,
                 is_split_installation=group.is_split_installation,
@@ -939,7 +991,7 @@ class GroupSpecification(models.Model):
             group.front = self.front
             group.basic_color_frames = self.basic_color_frames
             group.panel_paint_option = self.panel_paint_option
-            group.color_panels = self.color_panels
+            group.color_panel_outside = self.color_panels
             group.frame_paint_option = self.frame_paint_option
             group.color_frames = self.color_frames
             group.is_split_installation = self.is_split_installation

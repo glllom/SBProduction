@@ -218,7 +218,7 @@ class OrderValidationService:
             # 3. Colors in full validation (if a special shade is selected)
             if is_full:
                 if group.panel_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
-                    if not group.color_panels and not getattr(order, 'color_panels', None):
+                    if not group.color_panel_outside and not getattr(order, 'color_panels', None):
                         errors.append(f"{group_label}: Special panel color selected but no panel color defined")
                 if group.frame_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
                     if not group.basic_color_frames and not getattr(order, 'color_frames', None):
@@ -856,7 +856,7 @@ class ProductionDataService:
                 spec.basic_color_frames,
                 spec.frame_paint_option,
                 spec.color_frames,
-                spec.color_panels,
+                spec.color_panel_outside,
                 tuple(spec.profiles),
             )
             if key not in grouped_specs:
@@ -875,12 +875,12 @@ class ProductionDataService:
             # Common decorative params
             common_front = first.front_name
             common_color_frames = first.color_frames
-            common_color_panels = first.color_panels
+            common_color_panels = first.color_panel_outside
 
             for s in items_specs[1:]:
                 if s.front_name != common_front: common_front = "Various"
                 if s.color_frames != common_color_frames: common_color_frames = "Various"
-                if s.color_panels != common_color_panels: common_color_panels = "Various"
+                if s.color_panel_outside != common_color_panels: common_color_panels = "Various"
 
             group_spec = {
                 'product_name': first.product_name,
@@ -1036,8 +1036,6 @@ class ProductionDataService:
             summary_list.append({'category': 'צירים (Петли)', 'name': name, 'quantity': qty})
 
         return summary_list
-
-
 
 
 class OrderProductionService:

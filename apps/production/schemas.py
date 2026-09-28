@@ -36,6 +36,9 @@ class OrderHeaderSpec(BaseModel):
     number: str
     customer: str
     status: str
+    painting_completion_date: str = ""
+    phase1_completion_date: str = ""
+    completion_date: str = ""
 
 
 class ProductionSpec(BaseModel):
@@ -85,6 +88,8 @@ class ProductionSpec(BaseModel):
     basic_color_frames: str = ""
     frame_paint_option: str = ""
     panel_paint_option: str = ""
+    color_panel_outside: str = ""
+    color_panel_inside: str = ""
     handle_name: str = ""
 
     # Technical data
@@ -143,6 +148,12 @@ class OrderSpecBatchContainer(BaseModel):
 
     batches: Dict[str, OrderSpec] = Field(default_factory=dict)
 
+    """Returns unified OrderSpec containing all items across all batches."""
+
+    @staticmethod
+    def _fmt(d):
+        return d.strftime("%d/%m/%y") if d else ""
+
     def get_all_items(self) -> List[ProductionSpec]:
         """Collects items from all batches in chronological order."""
         res = []
@@ -156,7 +167,10 @@ class OrderSpecBatchContainer(BaseModel):
             order=OrderHeaderSpec(
                 number=str(order.order_number or ""),
                 customer=order.customer or "",
-                status=order.status
+                status=order.status,
+                painting_completion_date=self._fmt(getattr(order, 'painting_completion_date', None)),
+                phase1_completion_date=self._fmt(getattr(order, 'phase1_completion_date', None)),
+                completion_date=self._fmt(getattr(order, 'completion_date', None)),
             ),
             items=self.get_all_items()
         )

@@ -9,12 +9,12 @@
         <div class="d-flex align-items-center mb-2">
             <h2 class="h3 mb-0 mx-3 fw-bolder">{{ order.customer }}</h2>
             {% if order.status == 'NEW' or order.status == 'PHASE1_READY' %}
-                <button class="btn btn-sm btn-outline-primary ms-3"
-                        data-bs-toggle="modal"
-                        data-bs-target="#editHeaderModal"
-                        title="עריכת פרטי הזמנה">
+                <a href="{% url 'order-edit-header' order.pk %}"
+                   class="btn btn-sm btn-outline-primary ms-3"
+                   data-bs-toggle="tooltip"
+                   title="עריכת פרטי הזמנה">
                     <i class="bi bi-pencil"></i>
-                </button>
+                </a>
                 <button class="btn btn-sm btn-outline-primary ms-3"
                         data-bs-toggle="modal"
                         data-bs-target="#groupModal"
@@ -51,7 +51,11 @@
                  data-bs-toggle="tooltip"
                  title="גוון צבע ראשי עבור כנפי הדלתות">
                 <label class="text-muted small d-block">גוון בכנפיים</label>
-                <span class="fw-medium">{{ order.color_panels|default:"-" }}</span>
+                <span class="fw-medium">{{ order.color_panel_outside|default:"-" }}
+                    {% if order.color_panel_inside and order.color_panel_inside != order.color_panel_outside %}
+                        / {{ order.color_panel_inside }}
+                    {% endif %}
+                </span>
             </div>
             <div class="mb-3 col-1"
                  data-bs-toggle="tooltip"
@@ -343,7 +347,6 @@
         </div>
     </div>
     <!-- Modals -->
-    {% include "orders/includes/order_header_modal.html" %}
     {% include "orders/includes/group_modal.html" %}
     {% include "orders/includes/group_customizer_modal.html" %}
     {% include "orders/includes/edit_item_modal.html" %}
@@ -352,7 +355,7 @@
 {% endblock %}
 {% block extra_js %}
     <script>
-        const canEdit = {% if order.status == 'NEW' or user.is_admin_user %}true{% else %}false{% endif %};
+	    const canEdit = "{% if order.status == 'NEW' or user.is_admin_user %}true{% else %}false{% endif %}" === "true";
         const orderSeriesId = "{{ order.series_id|default:'' }}";
         const orderFrontId = "{{ order.front_id|default:'' }}";
         const productTypeConfig = {
@@ -363,6 +366,13 @@
                 },
             {% endfor %}
         };
+        function setColorTBD(fieldId) {
+    const el = document.getElementById(fieldId);
+    if (el) {
+        el.value = 'לפי בחירת לקוח';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
 
         $(document).ready(function () {
             // Cache frequently used selectors for performance and to avoid "Duplicated jQuery selector" warnings
@@ -475,24 +485,28 @@
             });
 
             // Ensure Bootstrap classes are applied for modal fields correctly
-            $('#editHeaderModal input, #editHeaderModal select, #editHeaderModal textarea, #groupModal input, #groupModal select, #groupModal textarea').each(function () {
-                const $el = $(this);
-                if (!$el.hasClass('form-select') && !$el.hasClass('select2-hidden-accessible') && !$el.hasClass('form-check-input')) {
-                    $el.addClass('form-control');
-                }
-            });
+            $('#groupModal input, #groupModal select, #groupModal textarea').each(function () {
+    const $el = $(this);
+    if ($el.is(':checkbox') || $el.is(':radio')) {
+        $el.addClass('form-check-input');
+    } else if ($el.is('select')) {
+        $el.addClass('form-select');
+    } else {
+        $el.addClass('form-control');
+    }
+});
 
             /**
              * Handle opening the Unified Group Modal for adding or editing.
              */
             $(document).on('click', '[data-bs-target="#groupModal"]', function () {
-                const $btn = $(this);
+                const $btn =$(this);
                 const isEdit = $btn.hasClass('btn-edit-group');
-                const $modal = $('#groupModal');
-                const $form = $('#groupForm');
-                const $label = $('#groupModalLabel');
-                const $submitBtn = $('#groupModalSubmitBtn');
-                const $customizeBtn = $('#groupModalCustomizeBtn');
+                const $modal =$('#groupModal');
+                const $form =$('#groupForm');
+                const $label =$('#groupModalLabel');
+                const $submitBtn =$('#groupModalSubmitBtn');
+                const $customizeBtn =$('#groupModalCustomizeBtn');
 
                 // Set mode for internal JS logic (like updateFronts)
                 $modal.data('mode', isEdit ? 'edit' : 'add');
@@ -501,7 +515,7 @@
                     $label.text('עריכת קבוצה');
                     $submitBtn.text('שמור שינויים');
                     $customizeBtn.addClass('d-none');
-                    $form.attr('action', $btn.attr('data-edit-url'));
+                    $form.attr('action',$btn.attr('data-edit-url'));
 
                     // Reset form first to clear any old state
                     $form[0].reset();
@@ -511,26 +525,28 @@
                     $modal.find('textarea[name="comments"]').val($btn.attr('data-comments'));
                     $modal.find('input[name="is_split_installation"]').prop('checked', $btn.attr('data-is-split') === 'true');
 
-                    // Paint options
-                    const panelPaint = $btn.attr('data-panel-paint-option');
-                    $modal.find(`input[name="panel_paint_option"][value="${panelPaint}"]`).prop('checked', true).trigger('change');
-                    $modal.find('input[name="color_panels"]').val($btn.attr('data-color-panels'));
+                    // 1. Покраска полотна (двери)
+                    const panelPaint = $btn.attr('data-panel-paint-option') || 'MAIN_COLOR';$modal.find('select[name="panel_paint_option"]').val(panelPaint).trigger('change');
 
-                    const framePaint = $btn.attr('data-frame-paint-option');
-                    $modal.find(`input[name="frame_paint_option"][value="${framePaint}"]`).prop('checked', true).trigger('change');
-                    $modal.find('input[name="color_frames"]').val($btn.attr('data-color-frames'));
+                    const isDiffSides = $btn.attr('data-is-diff-sides') === 'true';$modal.find('input[name="is_door_inside_different_color"]').prop('checked', isDiffSides).trigger('change');
+
+                    $modal.find('input[name="color_panel_outside"]').val($btn.attr('data-color-panel-outside') || '');
+                    $modal.find('input[name="color_panel_inside"]').val($btn.attr('data-color-panel-inside') || '');
+
+                    // 2. Покраска коробки
+                    const framePaint = $btn.attr('data-frame-paint-option') || 'NO_PAINT';$modal.find('select[name="frame_paint_option"]').val(framePaint).trigger('change');
+                    $modal.find('input[name="color_frames"]').val($btn.attr('data-color-frames') || '');
 
                     // Product Display Info
                     const productId = $btn.attr('data-product-id');
                     const productName = $btn.attr('data-product-name');
                     const productCode = $btn.attr('data-product-code');
                     if (productId) {
-                        const $productSelect = $modal.find('select[name="product"]');
+                        const $productSelect =$modal.find('select[name="product"]');
                         if ($productSelect.find(`option[value="${productId}"]`).length === 0) {
                             $productSelect.append(`<option value="${productId}">${productName}</option>`);
                         }
-                        $productSelect.val(productId);
-                        $modal.find('.product-info-display').html(`<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ${productName} (${productCode})</strong>`);
+                        $productSelect.val(productId);$modal.find('.product-info-display').html(`<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ${productName} (${productCode})</strong>`);
                     }
 
                     // Dependent fields: Set initial values and trigger change in cascade
@@ -543,25 +559,27 @@
                 } else {
                     $label.text('הוספת קבוצת דלתות');
                     $submitBtn.text('הוסף קבוצה');
-                    $customizeBtn.removeClass('d-none');
-                    $form.attr('action', `{% url 'group-add' order.pk %}`);
+                    $customizeBtn.removeClass('d-none');$form.attr('action', `{% url 'group-add' order.pk %}`);
                     $form[0].reset();
 
                     // Clear initial-value data attributes
-                    $modal.find('select').removeAttr('data-initial-value');
-                    $modal.find('.product-info-display').html('<small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
+                    $modal.find('select').removeAttr('data-initial-value');$modal.find('.product-info-display').html('<small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
 
                     // Defaults for New Group
                     if (orderSeriesId) {
                         $modal.find('select[name="series"]').val(orderSeriesId).trigger('change');
                     }
 
-                    // Trigger paint logic reset
-                    $modal.find('input[name="panel_paint_option"]').first().trigger('change');
-                    $modal.find('input[name="frame_paint_option"]').first().trigger('change');
+                    // Начальные значения покраски для новой группы
+                    $modal.find('select[name="panel_paint_option"]').val('MAIN_COLOR').trigger('change');
+                    $modal.find('input[name="is_door_inside_different_color"]').prop('checked', false).trigger('change');
+                    $modal.find('input[name="color_panel_outside"]').val('');
+                    $modal.find('input[name="color_panel_inside"]').val('');
+
+                    $modal.find('select[name="frame_paint_option"]').val('NO_PAINT').trigger('change');
+                    $modal.find('input[name="color_frames"]').val('');
                 }
             });
-
             // Confirmation for saving changes
             if ($editHeaderForm.length) {
                 $editHeaderForm.on('submit', function (e) {
@@ -580,14 +598,14 @@
                 });
             }
 
-            // --- Group Confirmation Logic ---
-            function getGroupFormState($form) {
-                const $disabled = $form.find(':disabled');
-                $disabled.prop('disabled', false);
-                const state = $form.serialize();
-                $disabled.prop('disabled', true);
-                return state;
-            }
+	        // --- Group Confirmation Logic ---
+	        function getGroupFormState($form) {
+            const $disabled = $form.find(':disabled');
+            $disabled.prop('disabled', false);
+            const state = $form.serialize();
+            $disabled.prop('disabled', true);
+            return state;
+        }
 
             // Track changes in group modals (Add and Edit)
             $(document).on('show.bs.modal', '#groupModal', function () {
@@ -1260,35 +1278,51 @@
 
             // Painting logic for Groups (Add/Edit modals)
             function setupGroupPaintingLogic($modal) {
-                const $panelOptions = $modal.find('input[name="panel_paint_option"]');
-                const $panelColorField = $modal.find('input[name="color_panels"]');
-                const $frameOptions = $modal.find('input[name="frame_paint_option"]');
-                const $frameColorField = $modal.find('input[name="color_frames"]');
-                const $basicColorFramesSelect = $modal.find('select[name="basic_color_frames"]');
+                const $frameSelect = $modal.find('select[name="frame_paint_option"]');
+                const $frameWrap = $modal.find('#group-frame-special-color-wrap');
 
-                function updateGroupPanelsState() {
-                    const selected = $panelOptions.filter(':checked').val();
-                    $panelColorField.prop('disabled', selected !== 'SPECIAL_COLOR');
+                const $panelSelect = $modal.find('select[name="panel_paint_option"]');
+                const $panelWrap = $modal.find('#group-panel-special-color-wrap');
+                const $diffWrap = $modal.find('#group-diff-sides-switch-wrap');
+                const $diffToggle = $modal.find('input[name="is_door_inside_different_color"]');
+                const $insideWrap = $modal.find('#group-panel-inside-wrap');
+                const $labelOut = $modal.find('#group-label-panel-out');
+
+                function syncColors() {
+                    // Коробки
+                    if ($frameSelect.val() === 'SPECIAL_COLOR') {
+                        $frameWrap.show();
+                    } else {
+                        $frameWrap.hide();
+                    }
+
+                    // Полотна (двери)
+                    if ($panelSelect.val() === 'SPECIAL_COLOR') {
+                        $panelWrap.show();
+                        $diffWrap.show();
+                        if ($diffToggle.is(':checked')) {
+                            $insideWrap.show();
+                            $labelOut.text('גוון כנף חוץ:');
+                        } else {
+                            $insideWrap.hide();
+                            $labelOut.text('גוון כנף (דו-צדדי):');
+                        }
+                    } else {
+                        $panelWrap.hide();
+                        $diffWrap.hide();
+                    }
                 }
 
-                function updateGroupFramesState() {
-                    const selected = $frameOptions.filter(':checked').val();
-                    $frameColorField.prop('disabled', selected !== 'SPECIAL_COLOR');
-                }
+                $frameSelect.on('change', syncColors);
+                $panelSelect.on('change', syncColors);
+                $diffToggle.on('change', syncColors);
 
-                $panelOptions.on('change', updateGroupPanelsState);
-                $frameOptions.on('change', updateGroupFramesState);
-
-                updateGroupPanelsState();
-                updateGroupFramesState();
-
-                $modal.find('form').on('submit', function () {
-                    $panelColorField.prop('disabled', false);
-                    $frameColorField.prop('disabled', false);
-                    $basicColorFramesSelect.prop('disabled', false);
+                // Кнопка «כמו הכנף» внутри модалки группы
+                $modal.find('#btn-group-copy-door').on('click', function () {
+                    const outVal = $modal.find('input[name="color_panel_outside"]').val();
+                    $modal.find('input[name="color_frames"]').val(outVal);
                 });
             }
-
             if ($groupModal.length) {
                 setupGroupPaintingLogic($groupModal);
             }

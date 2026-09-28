@@ -128,7 +128,7 @@ class GroupDuplicationAndSpecificationTests(TestCase):
         self.assertEqual(duplicated_group.front, self.group.front)
         self.assertEqual(duplicated_group.basic_color_frames, self.group.basic_color_frames)
         self.assertEqual(duplicated_group.panel_paint_option, self.group.panel_paint_option)
-        self.assertEqual(duplicated_group.color_panels, 'RAL 9005')
+        self.assertEqual(duplicated_group.color_panel_outside, 'RAL 9005')
         self.assertEqual(duplicated_group.is_split_installation, True)
         self.assertEqual(duplicated_group.comments, 'הערה לקבוצה')
 
@@ -228,7 +228,7 @@ class GroupDuplicationAndSpecificationTests(TestCase):
         other_group.refresh_from_db()
         self.assertEqual(other_group.series, self.series)
         self.assertEqual(other_group.front, self.front)
-        self.assertEqual(other_group.color_panels, 'RAL 9005')
+        self.assertEqual(other_group.color_panel_outside, 'RAL 9005')
         self.assertEqual(other_group.customizers.count(), 1)
         self.assertEqual(other_group.customizers.first().par1, 'לשונית שקטה')
 
