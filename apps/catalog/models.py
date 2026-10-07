@@ -300,6 +300,12 @@ class ProductModel(models.Model):
     Represents a unique intersection of ProductFamily x Series.
     Core catalog identity. Technological details are stored in apps.production.ProductTechnicalData.
     """
+
+    class AllowedDirection(models.TextChoices):
+        BOTH = 'BOTH', 'Both directions (In / Out)'
+        IN_ONLY = 'IN_ONLY', 'Inward only (In)'
+        OUT_ONLY = 'OUT_ONLY', 'Outward only (Out)'
+
     code = models.CharField('מק""ט', max_length=100, unique=True)
     name = models.CharField('שם', max_length=255)
     description = models.TextField('תיאור', blank=True)
@@ -331,6 +337,14 @@ class ProductModel(models.Model):
         blank=True,
         related_name='required_for_products',
         verbose_name='קסטומייזרים חובה'
+    )
+
+    allowed_direction = models.CharField(
+        "Allowed opening direction",
+        max_length=10,
+        choices=AllowedDirection.choices,
+        default=AllowedDirection.BOTH,
+        help_text="Limits allowed door opening direction for this model"
     )
 
     class Meta:

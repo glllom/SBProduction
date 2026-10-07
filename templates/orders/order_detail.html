@@ -68,27 +68,19 @@
                  data-bs-toggle="tooltip"
                  title="תאריך יצירת ההזמנה במערכת">
                 <label class="text-muted small d-block">ירידה לייצור</label>
-                <span class="fw-normal">{{ order.created_at|date:"d/m/Y" }}</span>
+                <span class="fw-normal">{{ order.production_start_date|date:"d/m/y" }}</span>
             </div>
-            {% if order.phase1_completion_date %}
-                <div class="mb-3 col-1"
-                     data-bs-toggle="tooltip"
-                     title="תאריך יעד לסיום ייצור משקופים (שלב א)">
-                    <label class="text-muted small d-block">סיום שלב א</label>
-                    <span class="fw-normal">{{ order.phase1_completion_date|date:"d/m/Y" }}</span>
-                </div>
-            {% endif %}
             <div class="mb-3 col-1"
                  data-bs-toggle="tooltip"
-                 title="תאריך יעד סופי לאספקת ההזמנה (דלתות)">
+                 title="תאריך יעד סופי לסיום ייצור">
                 <label class="text-muted small d-block">סיום ייצור</label>
-                <span class="fw-normal">{{ order.completion_date|date:"d/m/Y" }}</span>
+                <span class="fw-normal">{{ order.completion_date|date:"d/m/y" }}</span>
             </div>
             <div class="mb-3 col-1"
                  data-bs-toggle="tooltip"
                  title="תאריך מתוכנן לצביעת הפריטים">
                 <label class="text-muted small d-block">סיום צבע</label>
-                <span class="fw-normal">{{ order.painting_completion_date|date:"d/m/Y" }}</span>
+                <span class="fw-normal">{{ order.painting_completion_date|date:"d/m/y" }}</span>
             </div>
         </div>
     </div>
@@ -96,54 +88,22 @@
     <div class="mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2 p-2 bg-light rounded border">
         <!-- Primary CTA and Main Actions based on current status -->
         <div class="d-flex flex-wrap align-items-center gap-2">
-            {% if order.status == 'NEW' %}
-                <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-                   class="btn btn-primary fw-bold"
-                   data-bs-toggle="tooltip"
-                   title="העברת ההזמנה לתהליך ייצור מלא">
-                    <i class="bi bi-send-check me-1"></i>העבר לייצור
-                </a>
-                <a href="{% url 'production:order-check-validation' order.pk %}"
-                   class="btn btn-outline-info"
-                   data-bs-toggle="tooltip"
-                   title="בדיקת תקינות הנתונים של ההזמנה">
-                    <i class="bi bi-list-task me-1"></i>בדיקת ההזמנה
-                </a>
-                <a href="{% url 'order-measurements' order.pk %}"
-                   class="btn btn-outline-primary"
-                   data-bs-toggle="tooltip"
-                   title="צפייה ועריכת מידות הפריטים">
-                    <i class="bi bi-rulers me-1"></i>טופס מידות
-                </a>
-            {% elif order.status == 'PHASE1_PRODUCTION' %}
+            {% if order.can_start_production %}
+                <button type="button"
+                        class="btn btn-primary fw-bold"
+                        data-bs-toggle="tooltip"
+                        title="העברת פריטים לתהליך ייצור"
+                        onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
+                    <i class="bi bi-send-check me-1"></i>{{ order.production_action_label }}
+                </button>
+            {% endif %}
+            {% if order.status == 'PHASE1_PRODUCTION' %}
                 <a href="{% url 'production:order-complete-phase1' order.pk %}"
                    class="btn btn-success fw-bold"
                    data-bs-toggle="tooltip"
                    title="סיום שלב א' של ההזמנה">
                     <i class="bi bi-check-circle me-1"></i>סיום שלב א
                 </a>
-            {% elif order.status == 'PHASE1_READY' %}
-                <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-                   class="btn btn-primary fw-bold"
-                   data-bs-toggle="tooltip"
-                   title="העברה לייצור מלא / שלב ב">
-                    <i class="bi bi-send-check me-1"></i>העברה לשלב ב
-                </a>
-                <a href="{% url 'production:order-check-validation' order.pk %}"
-                   class="btn btn-outline-info"
-                   data-bs-toggle="tooltip"
-                   title="בדיקת תקינות הנתונים לקראת שלב ב">
-                    <i class="bi bi-list-task me-1"></i>בדיקת ההזמנה
-                </a>
-                {% if order.has_split_installation %}
-                    <a href="{% url 'production:split-measurer-report' order.pk %}"
-                       target="_blank"
-                       class="btn btn-outline-warning"
-                       data-bs-toggle="tooltip"
-                       title="דו''ח מדידה למודד לפני שלב ב'">
-                        <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
-                    </a>
-                {% endif %}
             {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' %}
                 <a href="{% url 'production:order-complete-production' order.pk %}"
                    class="btn btn-success fw-bold"
@@ -151,16 +111,28 @@
                    title="סיום תהליך הייצור והעברה למוכן למשלוח">
                     <i class="bi bi-check-all me-1"></i>סיום ייצור
                 </a>
-            {% elif order.status == 'READY' or order.status == 'COMPLETED' or order.status == 'PHASE2_READY' %}
-                {% if order.groups.all %}
-                    <a href="{% url 'production:order-transfer-to-completion-production' order.pk %}"
-                       class="btn btn-warning fw-bold"
-                       data-bs-toggle="tooltip"
-                       title="העברת קבוצות חדשות או מופשרות לייצור השלמות">
-                        <i class="bi bi-arrow-repeat me-1"></i>העבר לייצור השלמות
-                    </a>
-                {% endif %}
             {% endif %}
+            {% if order.has_split_installation and order.status == 'PHASE1_READY' %}
+                <a href="{% url 'production:split-measurer-report' order.pk %}"
+                   target="_blank"
+                   class="btn btn-outline-warning"
+                   data-bs-toggle="tooltip"
+                   title="דו''ח מדידה למודד לפני שלב ב'">
+                    <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
+                </a>
+            {% endif %}
+            <a href="{% url 'production:order-check-validation' order.pk %}"
+               class="btn btn-outline-info"
+               data-bs-toggle="tooltip"
+               title="בדיקת תקינות הנתונים של ההזמנה">
+                <i class="bi bi-list-task me-1"></i>בדיקת ההזמנה
+            </a>
+            <a href="{% url 'order-measurements' order.pk %}"
+               class="btn btn-outline-primary"
+               data-bs-toggle="tooltip"
+               title="צפייה ועריכת מידות הפריטים">
+                <i class="bi bi-rulers me-1"></i>טופס מידות
+            </a>
             <!-- Collapsible Production Actions & Documents Toolbar Toggle -->
             <button class="btn btn-outline-secondary"
                     type="button"
@@ -188,7 +160,7 @@
                     </li>
                     <li>
                         <a class="dropdown-item"
-                           href="{% url 'production:order-dev-rebuild-spec' order.pk %}">
+                           href="{% url 'production:order-rebuild-batch-spec' order.pk %}">
                             <i class="bi bi-cpu me-2 text-warning"></i>Rebuild Spec
                         </a>
                     </li>
@@ -1726,5 +1698,46 @@
                 }, 3000);
             }
         });
+        function transferOrderToProduction(btn, url) {
+    if (!confirm('האם להעביר את ההזמנה לתהליך ייצור?')) {
+        return;
+    }
+
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>מעביר לייצור...';
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    })
+    .then(async response => {
+        const data = await response.json();
+        return { ok: response.ok, data };
+    })
+    .then(res => {
+        if (res.ok && res.data.status === 'ok') {
+            // Сразу открываем мастер-отчет в новой вкладке
+            window.open(res.data.master_report_url, '_blank');
+            // Обновляем текущую страницу заказа
+            window.location.reload();
+        } else {
+            const errors = res.data.errors || [res.data.message || 'שגיאה בהעברה לייצור'];
+            alert('לא ניתן להעביר לייצור:\n• ' + errors.join('\n• '));
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('שגיאת תקשורת עם השרת');
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
     </script>
 {% endblock %}

@@ -176,11 +176,22 @@ $(document).ready(function () {
         // Hide the static custom heights row while editing
         $(`#display-custom-${itemId}`).addClass('d-none');
 
-        const openingOptions = `
-            <option value="">-</option>
-            <option value="IN" ${data.opening === 'IN' ? 'selected' : ''}>פ</option>
-            <option value="OUT" ${data.opening === 'OUT' ? 'selected' : ''}>ח</option>
-        `;
+        const allowedDir = (data.allowedDirection || 'BOTH').toUpperCase();
+        let openingOptions = '';
+
+        if (allowedDir === 'IN_ONLY') {
+            openingOptions = '<option value="IN" selected>פ</option>';
+        } else if (allowedDir === 'OUT_ONLY') {
+            openingOptions = '<option value="OUT" selected>ח</option>';
+        } else {
+            // Если значение уже было сохранено — используем его, иначе сразу ставим 'IN'
+            const activeOpening = data.opening || 'IN';
+
+            openingOptions = `
+                <option value="IN" ${activeOpening === 'IN' ? 'selected' : ''}>פ</option>
+                <option value="OUT" ${activeOpening === 'OUT' ? 'selected' : ''}>ח</option>
+            `;
+        }
 
         const directionOptions = `
             <option value="">-</option>
@@ -199,8 +210,7 @@ $(document).ready(function () {
             <td>
                 <div class="d-flex gap-1">
                     <select class="form-select form-select-sm" name="direction" ${data.hasDoor ? '' : 'disabled'}>${directionOptions}</select>
-                    <select class="form-select form-select-sm" name="opening" ${data.hasDoor ? '' : 'disabled'}>${openingOptions}</select>
-
+                    <select class="form-select form-select-sm" name="opening" ${data.hasDoor ? '' : 'disabled'} ${allowedDir !== 'BOTH' ? 'tabindex="-1"' : ''}>${openingOptions}</select>
                 </div>
             </td>
             <td><input type="text" class="form-control form-control-sm numeric-input" name="bottom_correction" value="${data.additionCut || ''}" placeholder="רווח נוסף" data-bs-toggle="tooltip" title="חיתוך תחתון נוסף במילימטרים (לריצוף או שטיח)"></td>

@@ -58,15 +58,18 @@ class Order(models.Model):
         verbose_name="סטטוס",
     )
 
-    # --- Stage dates ---
-    painting_completion_date = models.DateField(
-        null=True, blank=True, verbose_name="תאריך סיום צבע"
-    )
-    phase1_completion_date = models.DateField(
-        null=True, blank=True, verbose_name="תאריך סיום שלב א"
+    # --- Даты этапов ---
+    production_start_date = models.DateField(
+        null=True, blank=True, verbose_name="ירידה לייצור",
+        help_text="Дата первого запуска заказа в производство"
     )
     completion_date = models.DateField(
-        null=True, blank=True, verbose_name="תאריך סיום"
+        null=True, blank=True, verbose_name="סיום ייצור",
+        help_text="Плановая дата окончания производства в цеху"
+    )
+    painting_completion_date = models.DateField(
+        null=True, blank=True, verbose_name="סיום צבע",
+        help_text="Плановая дата окончания покраски"
     )
 
     # --- Engineering / Specific order properties ---
@@ -129,9 +132,12 @@ class Order(models.Model):
         auto_now_add=True, verbose_name="נוצר במערכת"
     )
 
+    latest_batch = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Tracks the latest released production batch number"
+    )
+
     # --- Specification Cache and Validation ---
-    phase1_validated = models.BooleanField(default=False, verbose_name="שלב א' מאושר")
-    phase2_validated = models.BooleanField(default=False, verbose_name="שלב ב' מאושר")
     phase1_spec_cache = models.JSONField(null=True, blank=True, verbose_name="מטמון מפרט שלב א")
     phase2_spec_cache = models.JSONField(null=True, blank=True, verbose_name="מטמון מפרט שלב ב")
 
@@ -147,73 +153,13 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         from apps.orders.utils import add_israeli_working_days
 
-        old_instance = None
-        # Approach 3: Freeze state if locked
-        if self.pk:
-            try:
-                old_instance = Order.objects.get(pk=self.pk)
-                if old_instance.is_locked:
-                    # Allow only status changes or completion dates
-                    # In a real app we would compare fields, here we just keep it simple
-                    # as per architectural spec.
-                    pass
-            except Order.DoesNotExist:
-                pass
-
         base_date = self.created_at.date() if self.created_at else timezone.now().date()
         if not self.completion_date:
             self.completion_date = add_israeli_working_days(base_date, 10)
         if not self.painting_completion_date:
             self.painting_completion_date = add_israeli_working_days(base_date, 20)
 
-        # Approach 1: Reset validation on technical fields change (if not already locked)
-        if old_instance and not old_instance.is_locked:
-            tech_fields = ['series_id', 'front_id', 'handle_id', 'is_frames_to_paint', 'color_panel_inside',
-                           'color_panel_outside', 'color_frames']
-            for field in tech_fields:
-                if getattr(self, field) != getattr(old_instance, field):
-                    self.reset_validation()
-                    break
-
         super().save(*args, **kwargs)
-
-    def reset_validation(self, phase=None):
-        """Resets validation flags and clears spec cache."""
-        if phase == 'phase1':
-            self.phase1_validated = False
-            self.phase1_spec_cache = None
-        elif phase == 'phase2':
-            self.phase2_validated = False
-            self.phase2_spec_cache = None
-        else:
-            self.phase1_validated = False
-            self.phase1_spec_cache = None
-            self.phase2_validated = False
-            self.phase2_spec_cache = None
-
-    def invalidate_cache_if_unlocked(self):
-        """Invalidates spec cache and reset validation flags in DB if the order is not locked."""
-        if not self.is_locked:
-            self.reset_validation()
-            type(self).objects.filter(pk=self.pk).update(
-                phase1_validated=False,
-                phase2_validated=False,
-                phase1_spec_cache=None,
-                phase2_spec_cache=None,
-            )
-
-    @property
-    def is_locked(self):
-        """Check if the order is in production or completed."""
-        # return self.status in [
-        #     OrderStatus.IN_PRODUCTION,
-        #     OrderStatus.PHASE1_PRODUCTION,
-        #     OrderStatus.PHASE2_PRODUCTION,
-        #     OrderStatus.COMPLETION_PRODUCTION,
-        #     OrderStatus.PHASE1_READY,
-        #     OrderStatus.COMPLETED,
-        # ]
-        return False
 
     @property
     def has_split_installation(self):
@@ -259,12 +205,28 @@ class Order(models.Model):
         return Material.objects.all().order_by('name')
 
     @property
-    def available_frame_colors(self):
-        """Deprecated: use available_frames instead"""
-        if self.series:
-            return self.series.frame_colors
-        from apps.catalog.models import Color
-        return Color.objects.filter(active=True).order_by('id')
+    def can_start_production(self) -> bool:
+        """True, если есть группы для запуска или перехода в фазу 2."""
+        if self.status == OrderStatus.NEW:
+            return self.groups.filter(
+                production_state=OrderItemsGroup.ProductionState.NEW
+            ).exists()
+        if self.status == OrderStatus.PHASE1_READY:
+            return True
+        if self.status in [OrderStatus.IN_PRODUCTION, OrderStatus.PHASE2_PRODUCTION, OrderStatus.COMPLETED]:
+            return self.groups.filter(
+                production_state=OrderItemsGroup.ProductionState.NEW
+            ).exists()
+        return False
+
+    @property
+    def production_action_label(self) -> str:
+        """Текст для кнопки запуска."""
+        if self.status == OrderStatus.NEW:
+            return "העבר לייצור"
+        if self.status == OrderStatus.PHASE1_READY:
+            return "העברה לשלב ב"
+        return "העבר לייצור השלמות"
 
 
 class OrderChangeLog(models.Model):
@@ -311,6 +273,13 @@ class OrderItemsGroup(models.Model):
         IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
         COMPLETED = 'COMPLETED', 'הושלם'
         CANCELED = 'CANCELED', 'בוטל'
+
+    # Release wave / batch identifier assigned upon production start
+    batch_number = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Order release wave (1 for initial order, 2+ for subsequent additions)"
+    )
 
     # Django will automatically create an `order_id` field in the DB
     order = models.ForeignKey(
@@ -429,18 +398,6 @@ class OrderItemsGroup(models.Model):
         from apps.catalog.models import Material
         return Material.objects.none()
 
-    @property
-    def available_frame_colors(self):
-        """Deprecated: use available_frames instead"""
-        if self.product:
-            return self.product.frame_colors
-        if self.series:
-            return self.series.frame_colors
-        if self.order and self.order.series:
-            return self.order.series.frame_colors
-        from apps.catalog.models import Color
-        return Color.objects.filter(active=True).order_by('id')
-
     def auto_populate_required_customizers(self):
         """
         Automatically adds required customizers for the group's product with empty/default values.
@@ -497,10 +454,6 @@ class OrderItemsGroup(models.Model):
         return getattr(self.order, 'color_frames', None)
 
     def save(self, *args, **kwargs):
-        # 1. Защита от изменения заблокированного заказа
-        if self.order and self.order.is_locked:
-            pass
-
         # 2. Наследование серии и фронта по умолчанию из заказа
         if self.order_id:
             if not self.series and getattr(self.order, "series", None):
@@ -546,24 +499,12 @@ class OrderItemsGroup(models.Model):
                     items_to_delete = existing_items[self.quantity:]
                     OrderItem.objects.filter(id__in=[item.id for item in items_to_delete]).delete()
 
-            # Пересчет маркировок (mark) по всему заказу
-            from apps.production.services import OrderProductionService
-            OrderProductionService.recalculate_item_marks(self.order)
-
-            # Сброс кеша валидации заказа
-            if self.order_id:
-                self.order.invalidate_cache_if_unlocked()
-                
     def delete(self, *args, **kwargs):
         order = self.order
         super().delete(*args, **kwargs)
         # After deleting the group, recalculate marks for the remaining items in the order
         from apps.production.services import OrderProductionService
         OrderProductionService.recalculate_item_marks(order)
-
-        # Approach 1: Reset parent order validation
-        if order:
-            order.invalidate_cache_if_unlocked()
 
     def duplicate(self):
         """
@@ -585,6 +526,8 @@ class OrderItemsGroup(models.Model):
                 color_frames=self.color_frames,
                 is_split_installation=self.is_split_installation,
                 comments=self.comments,
+                production_state=self.ProductionState.NEW,
+                batch_number=None
             )
             for cust in self.customizers.all():
                 OrderItemsGroupCustomizer.objects.update_or_create(
@@ -661,17 +604,10 @@ class OrderItemsGroupCustomizer(models.Model):
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
-        if self.group.order.is_locked:
-            pass
         super().save(*args, **kwargs)
-        if self.group_id and self.group.order_id:
-            self.group.order.invalidate_cache_if_unlocked()
 
     def delete(self, *args, **kwargs):
-        order = self.group.order
         super().delete(*args, **kwargs)
-        if order:
-            order.invalidate_cache_if_unlocked()
 
 
 # ==========================================
@@ -680,6 +616,18 @@ class OrderItemsGroupCustomizer(models.Model):
 
 
 class OrderItem(models.Model):
+    class ItemState(models.TextChoices):
+        ACTIVE = 'ACTIVE', 'פעיל'
+        CANCELED = 'CANCELED', 'בוטל'
+
+    state = models.CharField(
+        max_length=20,
+        choices=ItemState.choices,
+        default=ItemState.ACTIVE,
+        db_index=True,
+        verbose_name="סטטוס פריט"
+    )
+
     # --- Link to parent group ---
     group = models.ForeignKey(
         "OrderItemsGroup",
@@ -824,10 +772,6 @@ class OrderItem(models.Model):
         return self.format_decimal(self.wall)
 
     def save(self, *args, **kwargs):
-        # Approach 3: Freeze state if order is locked
-        if self.group.order.is_locked:
-            # In a production environment, we should raise a ValidationError
-            pass
 
         # Truncate all decimal fields to 1 decimal place
         decimal_fields = [
@@ -843,14 +787,9 @@ class OrderItem(models.Model):
                 setattr(self, field, truncated)
 
         super().save(*args, **kwargs)
-        if self.group_id and self.group.order_id:
-            self.group.order.invalidate_cache_if_unlocked()
 
     def delete(self, *args, **kwargs):
-        order = self.group.order
         super().delete(*args, **kwargs)
-        if order:
-            order.invalidate_cache_if_unlocked()
 
 
 # ==========================================

@@ -1,6 +1,10 @@
 from django.contrib import admin
 
 from .models import (
+    SvgPattern,
+    PuzzleBlockPrototype,
+    PuzzlePreset,
+    CustomizerPuzzleMapping,
     ProductTechnicalData, BOM, LockStandardHeight, HingeStandardHeight,
     ProductionStation, ProductionRoute, ProductionRouteStep,
     CustomizerProductionStation, OrderSpecificationSnapshot
@@ -26,10 +30,14 @@ class ProductTechnicalDataAdmin(admin.ModelAdmin):
 @admin.register(BOM)
 class BOMAdmin(admin.ModelAdmin):
     list_display = ('product',)
-    raw_id_fields = ('product', 'covering', 'base', 'filling', 'casing', 'frame',
-                     'profile1', 'profile2', 'profile3',
-                     'other1', 'other2', 'other3', 'other4', 'other5',
-                     'lock', 'hinges')
+    raw_id_fields = (
+        'product', 'covering', 'base', 'filling', 'casing', 'frame', 'panel_frame',
+        'profile1', 'profile2', 'profile3',
+        'other1', 'other2', 'other3', 'other4', 'other5',
+        'lock', 'hinges',
+        # Пресеты для отрисовки базовых слотов
+        'panel_frame_preset', 'filling_preset', 'base_preset', 'covering_preset'
+    )
     filter_horizontal = ('additional', 'required_customizers')
 
     fieldsets = (
@@ -41,8 +49,16 @@ class BOMAdmin(admin.ModelAdmin):
                 ('covering', 'covering_consumption'),
                 ('base', 'base_consumption'),
                 ('filling', 'filling_consumption'),
+                ('panel_frame', 'panel_frame_consumption'),
                 ('casing', 'casing_consumption'),
                 ('frame', 'frame_consumption'),
+            )
+        }),
+        ('Puzzle Presets (פיקטוגרמות סלוטים)', {
+            'description': 'Пресеты отрисовки для схемы пресса (анфас и торец)',
+            'fields': (
+                ('panel_frame_preset', 'filling_preset'),
+                ('base_preset', 'covering_preset'),
             )
         }),
         ('Profiles & Others (פרופילים ואחרים)', {
@@ -65,7 +81,7 @@ class BOMAdmin(admin.ModelAdmin):
         }),
     )
 
-
+    
 @admin.register(LockStandardHeight)
 class LockStandardHeightAdmin(admin.ModelAdmin):
     filter_horizontal = ('product_families', 'locks')
@@ -119,3 +135,29 @@ class ProductionRouteAdmin(admin.ModelAdmin):
             'fields': ('product_type', 'product_family', 'series', 'product_model')
         }),
     )
+
+
+@admin.register(SvgPattern)
+class SvgPatternAdmin(admin.ModelAdmin):
+    list_display = ('title', 'name', 'width', 'height')
+    search_fields = ('title', 'name')
+
+
+@admin.register(PuzzleBlockPrototype)
+class PuzzleBlockPrototypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'fill_type', 'fill_color', 'pattern', 'border_color')
+    list_filter = ('fill_type',)
+    search_fields = ('name', 'code')
+
+
+@admin.register(PuzzlePreset)
+class PuzzlePresetAdmin(admin.ModelAdmin):
+    list_display = ('name', 'description')
+    search_fields = ('name',)
+
+
+@admin.register(CustomizerPuzzleMapping)
+class CustomizerPuzzleMappingAdmin(admin.ModelAdmin):
+    list_display = ('customizer', 'preset', 'slot_action', 'target_slot')
+    list_filter = ('slot_action', 'target_slot')
+    search_fields = ('customizer__name', 'preset__name')

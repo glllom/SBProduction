@@ -8,6 +8,7 @@ class OrderItemsGroupInline(admin.TabularInline):
     model = OrderItemsGroup
     extra = 1
     fields = (
+        "production_state",
         "product",
         "quantity",
         "production_state",
@@ -25,6 +26,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "order",
+        "production_state",
         "product",
         "quantity",
         "production_state",
@@ -56,7 +58,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
         (
             "Привязка к заказу и Объем",
             {
-                "fields": ("order", "product", "quantity"),
+                "fields": ("order", "product", "quantity", "production_state",),
             },
         ),
         (
@@ -131,7 +133,6 @@ class OrderAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "painting_completion_date",
-                    "phase1_completion_date",
                     "completion_date",
                 )
             },

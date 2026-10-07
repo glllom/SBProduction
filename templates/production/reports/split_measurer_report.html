@@ -170,17 +170,19 @@
                                                     <div>{{ spec.inner_width|floatformat }}x{{ spec.inner_height|floatformat }}</div>
                                                 </td>
                                                 <td class="fs-5">
-                                                    {{ spec.direction }}
-                                                    <br>
-                                                    {{ spec.opening }}
+                                                    {% if spec.is_double_door %}
+                                                        <span class="badge bg-secondary text-white px-1 py-1">דלת כפולה</span>
+                                                    {% else %}
+                                                        {{ spec.direction }}
+                                                        <br>
+                                                        {{ spec.opening }}
+                                                    {% endif %}
                                                 </td>
                                                 <td class="fs-5">
                                                     <div>
-                                                        <span class="text-decoration-underline">{{ spec.lock_name }}</span>:
-                                                        {% if spec.lock_height_on_frame %}
+                                                        {% if spec.is_double_door %}-{% else %}
+                                                            <span class="text-decoration-underline">{{ spec.lock_name }}</span>:
                                                             {{ spec.lock_height_on_frame|floatformat }}
-                                                        {% else %}
-                                                            {{ spec.lock_height|floatformat }}
                                                         {% endif %}
                                                     </div>
                                                     <div class="mt-1 small text-muted">

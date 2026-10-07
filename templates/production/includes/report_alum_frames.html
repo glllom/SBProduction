@@ -85,47 +85,54 @@
                                             {{ spec.width|floatformat }}
                                             \ {{ spec.height|floatformat }}
                                         </td>
-                                        <td class="fs-5">{{ spec.direction }} | {{ spec.opening }}</td>
-                                        <td class="fs-5">{{ spec.lock_height|floatformat }}</td>
                                         <td class="fs-5">
-                                            {% for h in spec.hinge_heights %}{{ h|floatformat }}{% if not forloop.last %} \
+                                            {% if spec.is_double_door %}
+                                                <span class="badge bg-secondary text-white px-1 py-1">דלת כפולה</span>
+                                            {% else %}
+                                                {{ spec.direction }} | {{ spec.opening }}
                                             {% endif %}
-                                {% endfor %}
-                            </td>
-                            {# Объединение ячеек кастомизаторов и комментариев #}
-                            {% if spec.addons_rowspan > 0 %}
-                                <td rowspan="{{ spec.addons_rowspan }}" class="fs-6 py-1 align-middle">
-                                    {% if spec.comment %}
-                                        <div class="fst-italic text-secondary">{{ spec.comment }}</div>
-                                    {% endif %}
-                                    {% if spec.frames_report_customizers %}
-                                        <div class="mt-1">
-                                            {% for cmz in spec.frames_report_customizers %}
-                                                <div class="fw-bold text-primary">
-                                                    {{ cmz.name }}
-                                                    {% if cmz.params %}
-                                                        <span class="fw-normal text-dark">
-                                                            ({% for p in cmz.params %}
-                                                                {{ p.label }}:
-                                                                <span class="{% if p.is_custom or p.is_modified or p.is_default == False %}text-danger fw-bold{% endif %}">
-                                                                    {{ p.value }}
-                                                                </span>{% if not forloop.last %}, {% endif %}
-                                                    {% endfor %})
-                                                </span>
-                                            {% endif %}
-                                        </div>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
-                        </td>
+                                        </td>
+                                        <td class="fs-5">{% if spec.is_double_door %}-{% else %}
+                                        {{ spec.lock_height|floatformat }}{% endif %}</td>
+                                    <td class="fs-5">
+                                        {% for h in spec.hinge_heights %}{{ h|floatformat }}{% if not forloop.last %} \
+                                        {% endif %}
+                {% endfor %}
+                </td>
+                {# Объединение ячеек кастомизаторов и комментариев #}
+                {% if spec.addons_rowspan > 0 %}
+                    <td rowspan="{{ spec.addons_rowspan }}" class="fs-6 py-1 align-middle">
+                        {% if spec.comment %}
+                            <div class="fst-italic text-secondary">{{ spec.comment }}</div>
+                        {% endif %}
+                        {% if spec.frames_report_customizers %}
+                            <div class="mt-1">
+                                {% for cmz in spec.frames_report_customizers %}
+                                    <div class="fw-bold text-primary">
+                                        {{ cmz.name }}
+                                        {% if cmz.params %}
+                                            <span class="fw-normal text-dark">
+                                                ({% for p in cmz.params %}
+                                                    {{ p.label }}:
+                                                    <span class="{% if p.is_custom or p.is_modified or p.is_default == False %}text-danger fw-bold{% endif %}">
+                                                        {{ p.value }}
+                                                    </span>{% if not forloop.last %}, {% endif %}
+                                        {% endfor %})
+                                    </span>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
                 {% endif %}
-                </tr>
-            {% endfor %}
-            </tbody>
-            </table>
-            </div>
-        {% endwith %}
-    {% endfor %}
+                </td>
+            {% endif %}
+            </tr>
+        {% endfor %}
+        </tbody>
+        </table>
+        </div>
+    {% endwith %}
+{% endfor %}
 {% endfor %}
 {% empty %}
 <div class="alert alert-info text-center mt-5">

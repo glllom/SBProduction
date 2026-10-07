@@ -97,6 +97,7 @@
                         data-wall="{{ item.wall_fmt }}"
                         data-opening="{{ item.opening|default:'' }}"
                         data-direction="{{ item.direction|default:'' }}"
+                        data-allowed-direction="{{ group.product.allowed_direction|default:'BOTH' }}"
                         data-place="{{ item.place|default:'' }}"
                         data-bottom-correction="{{ item.bottom_correction|default:'' }}"
                         data-comment="{{ item.comment|default:'' }}"
@@ -128,6 +129,8 @@
                         <td class="no-print text-nowrap">
                             {% if order.sketch or item.sketch %}
                                 <a href="
+
+
 
 												{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
                                    target="_blank"

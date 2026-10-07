@@ -1,6 +1,7 @@
 from django.db import models
 
 from apps.catalog.models import ProductModel
+from apps.orders.models import Order, OrderItem
 
 
 class ProductTechnicalData(models.Model):
@@ -62,6 +63,29 @@ class BOM(models.Model):
     filling = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                 verbose_name='מילוי (Filling)')
     filling_consumption = models.CharField('צריכת מילוי', max_length=255, default='1', blank=True)
+
+    panel_frame = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='+',
+                                    verbose_name='מסגרת עץ')
+    panel_frame_consumption = models.CharField('צריכת מסגרת עץ', max_length=255, default='1', blank=True)
+
+    # В класс BOM:
+    filling_preset = models.ForeignKey(
+        'PuzzlePreset', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='פיקטוגרמה: מילוי'
+    )
+    panel_frame_preset = models.ForeignKey(
+        'PuzzlePreset', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='פיקטוגרמה: מסגרת עץ'
+    )
+    base_preset = models.ForeignKey(
+        'PuzzlePreset', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='פיקטוגרמה: בסיס'
+    )
+    covering_preset = models.ForeignKey(
+        'PuzzlePreset', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='פיקטוגרמה: כיסוי'
+    )
 
     casing = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                verbose_name='הלבשה (Casing)')
@@ -465,10 +489,6 @@ class OrderSpecificationSnapshot(models.Model):
         return f"סנאפשוט {self.get_snapshot_type_display()} - הזמנה {self.order.order_number} ({self.created_at.strftime('%d/%m/%Y %H:%M')})"
 
 
-from django.db import models
-from apps.orders.models import Order, OrderItem
-
-
 class DoorLabel(models.Model):
     # Label types
     class LabelType(models.IntegerChoices):
@@ -536,3 +556,147 @@ class DoorLabel(models.Model):
 
     def __str__(self):
         return f"{self.order_number} - Item {self.item_mark} (Type {self.label_type})"
+
+
+class SvgPattern(models.Model):
+    """Библиотека векторных SVG-паттернов для текстурной заливки блоков."""
+    name = models.CharField(
+        max_length=50,
+        unique=True,
+        verbose_name="Идентификатор (slug)",
+        help_text="Латинский ключ для SVG ID (например: foam, tubular, honeycomb)"
+    )
+    title = models.CharField(max_length=100, verbose_name="Название")
+    width = models.PositiveIntegerField(default=20, verbose_name="Ширина тайла (px)")
+    height = models.PositiveIntegerField(default=20, verbose_name="Высота тайла (px)")
+    svg_content = models.TextField(
+        verbose_name="Внутренний SVG-контент",
+        help_text="Теги rect, circle, path, line без обрамляющего тега <pattern>"
+    )
+
+    class Meta:
+        verbose_name = "SVG Паттерн"
+        verbose_name_plural = "SVG Паттерны"
+        ordering = ['title']
+
+    def __str__(self):
+        return f"{self.title} ({self.name})"
+
+
+class PuzzleBlockPrototype(models.Model):
+    """Справочник визуальных прототипов блоков (внешний вид)."""
+
+    class FillType(models.TextChoices):
+        SOLID = 'SOLID', 'Сплошной цвет'
+        PATTERN = 'PATTERN', 'SVG Паттерн'
+
+    code = models.CharField(
+        max_length=50,
+        unique=True,
+        verbose_name="Код прототипа",
+        help_text="Например: pine_timber, green_hdf, tubular_core"
+    )
+    name = models.CharField(max_length=100, verbose_name="Название")
+    fill_type = models.CharField(
+        max_length=10,
+        choices=FillType.choices,
+        default=FillType.SOLID,
+        verbose_name="Тип заполнения"
+    )
+    fill_color = models.CharField(
+        max_length=30,
+        default="#fab005",
+        verbose_name="Цвет заливки (HEX)"
+    )
+    pattern = models.ForeignKey(
+        SvgPattern,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="block_prototypes",
+        verbose_name="Паттерн"
+    )
+    border_color = models.CharField(max_length=30, default="#000000", verbose_name="Цвет границы")
+    border_width = models.FloatField(default=1.0, verbose_name="Толщина границы")
+    border_dasharray = models.CharField(max_length=30, blank=True, default="", verbose_name="Пунктир")
+    opacity = models.FloatField(default=1.0, verbose_name="Непрозрачность (0.0 - 1.0)")
+    default_text_color = models.CharField(max_length=30, default="#000000", verbose_name="Цвет текста")
+    default_font_size = models.PositiveSmallIntegerField(default=11, verbose_name="Размер шрифта")
+
+    class Meta:
+        verbose_name = "Прототип блока пазла"
+        verbose_name_plural = "Прототипы блоков пазла"
+
+    def __str__(self):
+        return f"{self.name} [{self.code}]"
+
+
+class PuzzlePreset(models.Model):
+    """
+    Эскиз/пиктограмма узла. Содержит правила генерации блоков
+    для анфаса и торца.
+    """
+    name = models.CharField(max_length=100, unique=True, verbose_name="Название пресета")
+    description = models.TextField(blank=True, verbose_name="Описание")
+
+    # Список словарей с вызовами прототипов и координатами
+    # [{"component": "pine_timber", "view": "face", "x": 0, "y": 0, "w": 8, "h": 200, "order": 20}, ...]
+    blocks_config = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Конфигурация блоков"
+    )
+
+    class Meta:
+        verbose_name = "Пресет узла (Пиктограмма)"
+        verbose_name_plural = "Пресеты узлов (Пиктограммы)"
+
+    def __str__(self):
+        return self.name
+
+
+class CustomizerPuzzleMapping(models.Model):
+    """
+    Производственное правило отрисовки для кастомизатора.
+    Связывает коммерческий кастомизатор с пресетом и определяет действие со слотом.
+    """
+
+    class SlotAction(models.TextChoices):
+        ADD = 'ADD', 'הוספה (Add blocks)'
+        REPLACE = 'REPLACE', 'החלפה (Replace slot)'
+        REMOVE = 'REMOVE', 'הסרה (Clear slot)'
+
+    customizer = models.OneToOneField(
+        'catalog.Customizer',
+        on_delete=models.CASCADE,
+        related_name='puzzle_mapping',
+        verbose_name="קסטומייזר"
+    )
+    preset = models.ForeignKey(
+        'production.PuzzlePreset',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='customizer_mappings',
+        verbose_name="פיקטוגרמה"
+    )
+    slot_action = models.CharField(
+        max_length=10,
+        choices=SlotAction.choices,
+        default=SlotAction.ADD,
+        verbose_name="פעולה על סלוט"
+    )
+    target_slot = models.CharField(
+        max_length=30,
+        blank=True,
+        null=True,
+        verbose_name="סלוט יעד",
+        help_text="FILLING, FRAME, BASE, COVERING (עבור החלפה או הסרה)"
+    )
+
+    class Meta:
+        verbose_name = "מיפוי פיקטוגרמה לקסטומייזר"
+        verbose_name_plural = "מיפוי פיקטוגרמות לקסטומייזרים"
+
+    def __str__(self):
+        return f"{self.customizer.name} -> {self.preset.name if self.preset else 'ללא פיקטוגרמה'}"

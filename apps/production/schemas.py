@@ -1,6 +1,31 @@
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class SvgPuzzleBlock(BaseModel):
+    x: float
+    y: float
+    w: float
+    h: float
+    fill_type: str = "SOLID"  # SOLID или PATTERN
+    fill_color: str = "#fab005"
+    pattern_name: Optional[str] = None
+    border_color: str = "#000000"
+    border_width: float = 1.0
+    border_dasharray: str = ""
+    opacity: float = 1.0
+    order: int = 10
+    text: str = ""
+    text_color: str = "#000000"
+    text_x: Optional[float] = None
+    text_y: Optional[float] = None
+    font_size: int = 11
+
+
+class DoorPuzzleSpec(BaseModel):
+    face_blocks: List[SvgPuzzleBlock] = Field(default_factory=list)
+    sandwich_blocks: List[SvgPuzzleBlock] = Field(default_factory=list)
 
 
 class SpecBOMItem(BaseModel):
@@ -36,8 +61,8 @@ class OrderHeaderSpec(BaseModel):
     number: str
     customer: str
     status: str
+    production_start_date: str = ""
     painting_completion_date: str = ""
-    phase1_completion_date: str = ""
     completion_date: str = ""
 
 
@@ -83,7 +108,6 @@ class ProductionSpec(BaseModel):
 
     # Appearance
     front_name: str = ""
-    color_panels: str = ""
     color_frames: str = ""
     basic_color_frames: str = ""
     frame_paint_option: str = ""
@@ -119,6 +143,7 @@ class ProductionSpec(BaseModel):
     # Пресс и раскрой
     sandwich_spec: Optional[SandwichSpec] = None
     frame_spec: Optional[FrameStructureSpec] = None
+    puzzle_spec: Optional[DoorPuzzleSpec] = None
 
     # Additional
     frames_report_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
@@ -169,7 +194,6 @@ class OrderSpecBatchContainer(BaseModel):
                 customer=order.customer or "",
                 status=order.status,
                 painting_completion_date=self._fmt(getattr(order, 'painting_completion_date', None)),
-                phase1_completion_date=self._fmt(getattr(order, 'phase1_completion_date', None)),
                 completion_date=self._fmt(getattr(order, 'completion_date', None)),
             ),
             items=self.get_all_items()

@@ -12,11 +12,13 @@ from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from apps.orders.models import OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
+from apps.orders.models import Order, OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
 from .label_services import DoorLabelService
 from .models import (
     ProductionStation, OrderSpecificationSnapshot,
 )
+from .pipeline import OrderSpecPipeline
+from .schemas import OrderSpec
 
 
 class OrderValidationError(Exception):
@@ -83,6 +85,7 @@ class OrderValidationService:
         """
         Partial validation (Phase A - frames in split installation).
         """
+
         errors = cls._run_validation(order, is_full=False)
         return ValidationResult(
             is_valid=(len(errors) == 0),
@@ -95,6 +98,7 @@ class OrderValidationService:
         """
         Full validation (Phase B or regular order without split installation).
         """
+
         errors = cls._run_validation(order, is_full=True)
         return ValidationResult(
             is_valid=(len(errors) == 0),
@@ -128,7 +132,9 @@ class OrderValidationService:
         return cls.validate_full(order)
 
     @classmethod
-    def validate_for_report(cls, order, report_type: str = None, station=None) -> ValidationResult:
+    def validate_for_report(cls, order,
+                            report_type: Optional[str] = None,
+                            station: Optional[ProductionStation] = None) -> ValidationResult:
         """
         Appropriate validation before technical report generation.
         For Phase A frames report (PHASE1_FRAMES) - partial check.
@@ -137,7 +143,7 @@ class OrderValidationService:
         if order.status == OrderStatus.COMPLETION_PRODUCTION:
             return cls.validate_completion(order)
         if station and not station.has_specification:
-            # If station doesn't require specification but we are here, do full validation
+            # If station doesn't require specification, but we are here, do full validation
             return cls.validate_full(order)
 
         # Determine based on phase
@@ -261,8 +267,25 @@ class OrderValidationService:
                         errors.append(f"{item_label}: Opening side not selected (L/R)")
                     if not item.direction:
                         errors.append(f"{item_label}: Opening direction not selected (In/Out)")
+                    elif group.product:
+                        # Validate direction against product restrictions
+                        allowed = getattr(group.product, 'allowed_direction', 'BOTH')
+                        dir_val = str(item.direction).strip().upper()
 
-            # 5. Required customizers and parameters check
+                        # Handles both English ('IN', 'OUT') and Hebrew ('פנימה', 'החוצה') if used
+                        is_in = dir_val in ('IN', 'INWARD', 'פנימה')
+                        is_out = dir_val in ('OUT', 'OUTWARD', 'החוצה')
+
+                        if allowed == 'IN_ONLY' and not is_in:
+                            errors.append(
+                                f"{item_label}: Model '{group.product.name}' only supports Inward (IN) opening"
+                            )
+                        elif allowed == 'OUT_ONLY' and not is_out:
+                            errors.append(
+                                f"{item_label}: Model '{group.product.name}' only supports Outward (OUT) opening"
+                            )
+
+                # 5. Required customizers and parameters check
             required_customizers = group.product.get_required_customizers()
             group_customizers = list(group.customizers.select_related('customizer').all())
             group_customizers_map = {gc.customizer_id: gc for gc in group_customizers}
@@ -283,6 +306,7 @@ class OrderValidationService:
 
         # 6. Handle selection check in full validation (Phase B or no split installation)
         if is_full and has_any_doors:
+
             if not getattr(order, 'handle', None):
                 errors.append("Handle not selected for order (required for Phase B / Full production)")
 
@@ -291,264 +315,130 @@ class OrderValidationService:
 
 class TechnicalSpecService:
     """
-    Service for generating and managing technical specifications.
-    Single point of entry for all specification requests.
-    Supports batch structure: {"batch_1": OrderSpec, "batch_2": OrderSpec, ...}.
+    Единый шлюз спецификаций заказа.
+    Отвечает за сборку среза позиций, запуск пайплайна, сохранение и чтение снимков.
+    Структура кэша в JSONField: {"batch_1": {...}, "batch_2": {...}}
     """
 
     @staticmethod
-    def get_or_build_spec(order, phase='phase1', user=None, batch_key: Optional[str] = None):
+    def get_rich_order_items(order_id: int, batch_number: Optional[int] = None):
         """
-        Gets the specification from cache or builds batch_1 if invalid/missing.
-        Returns:
-            - spec_obj (OrderSpec): aggregated spec across all batches (or specific batch if batch_key provided).
-            - cache (dict): raw dictionary containing all batches {"batch_1": {...}, ...}.
+        Плоская выборка позиций с отсечением WAITING и CANCELED.
+        При указании batch_number возвращает только указанный батч.
         """
-        from .schemas import OrderSpec, OrderSpecBatchContainer
-        from .pipeline import OrderSpecPipeline
-
-        is_validated = order.phase1_validated if phase == 'phase1' else order.phase2_validated
-        cache = order.phase1_spec_cache if phase == 'phase1' else order.phase2_spec_cache
-
-        if is_validated and cache:
-            # Backward compatibility check: wrap legacy flat spec into batch_1
-            if "items" in cache and "batch_1" not in cache:
-                cache = {"batch_1": cache}
-                field_name = 'phase1_spec_cache' if phase == 'phase1' else 'phase2_spec_cache'
-                setattr(order, field_name, cache)
-                order.save(update_fields=[field_name])
-
-            batch_container = OrderSpecBatchContainer(
-                batches={k: OrderSpec.model_validate(v) for k, v in cache.items() if k.startswith("batch_")}
+        qs = (
+            OrderItem.objects.filter(group__order_id=order_id)
+            .exclude(
+                group__production_state__in=[
+                    OrderItemsGroup.ProductionState.WAITING,
+                    OrderItemsGroup.ProductionState.CANCELED,
+                ]
             )
+            .select_related(
+                'group',
+                'group__order',
+                'group__order__series',
+                'group__order__front',
+                'group__order__handle',
+                'group__product',
+                'group__product__product_family',
+                'group__product__product_family__product_type',
+                'group__product__series',
+                'group__product__tech_data',
+                'group__product__bom',
+                'group__product__bom__frame',
+                'group__product__bom__covering',
+                'group__product__bom__base',
+                'group__product__bom__filling',
+                'group__product__bom__lock',
+                'group__product__bom__hinges',
+                'group__front',
+                'group__series',
+                'group__basic_color_frames',
+            )
+            .prefetch_related(
+                'group__customizers__customizer__materials',
+                'group__customizers__customizer__hardware__components',
+                'group__product__bom__additional',
+            ).order_by('id')
+        )
 
-            if batch_key and batch_key in batch_container.batches:
-                return batch_container.batches[batch_key], cache
-            return batch_container.get_aggregated_spec(order), cache
+        if batch_number is not None:
+            qs = qs.filter(group__batch_number=batch_number)
 
-        # Build fresh batch_1
-        res = OrderValidationService.validate_for_phase(order, phase)
-        if not res.is_valid:
-            raise OrderValidationError(f"Validation failed for {phase}", errors=res.errors)
+        return list(qs)
 
+    @classmethod
+    def get_or_build_spec(
+            cls,
+            order,
+            phase: str = 'phase2',
+            batch_number: Optional[int] = None,
+            force_rebuild: bool = False,
+            user=None
+    ):
+        """
+        Возвращает спецификацию (OrderSpec).
+        Если снимок уже есть в базе и не запрошен force_rebuild — десериализует из JSON.
+        Иначе — прогоняет плоскую выборку позиций через пайплайн и фиксирует снимок в БД.
+        """
+
+        cache_field = 'phase1_spec_cache' if phase == 'phase1' else 'phase2_spec_cache'
+        existing_cache = getattr(order, cache_field) or {}
+        batch_key = f"batch_{batch_number}" if batch_number is not None else "batch_all"
+
+        # 1. Возврат из снимка без повторного запуска пайплайна
+        if not force_rebuild and batch_key in existing_cache:
+            return OrderSpec.model_validate(existing_cache[batch_key]), False
+
+        # 2. Выборка позиций
+        items = cls.get_rich_order_items(order_id=order.id, batch_number=batch_number)
+        if not items:
+            raise OrderValidationError(f"Нет активных позиций для формирования спецификации (batch={batch_number}).")
+
+        # 3. Запуск пайплайна
         pipeline = OrderSpecPipeline()
-        spec_obj = pipeline.execute_for_order(order, phase=phase)
+        spec_obj = pipeline.execute(order, items=items, phase=phase)
 
-        all_errors = []
-        for item_spec in spec_obj.items:
-            if item_spec.errors:
-                item_label = f"Item {item_spec.mark}" if item_spec.mark else f"Item #{item_spec.item_id}"
-                for err in item_spec.errors:
-                    all_errors.append(f"{item_label}: {err}")
+        # Проверка ошибок расчетов в узлах
+        errors = []
+        for it in spec_obj.items:
+            if it.errors:
+                mark_label = f"Item {it.mark}" if it.mark else f"Item #{it.item_id}"
+                errors.extend([f"{mark_label}: {err}" for err in it.errors])
+        if errors:
+            raise OrderValidationError("Ошибки при расчете спецификации:", errors=errors)
 
-        if all_errors:
-            raise OrderValidationError(f"Specification building failed for {phase}", errors=all_errors)
+        # 4. Сохранение снимка в базу
+        spec_dict = spec_obj.model_dump()
+        existing_cache[batch_key] = spec_dict
+        setattr(order, cache_field, existing_cache)
+        order.save(update_fields=[cache_field])
 
-        # Wrap into batch_1
-        batch_1_json = spec_obj.model_dump()
-        cache = {"batch_1": batch_1_json}
-
+        # Фиксация в истории снимков
         snapshot_type = (
             OrderSpecificationSnapshot.SnapshotType.PHASE1
             if phase == 'phase1'
             else OrderSpecificationSnapshot.SnapshotType.PHASE2
         )
-
-        if phase == 'phase1':
-            order.phase1_validated = True
-            order.phase1_spec_cache = cache
-            order.save(update_fields=['phase1_validated', 'phase1_spec_cache'])
-        else:
-            order.phase2_validated = True
-            order.phase2_spec_cache = cache
-            order.save(update_fields=['phase2_validated', 'phase2_spec_cache'])
-
         OrderSpecificationSnapshot.objects.create(
             order=order,
             snapshot_type=snapshot_type,
-            spec_data=batch_1_json,
+            spec_data=spec_dict,
             created_by=user
         )
 
-        return spec_obj, cache
+        return spec_obj, True
 
     @classmethod
-    def build_completion_spec(cls, order, user=None):
+    def get_batch_items(cls, order, phase: str = 'phase1', batch_number: int = 1) -> List[dict]:
         """
-        Builds specification only for unfrozen/new groups (batch_N).
-        Appends new batch without modifying previous batches.
+        Возвращает плоский список рассчитанных позиций из снимка для форм (например, перед Фазой 2).
         """
-        from .pipeline import OrderSpecPipeline
-
-        res = OrderValidationService.validate_completion(order)
-        if not res.is_valid:
-            raise OrderValidationError("Validation failed for completion production", errors=res.errors)
-
-        # Fetch items strictly from NEW / unfrozen groups
-        delta_items = list(OrderItem.objects.filter(
-            group__order=order,
-            group__production_state=OrderItemsGroup.ProductionState.NEW
-        ).select_related('group', 'group__product'))
-
-        if not delta_items:
-            raise OrderValidationError("No unfrozen or new items found for completion production")
-
-        pipeline = OrderSpecPipeline()
-        delta_spec_obj = pipeline.execute(order, items=delta_items, phase='phase2')
-
-        all_errors = []
-        for item_spec in delta_spec_obj.items:
-            if item_spec.errors:
-                item_label = f"Item {item_spec.mark}" if item_spec.mark else f"Item #{item_spec.item_id}"
-                for err in item_spec.errors:
-                    all_errors.append(f"{item_label}: {err}")
-
-        if all_errors:
-            raise OrderValidationError("Specification building failed for completions", errors=all_errors)
-
-        delta_spec_json = delta_spec_obj.model_dump()
-
-        # Determine next batch key
-        cache = order.phase2_spec_cache or {}
-        # Backward compatibility check
-        if "items" in cache and "batch_1" not in cache:
-            cache = {"batch_1": cache}
-
-        batch_count = sum(1 for k in cache.keys() if k.startswith("batch_"))
-        next_batch_key = f"batch_{batch_count + 1}"
-        cache[next_batch_key] = delta_spec_json
-
-        # Persist new batch
-        order.phase2_spec_cache = cache
-        order.phase2_validated = True
-        order.save(update_fields=['phase2_spec_cache', 'phase2_validated'])
-
-        OrderSpecificationSnapshot.objects.create(
-            order=order,
-            snapshot_type=OrderSpecificationSnapshot.SnapshotType.PHASE2_COMPLETION,
-            spec_data=delta_spec_json,
-            created_by=user
-        )
-
-        return delta_spec_obj, delta_spec_json
-
-    @staticmethod
-    def validate(item: OrderItem) -> List[str]:
-        """
-        Validates if there is enough data to build the item specification.
-        Returns a list of errors.
-        """
-        errors = []
-        item_label = f"Item {item.mark}" if item.mark else f"Item #{item.id}"
-        group = getattr(item, 'group', None)
-        if not group or not group.product:
-            errors.append(f"{item_label}: Product model not selected")
-            return errors
-
-        product_type = None
-        if group.product and group.product.product_family and group.product.product_family.product_type:
-            product_type = group.product.product_family.product_type
-
-        has_door = product_type.has_door if product_type else True
-        has_frame = product_type.has_frame if product_type else True
-
-        if has_door or has_frame:
-            if item.height is None or item.height <= 0:
-                errors.append(f"{item_label}: Valid height not specified")
-            if item.width is None or item.width <= 0:
-                errors.append(f"{item_label}: Valid width not specified")
-
-        if has_frame:
-            if item.wall is None or item.wall <= 0:
-                errors.append(f"{item_label}: Wall thickness not specified (frame)")
-
-        return errors
-
-    @classmethod
-    def build_spec(cls, item: OrderItem):
-        """
-        Collects all data and returns a technical specification instance for an item.
-        Uses SpecPipeline for step-by-step processing.
-        """
-        from .pipeline import SpecPipeline
-        pipeline = SpecPipeline()
-        return pipeline.execute(item)
-
-    @classmethod
-    def build_order_spec(cls, order, items=None):
-        """
-        Forms a complete specification for the entire order.
-        Uses OrderSpecPipeline for step-by-step processing.
-        """
-        from .pipeline import OrderSpecPipeline
-        pipeline = OrderSpecPipeline()
-        return pipeline.execute(order, items)
-
-
-def _calculate_sandwich_svg_layers(layers, total_width=200, total_height=100):
-    if not layers:
-        return []
-
-    min_h = 12.0
-    nominal_total = sum(
-        float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 1))
-        for l in layers
-    ) or 1.0
-
-    raw_heights = [
-        max(min_h,
-            (float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 1)) / nominal_total) * total_height)
-        for l in layers
-    ]
-    scale = total_height / sum(raw_heights)
-    actual_heights = [h * scale for h in raw_heights]
-
-    svg_layers = []
-    curr_y = 0.0
-    for l, h in zip(layers, actual_heights):
-        name = l.name if hasattr(l, 'name') else l.get('name', '')
-        th = float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 0))
-        bg = l.bg_color if hasattr(l, 'bg_color') else l.get('bg_color', '#ddd')
-        pat = l.pattern_code if hasattr(l, 'pattern_code') else l.get('pattern_code', 'solid')
-
-        svg_layers.append({
-            'y': round(curr_y, 1),
-            'height': round(h, 1),
-            'bg_color': bg,
-            'pattern_code': pat,
-            'label': f"{name} ({th:g})" if th >= 1 else str(th),
-            'text_y': round(curr_y + (h / 2), 1),
-        })
-        curr_y += h
-    return svg_layers
-
-
-def _calculate_frame_svg(frame_spec, width=100, height=200):
-    is_double = getattr(frame_spec, 'is_double_perimeter', False) if hasattr(frame_spec,
-                                                                             'is_double_perimeter') else frame_spec.get(
-        'is_double_perimeter', False)
-    has_closer = getattr(frame_spec, 'has_closer', False) if hasattr(frame_spec, 'has_closer') else frame_spec.get(
-        'has_closer', False)
-    has_drop_seal = getattr(frame_spec, 'has_drop_seal', False) if hasattr(frame_spec,
-                                                                           'has_drop_seal') else frame_spec.get(
-        'has_drop_seal', False)
-    has_handle = getattr(frame_spec, 'has_handle_reinforcement', False) if hasattr(frame_spec,
-                                                                                   'has_handle_reinforcement') else frame_spec.get(
-        'has_handle_reinforcement', False)
-
-    rim = 14.0 if is_double else 8.0
-    return {
-        'rim_thickness': rim,
-        'rim_right_x': width - rim,
-        'rim_bottom_y': height - rim,
-        'has_closer': has_closer,
-        'has_drop_seal': has_drop_seal,
-        'has_handle_reinforcement': has_handle,
-        'closer': {'x': rim, 'y': rim, 'w': width - (rim * 2), 'h': 16.0},
-        'drop_seal': {'x': rim, 'y': height - rim - 10.0, 'w': width - (rim * 2), 'h': 10.0},
-        'lock': {'x': rim, 'y': (height / 2) - 16.0, 'w': 18.0, 'h': 32.0},
-        'handle': {'x': rim, 'y': (height / 2) - 28.0, 'w': 22.0, 'h': 56.0},
-    }
+        cache_field = 'phase1_spec_cache' if phase == 'phase1' else 'phase2_spec_cache'
+        cache = getattr(order, cache_field) or {}
+        batch_dict = cache.get(f"batch_{batch_number}") or cache.get("batch_all") or {}
+        return batch_dict.get('items', [])
 
 
 class ProductionDataService:
@@ -585,7 +475,6 @@ class ProductionDataService:
                     report_content = self.generate_report_html(rt, validate=False)
                     zip_file.writestr(f"Order_{self.order.order_number}_{rt.name}.html", report_content)
             else:
-                # NEW etc - just full report if any
                 report_content = self.generate_report_html(self.ReportType.FULL_PRODUCTION, validate=False)
                 zip_file.writestr(f"Order_{self.order.order_number}_Full.html", report_content)
 
@@ -596,27 +485,7 @@ class ProductionDataService:
         return buffer
 
     def _add_cnc_files_to_zip(self, zip_file):
-        """Internal helper to add CNC files to the zip buffer"""
-        is_phase_a = self.order.status == OrderStatus.PHASE1_PRODUCTION
-        is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
-        phase = 'phase1' if is_phase_a else 'phase2'
-        order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
-
-        # In completion mode, filter out items from COMPLETED groups
-        items_to_process = order_spec.items
-        if is_completion:
-            active_item_ids = set(OrderItem.objects.filter(
-                group__order=self.order
-            ).exclude(
-                group__production_state=OrderItemsGroup.ProductionState.COMPLETED
-            ).values_list('id', flat=True))
-            items_to_process = [it for it in items_to_process if it.item_id in active_item_ids]
-
-        for spec in items_to_process:
-            folder_name = f"{self.order.order_number}/{spec.mark}"
-            for i in range(1, 5):
-                xml_content = f"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <order_number>{self.order.order_number}</order_number>\n  <item_mark>{spec.mark}</item_mark>\n  <file_number>{i}</file_number>\n  <status>{'Phase A' if is_phase_a else ('Completion Production' if is_completion else 'Full Production')}</status>\n</root>"
-                zip_file.writestr(f"{folder_name}/file_{i}.xml", xml_content)
+        pass
 
     def generate_cnc_files(self, spec_items=None):
         """
@@ -690,26 +559,23 @@ class ProductionDataService:
         with open(os.path.join(target_dir, 'lock.xml'), 'w', encoding='utf-8') as f:
             f.write(lock_content)
 
-    def _generate_hinges_xml(self, spec, item_type):
+    @staticmethod
+    def _generate_hinges_xml(spec, item_type):
         """
         Generates content for hinges.xml.
-        Currently a placeholder, rules will be added in the future.
+        Currently, a placeholder, rules will be added in the future.
         """
         return '<?xml version="1.0" encoding="UTF-8"?>\n<hinges>\n  <status>placeholder</status>\n  <item_id>' + str(
-            spec.item_id) + '</item_id>\n</hinges>'
+            spec.item_id) + str(item_type) + '</item_id>\n</hinges>'
 
-    def _generate_lock_xml(self, spec, item_type):
+    @staticmethod
+    def _generate_lock_xml(spec, item_type):
         """
         Generates content for lock.xml.
-        Currently a placeholder, rules will be added in the future.
+        Currently, a placeholder, rules will be added in the future.
         """
         return '<?xml version="1.0" encoding="UTF-8"?>\n<lock>\n  <status>placeholder</status>\n  <item_id>' + str(
-            spec.item_id) + '</item_id>\n</lock>'
-
-    def change_material(self):
-        # for group in self.order.groups.all():
-        #     print(group.basic_color_frames)
-        pass
+            spec.item_id) + str(item_type) + '</item_id>\n</lock>'
 
     def generate_report_html(self, report_type=None, station_code=None, validate=True):
         """
@@ -823,24 +689,8 @@ class ProductionDataService:
                 items.append(item)
         return items
 
-    def _get_order_data(self, report_type=None, station=None):
-        """
-        Legacy method for backward compatibility (primarily for tests).
-        Internally builds the full OrderSpec and groups it.
-        """
-        phase = 'phase1' if (
-                report_type == self.ReportType.PHASE1_FRAMES or (station and station.is_phase1)) else 'phase2'
-        order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
-
-        filtered_items = self.get_filtered_items(report_type, station=station)
-        filtered_item_ids = [item.id for item in filtered_items]
-
-        order_spec_filtered = order_spec.model_copy()
-        order_spec_filtered.items = [item for item in order_spec.items if item.item_id in filtered_item_ids]
-
-        return self.prepare_grouped_data(order_spec_filtered)
-
-    def prepare_grouped_data(self, order_spec):
+    @staticmethod
+    def prepare_grouped_data(order_spec):
         """
         Converts OrderSpec items into a grouped structure for legacy templates.
         """
@@ -907,7 +757,8 @@ class ProductionDataService:
             })
         return groups_data
 
-    def prepare_press_groups_data(self, order_spec):
+    @staticmethod
+    def prepare_press_groups_data(order_spec):
         groups_map = {}
 
         for item in order_spec.items:
@@ -938,8 +789,6 @@ class ProductionDataService:
                 groups_map[group_key] = {
                     'composition_title': getattr(sandwich, 'title', ''),
                     'frame_title': getattr(frame, 'title', ''),
-                    'svg_layers': _calculate_sandwich_svg_layers(layers),
-                    'svg_frame': _calculate_frame_svg(frame),
                     'counter': Counter(),
                 }
 
@@ -954,6 +803,8 @@ class ProductionDataService:
                     h = getattr(panel, 'height', None)
 
                 if w and h:
+                    assert isinstance(w, (int, float, str))
+                    assert isinstance(h, (int, float, str))
                     groups_map[group_key]['counter'][(float(w), float(h))] += 1
 
         panel_groups = []
@@ -968,10 +819,11 @@ class ProductionDataService:
 
         return panel_groups
 
-    def get_wooden_frames_data(self, spec_obj):
+    @staticmethod
+    def get_wooden_frames_data(spec_obj):
         """
         Собирает данные для отчёта по деревянным коробкам из элементов спецификации.
-        Берёт проёмы (ширина, высота, толщина стены) и сторонность.
+        Берёт проёмы (ширина, высота, толщина стены).
         """
         frames_items = []
         for item in getattr(spec_obj, 'items', []):
@@ -996,7 +848,8 @@ class ProductionDataService:
             })
         return frames_items
 
-    def get_warehouse_hardware_summary(self, spec_obj):
+    @staticmethod
+    def get_warehouse_hardware_summary(spec_obj):
         """
         Агрегирует фурнитуру под заказ для складской комплектации:
         замки, ручки, петли (с учетом их фактического количества).
@@ -1049,7 +902,6 @@ class OrderProductionService:
         """
         Recalculates sequential numbers (mark) for all items in the order.
         """
-        # Import OrderItem locally to avoid circular import
         from apps.orders.models import OrderItem
         all_items = OrderItem.objects.filter(group__order=order).order_by('group__id', 'id')
 
@@ -1094,94 +946,98 @@ class OrderProductionService:
         return res.is_valid, res.errors
 
     @staticmethod
-    def start_production(order, user=None):
+    def _assign_release_batch(order) -> int:
         """
-        Transfers order to production. Handles stages for split installation.
+        Increments order.latest_batch if there are NEW groups and assigns it to them.
+        Returns the target batch number to process.
         """
-        # 1. Validation before production (partial or full depending on status and has_split_installation)
-        has_split = order.has_split_installation
-        if order.status == OrderStatus.PHASE1_READY:
-            val_res = OrderValidationService.validate_full(order)
-        elif has_split:
-            val_res = OrderValidationService.validate_partial(order)
-        else:
-            val_res = OrderValidationService.validate_full(order)
-
-        val_res.raise_if_invalid()
-
-        old_status = order.status
-        spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
-        DoorLabelService.generate_labels_for_order(order, spec_obj)
-
-        with transaction.atomic():
-            order.groups.filter(
-                production_state=OrderItemsGroup.ProductionState.NEW
-            ).update(
-                production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION
-            )
-
-            if order.status == OrderStatus.PHASE1_READY:
-                # Transition from "Phase 1 ready" to production stage 2
-                order.status = OrderStatus.PHASE2_PRODUCTION
-            elif has_split:
-                order.status = OrderStatus.PHASE1_PRODUCTION
-            else:
-                order.status = OrderStatus.IN_PRODUCTION
-            order.save(update_fields=['status'])
-
-            # Spec building / snapshot saving
-            phase = 'phase1' if order.status == OrderStatus.PHASE1_PRODUCTION else 'phase2'
-            TechnicalSpecService.get_or_build_spec(order, phase=phase, user=user)
-
-            # CNC files generation
-            service = ProductionDataService(order)
-            service.generate_cnc_files()
-
-            OrderChangeLog.objects.create(
-                order=order,
-                user=user,
-                field_name='status',
-                old_value=old_status,
-                new_value=order.status
-            )
-        return order
-
-    @staticmethod
-    def start_completion_production(order, user=None):
-        """
-        Transfers order to completion production (ייצור השלמות) for new / unfrozen groups.
-        """
-        if order.status not in [OrderStatus.PARTIALLY_READY, OrderStatus.COMPLETED, OrderStatus.COMPLETED]:
-            raise ValueError(
-                "Completion production is only available from Phase 2 Ready, Ready, or Completed statuses.")
-
-        # Check that there are uncompleted groups
-        uncompleted_groups = order.groups.filter(
+        new_groups = order.groups.filter(
             production_state=OrderItemsGroup.ProductionState.NEW
         )
-        if not uncompleted_groups.exists():
-            raise ValueError("No new or waiting groups to produce completions for.")
+        if new_groups.exists():
+            order.latest_batch += 1
+            order.save(update_fields=['latest_batch'])
 
-        # Validate completion groups
-        val_res = OrderValidationService.validate_completion(order)
+            new_groups.update(
+                batch_number=order.latest_batch,
+                production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION
+            )
+            return order.latest_batch
+
+        return order.latest_batch
+
+    @staticmethod
+    def start_production(order, user=None):
+        old_status = order.status
+        has_new_groups = order.groups.filter(
+            production_state=OrderItemsGroup.ProductionState.NEW
+        ).exists()
+        has_new_split_groups = order.groups.filter(
+            production_state=OrderItemsGroup.ProductionState.NEW,
+            is_split_installation=True
+        ).exists()
+
+        # 1. Определение фазы и валидация
+        if order.status == OrderStatus.NEW:
+            if order.has_split_installation:
+                phase = 'phase1'
+                new_status = OrderStatus.PHASE1_PRODUCTION
+                val_res = OrderValidationService.validate_partial(order)
+            else:
+                phase = 'phase2'
+                new_status = OrderStatus.IN_PRODUCTION
+                val_res = OrderValidationService.validate_full(order)
+
+        elif order.status == OrderStatus.PHASE1_READY:
+            if has_new_split_groups:
+                phase = 'phase1'
+                new_status = OrderStatus.PHASE1_PRODUCTION
+                val_res = OrderValidationService.validate_partial(order)
+            else:
+                phase = 'phase2'
+                new_status = OrderStatus.PHASE2_PRODUCTION
+                val_res = OrderValidationService.validate_full(order)
+
+        elif order.status in [OrderStatus.IN_PRODUCTION, OrderStatus.PHASE2_PRODUCTION, OrderStatus.COMPLETED]:
+            if not has_new_groups:
+                raise ValueError("Нет новых групп для запуска в производство.")
+            phase = 'phase2'
+            new_status = OrderStatus.COMPLETION_PRODUCTION if order.status == OrderStatus.COMPLETED else order.status
+            val_res = OrderValidationService.validate_completion(order)
+        else:
+            raise ValueError(f"Невозможно запустить производство из статуса '{order.status}'.")
+
         val_res.raise_if_invalid()
 
-        old_status = order.status
-
         with transaction.atomic():
-            # Build completion spec and snapshot
-            delta_spec, _ = TechnicalSpecService.build_completion_spec(order, user=user)
+            order = Order.objects.select_for_update().get(pk=order.pk)
 
-            # Update groups to IN_PRODUCTION
-            uncompleted_groups.update(production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION)
+            # Фиксация даты первого запуска
+            if not order.production_start_date:
+                order.production_start_date = timezone.now().date()
 
-            order.status = OrderStatus.COMPLETION_PRODUCTION
-            order.save()
+            # 2. Инкремент и назначение батча новым группам
+            target_batch = OrderProductionService._assign_release_batch(order)
 
-            # CNC files generation only for delta items
+            # 3. Обновление статуса заказа
+            order.status = new_status
+            order.save(update_fields=['status', 'production_start_date'])
+
+            # 4. Расчет спецификации через пайплайн и сохранение снимка
+            # При штатном переходе в Phase 2 считаем все готовые коробки (None), для остальных — только целевой батч
+            batch_filter = None if (
+                    old_status == OrderStatus.PHASE1_READY and not has_new_split_groups) else target_batch
+
+            spec_obj, _ = TechnicalSpecService.get_or_build_spec(
+                order, phase=phase, batch_number=batch_filter, user=user
+            )
+
+            # 5. Генерация этикеток и ЧПУ
+            DoorLabelService.generate_labels_for_order(order, spec_obj)
             service = ProductionDataService(order)
-            service.generate_cnc_files(spec_items=delta_spec.items)
+            service.generate_cnc_files(spec_items=spec_obj.items)
 
+            # 6. Лог изменений
             OrderChangeLog.objects.create(
                 order=order,
                 user=user,
@@ -1189,6 +1045,7 @@ class OrderProductionService:
                 old_value=old_status,
                 new_value=order.status
             )
+
         return order
 
     @staticmethod
@@ -1239,42 +1096,6 @@ class OrderProductionService:
 
             # Clean up CNC files upon production completion
             OrderProductionService.cleanup_cnc_files(order)
-
-            OrderChangeLog.objects.create(
-                order=order,
-                user=user,
-                field_name='status',
-                old_value=old_status,
-                new_value=order.status
-            )
-        return order
-
-    @staticmethod
-    def start_phase1(order, user=None):
-        """
-        Explicit start of Phase A (frames production).
-        """
-        # 1. Partial validation before Phase 1
-        val_res = OrderValidationService.validate_partial(order)
-        val_res.raise_if_invalid()
-
-        old_status = order.status
-        with transaction.atomic():
-            order.status = OrderStatus.PHASE1_PRODUCTION
-
-            # Update waiting groups to IN_PRODUCTION
-            order.groups.filter(
-                production_state=OrderItemsGroup.ProductionState.NEW
-            ).update(production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION)
-
-            order.save()
-
-            # Spec building / snapshot saving
-            TechnicalSpecService.get_or_build_spec(order, phase='phase1', user=user)
-
-            # CNC files generation
-            service = ProductionDataService(order)
-            service.generate_cnc_files()
 
             OrderChangeLog.objects.create(
                 order=order,

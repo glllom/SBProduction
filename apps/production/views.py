@@ -5,23 +5,20 @@ from io import BytesIO
 import qrcode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from qrcode.image.svg import SvgPathImage
 
-from apps.orders.models import OrderChangeLog, OrderItem
-from apps.orders.models import OrderItemsGroup, OrderStatus
-from .decorators import require_order_spec
+from apps.orders.models import OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus
 from .label_services import DoorLabelService
-from .models import DoorLabel
-from .models import ProductionStation
+from .models import DoorLabel, ProductionStation
 from .services import (
     OrderProductionService,
-    ProductionDataService,
     OrderValidationError,
     OrderValidationService,
+    ProductionDataService,
 )
 from .usb_sync import run_usb_sync
 
@@ -34,11 +31,8 @@ def enrich_report_doors_spec(items):
     """
 
     def get_addons_signature(item_dict):
-        # Читаем из словаря через .get()
         cmz = item_dict.get('doors_report_customizers', []) or []
         comment = item_dict.get('comment', '') or ''
-
-        # В dict кастомизаторы уже сериализованы в словари через model_dump()
         return json.dumps({
             'c': str(comment),
             'cmz': cmz
@@ -50,7 +44,6 @@ def enrich_report_doors_spec(items):
     ]
     n = len(items_data)
 
-    # 1. Смена фурнитуры внутри серии
     current_key = None
     for item in items_data:
         group_key = (item.get('product_family'), item.get('series'))
@@ -62,7 +55,6 @@ def enrich_report_doors_spec(items):
         else:
             item['show_hardware_subhead'] = False
 
-    # 2. Подсчет rowspan со строгим разрывом
     i = 0
     while i < n:
         sig = get_addons_signature(items_data[i])
@@ -74,7 +66,6 @@ def enrich_report_doors_spec(items):
             next_group = (items_data[i + run_len].get('product_family'), items_data[i + run_len].get('series'))
             next_hw = (items_data[i + run_len].get('lock_name'), items_data[i + run_len].get('hinge_name'))
 
-            # Разрываем rowspan, если изменились модель, серия, фурнитура или состав кастомизаторов
             if (next_group != curr_group or
                     next_hw != curr_hw or
                     get_addons_signature(items_data[i + run_len]) != sig):
@@ -94,12 +85,10 @@ def enrich_report_frames_spec(items):
     """
     Размечает элементы для вывода в таблице коробок:
     1. Помечает элементы сменившейся фурнитуры (show_hardware_subhead) внутри группы профиля.
-    2. Вычисляет addons_rowspan для одинаковых идущих подряд кастомизаторов/комментариев
-       с учетом FRAMES_REPORT.
+    2. Вычисляет addons_rowspan для одинаковых идущих подряд кастомизаторов/комментариев с учетом FRAMES_REPORT.
     """
 
     def get_addons_signature(item_dict):
-        # Берем именно кастомизаторы коробок
         cmz = item_dict.get('frames_report_customizers', []) or []
         comment = item_dict.get('comment', '') or ''
         return json.dumps({
@@ -155,7 +144,7 @@ def get_qr_base64(data: str) -> str:
     """Генерирует QR-код в формате Base64 SVG."""
     qr = qrcode.QRCode(
         version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,  # 15% повреждений восстанавливается
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
         box_size=10,
         border=1,
     )
@@ -174,24 +163,15 @@ def get_qr_base64(data: str) -> str:
 @login_required
 def order_transfer_to_production(request, pk):
     """
-    Transfers the entire order to production status.
+    Единая точка запуска в производство:
+    - Из PHASE1_READY (GET): показывает форму ввода замеров второй фазы.
+    - Из PHASE1_READY (POST): сохраняет замеры и запускает Фазу 2.
+    - Из NEW / дозаказ: сразу запускает производство в один клик.
     """
     order = get_object_or_404(Order, pk=pk)
 
-    # Form for Phase 2 transition (if starting from Phase 1 Ready)
     if order.status == OrderStatus.PHASE1_READY:
-        try:
-            # We use Phase 1 spec to pre-fill values and show info (like lock/hinge names)
-            spec_obj, spec_cache = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
-        except Exception as e:
-            messages.error(request, f"Error building spec: {str(e)}")
-            return redirect('order-detail', pk=pk)
-
-        # Extract items directly from Pydantic spec_obj
-        spec_items = [item.model_dump() for item in spec_obj.items]
-
         if request.method == 'POST':
-            change_logs = []
             items_by_id = {
                 item.id: item for item in OrderItem.objects.filter(
                     group__order=order
@@ -202,94 +182,65 @@ def order_transfer_to_production(request, pk):
                     ]
                 )
             }
+            change_logs = []
 
-            for item_spec in spec_items:
-                item_id = item_spec.get('item_id')
-                order_item = items_by_id.get(item_id)
-                if not order_item:
-                    continue
-
+            for item_id, order_item in items_by_id.items():
                 modified = False
-                mark = item_spec.get('mark', str(item_id))
+                mark = order_item.mark or str(item_id)
 
-                # 1. Width / Height / Wall (Input is Inner/Gross, save External)
-                reduction_h = float(item_spec.get('frame_inner_height_reduction') or 0)
-                reduction_w = float(item_spec.get('frame_inner_width_reduction') or 0)
-
-                for field, reduction, label in [('height', reduction_h, 'Height'), ('width', reduction_w, 'Width'),
-                                                ('wall', 0, 'Wall')]:
+                for field in ['height', 'width', 'wall']:
                     key = f"item_{item_id}_{field}"
                     if key in request.POST:
                         try:
                             val = request.POST.get(key)
-                            new_inner = float(val) if val else None
-                            new_val_to_save = (new_inner - reduction) if new_inner is not None else None
-
-                            old_val_saved = float(getattr(order_item, field)) if getattr(order_item, field) else None
-                            if new_val_to_save != old_val_saved:
-                                setattr(order_item, field, new_val_to_save)
+                            new_val = float(val) if val else None
+                            old_val = float(getattr(order_item, field)) if getattr(order_item, field) else None
+                            if new_val != old_val:
+                                setattr(order_item, field, new_val)
                                 modified = True
-                                log_label = f"{label} (Inner)" if field != 'wall' else label
                                 change_logs.append(OrderChangeLog(
                                     order=order, user=request.user,
-                                    field_name=f"Item {mark} - {log_label}",
-                                    old_value=str(
-                                        round(old_val_saved + reduction, 1)) if old_val_saved is not None else "None",
-                                    new_value=str(round(new_inner, 1)) if new_inner is not None else "None"
+                                    field_name=f"Item {mark} - {field.capitalize()}",
+                                    old_value=str(old_val) if old_val is not None else "None",
+                                    new_value=str(new_val) if new_val is not None else "None"
                                 ))
                         except (ValueError, TypeError):
                             pass
 
-                # 2. Lock Height (Input is Gross, save Net)
-                clearance = float(item_spec.get('leaf_top_clearance') or 0)
                 lh_key = f"item_{item_id}_lock_height"
                 if lh_key in request.POST:
-                    val = request.POST.get(lh_key)
                     try:
-                        new_gross = float(val) if val else None
-                        new_net = new_gross + clearance if new_gross is not None else None
-
-                        old_net = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
-                        effective_old_net = old_net if old_net is not None else item_spec.get('lock_height')
-
-                        if new_net != effective_old_net:
-                            order_item.custom_lock_height = new_net
+                        val = request.POST.get(lh_key)
+                        new_lh = float(val) if val else None
+                        old_lh = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
+                        if new_lh != old_lh:
+                            order_item.custom_lock_height = new_lh
                             modified = True
                             change_logs.append(OrderChangeLog(
                                 order=order, user=request.user,
-                                field_name=f"Item {mark} - Lock Height (Gross)",
-                                old_value=str(round(effective_old_net - clearance,
-                                                    1)) if effective_old_net is not None else "None",
-                                new_value=str(round(new_gross, 1)) if new_gross is not None else "None"
+                                field_name=f"Item {mark} - Lock Height",
+                                old_value=str(old_lh) if old_lh is not None else "None",
+                                new_value=str(new_lh) if new_lh is not None else "None"
                             ))
                     except (ValueError, TypeError):
                         pass
 
-                # 3. Hinge Heights (Input is Gross, save Net)
-                spec_hinges_net = item_spec.get('hinge_heights', []) or []
-                for i in range(5):
-                    hh_key = f"item_{item_id}_hinge_height_{i}"
-                    field_name = f"custom_hinge{i + 1}"
+                for i in range(1, 6):
+                    hh_key = f"item_{item_id}_hinge_height_{i - 1}"
+                    field_name = f"custom_hinge{i}"
                     if hh_key in request.POST:
-                        val = request.POST.get(hh_key)
                         try:
-                            new_gross = float(val) if val else None
-                            new_net = new_gross + clearance if new_gross is not None else None
-
-                            old_net = float(getattr(order_item, field_name)) if getattr(order_item,
-                                                                                        field_name) else None
-                            effective_old_net = old_net if old_net is not None else (
-                                spec_hinges_net[i] if len(spec_hinges_net) > i else None)
-
-                            if new_net != effective_old_net:
-                                setattr(order_item, field_name, new_net)
+                            val = request.POST.get(hh_key)
+                            new_hh = float(val) if val else None
+                            old_hh = float(getattr(order_item, field_name)) if getattr(order_item, field_name) else None
+                            if new_hh != old_hh:
+                                setattr(order_item, field_name, new_hh)
                                 modified = True
                                 change_logs.append(OrderChangeLog(
                                     order=order, user=request.user,
-                                    field_name=f"Item {mark} - Hinge {i + 1} (Gross)",
-                                    old_value=str(round(effective_old_net - clearance,
-                                                        1)) if effective_old_net is not None else "None",
-                                    new_value=str(round(new_gross, 1)) if new_gross is not None else "None"
+                                    field_name=f"Item {mark} - Hinge {i}",
+                                    old_value=str(old_hh) if old_hh is not None else "None",
+                                    new_value=str(new_hh) if new_hh is not None else "None"
                                 ))
                         except (ValueError, TypeError):
                             pass
@@ -300,14 +251,9 @@ def order_transfer_to_production(request, pk):
             if change_logs:
                 OrderChangeLog.objects.bulk_create(change_logs)
 
-            # Reset Phase 2 validation to force rebuild
-            order.phase2_validated = False
-            order.phase2_spec_cache = None
-            order.save(update_fields=['phase2_validated', 'phase2_spec_cache'])
-
             try:
                 OrderProductionService.start_production(order, user=request.user)
-                messages.success(request, "The order was successfully transferred to Phase 2 production.")
+                messages.success(request, "ההזמנה הועברה לשלב ב' בהצלחה.")
                 return redirect('order-detail', pk=pk)
             except (ValueError, OrderValidationError) as e:
                 errors = getattr(e, 'errors', [str(e)])
@@ -315,80 +261,43 @@ def order_transfer_to_production(request, pk):
                     messages.error(request, err)
                 return redirect('order-detail', pk=pk)
 
-        # GET logic
-        items_data = []
-        items_by_id = {item.id: item for item in OrderItem.objects.filter(group__order=order)}
-        for item_spec in spec_items:
-            item_id = item_spec.get('item_id')
-            order_item = items_by_id.get(item_id)
-            if not order_item:
-                continue
-
-            item_data = item_spec.copy()
-            # Show Inner dimensions (Gross)
-            reduction_h = float(item_spec.get('frame_inner_height_reduction') or 0)
-            reduction_w = float(item_spec.get('frame_inner_width_reduction') or 0)
-            item_data['width'] = (float(order_item.width) + reduction_w) if order_item.width else item_spec.get(
-                'inner_width')
-            item_data['height'] = (float(order_item.height) + reduction_h) if order_item.height else item_spec.get(
-                'inner_height')
-            item_data['wall'] = float(order_item.wall or item_spec.get('wall') or 0)
-
-            # Show Lock Height (Gross)
-            clearance = float(item_spec.get('leaf_top_clearance') or 0)
-            lock_h_net = order_item.custom_lock_height
-            if lock_h_net is not None:
-                item_data['lock_height'] = float(lock_h_net) - clearance
-
-            # Show Hinge Heights (Gross)
-            hinge_heights_gross = []
-            spec_hinges_gross = item_spec.get('hinge_heights_on_frame', []) or []
-            for i in range(1, 6):
-                val_net = getattr(order_item, f"custom_hinge{i}")
-                if val_net is not None:
-                    hinge_heights_gross.append(float(val_net) - clearance)
-                else:
-                    val_gross = spec_hinges_gross[i - 1] if len(spec_hinges_gross) >= i else None
-                    hinge_heights_gross.append(val_gross)
-            item_data['padded_hinges'] = hinge_heights_gross
-
-            items_data.append(item_data)
-
+        spec_items = TechnicalSpecService.get_batch_items(order, phase='phase1')
         return render(request, 'production/transfer_to_phase2_form.html', {
             'order': order,
-            'items_data': items_data,
+            'items_data': spec_items,
         })
 
     try:
         OrderProductionService.start_production(order, user=request.user)
+
+        is_ajax = (
+                request.headers.get('x-requested-with') == 'XMLHttpRequest' or
+                'application/json' in request.headers.get('Accept', '')
+        )
+        if is_ajax:
+            from django.urls import reverse
+            master_url = f"{reverse('production:station-report', kwargs={'pk': pk})}?station=ALL"
+            return JsonResponse({
+                'status': 'ok',
+                'message': 'The order was successfully transferred to production.',
+                'master_report_url': master_url
+            })
+
         messages.success(request, "The order was successfully transferred to production.")
     except (ValueError, OrderValidationError) as e:
         errors = getattr(e, 'errors', [str(e)])
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'status': 'error', 'errors': errors}, status=400)
         for err in errors:
             messages.error(request, err)
-    return redirect('order-detail', pk=pk)
 
-
-@login_required
-def order_transfer_to_completion_production(request, pk):
-    """
-    Transfers order to completion production (ייצור השלמות) for new / waiting groups.
-    """
-    order = get_object_or_404(Order, pk=pk)
-    try:
-        OrderProductionService.start_completion_production(order, user=request.user)
-        messages.success(request, "ההזמנה הועברה לייצור השלמות בהצלחה.")
-    except (ValueError, OrderValidationError) as e:
-        errors = getattr(e, 'errors', [str(e)])
-        for err in errors:
-            messages.error(request, err)
     return redirect('order-detail', pk=pk)
 
 
 @login_required
 def group_toggle_state(request, pk, group_id):
     """
-    Toggles or sets the production state of an OrderItemsGroup (unfreezing the completed group back to WAITING).
+    Toggles or sets the production state of an OrderItemsGroup.
     """
     order = get_object_or_404(Order, pk=pk)
     group = get_object_or_404(order.groups, pk=group_id)
@@ -426,26 +335,9 @@ def order_check_validation(request, pk):
 
 
 @login_required
-def order_transfer_to_phase1(request, pk):
-    """
-    Transfers Phase 1 (aluminum frames) to production.
-    """
-    order = get_object_or_404(Order, pk=pk)
-    try:
-        OrderProductionService.start_phase1(order, user=request.user)
-        messages.success(request, "Phase 1 (Frames) successfully transferred to production.")
-    except (ValueError, OrderValidationError) as e:
-        errors = getattr(e, 'errors', [str(e)])
-        for err in errors:
-            messages.error(request, err)
-    return redirect('order-detail', pk=pk)
-
-
-@login_required
 def order_complete_phase1(request, pk):
     """
     Marks Phase 1 production as completed.
-    Form to adjust spec values before transitioning to PHASE1_READY.
     """
     order = get_object_or_404(Order, pk=pk)
 
@@ -459,7 +351,6 @@ def order_complete_phase1(request, pk):
         messages.error(request, f"Error building spec: {str(e)}")
         return redirect('order-detail', pk=pk)
 
-    # Extract flat items list from Pydantic spec_obj
     spec_items = [item.model_dump() for item in spec_obj.items]
 
     if request.method == 'POST':
@@ -467,7 +358,6 @@ def order_complete_phase1(request, pk):
         change_logs = []
         items_by_id = {item.id: item for item in OrderItem.objects.filter(group__order=order)}
 
-        # Locate the batch dictionary to update cache properly
         target_batch_dict = spec_cache.get('batch_1', spec_cache)
         cached_items_map = {
             item['item_id']: item for item in target_batch_dict.get('items', [])
@@ -483,7 +373,6 @@ def order_complete_phase1(request, pk):
             item_modified = False
             cached_item = cached_items_map.get(item_id)
 
-            # Lock height
             lh_key = f"item_{item_id}_lock_height"
             if lh_key in request.POST:
                 val = request.POST.get(lh_key)
@@ -507,7 +396,6 @@ def order_complete_phase1(request, pk):
                 except (ValueError, TypeError):
                     pass
 
-            # Hinge heights (up to 5)
             new_hinge_heights = []
             hinges_in_post = False
             for i in range(5):
@@ -558,7 +446,6 @@ def order_complete_phase1(request, pk):
             messages.error(request, str(e))
             return redirect('order-detail', pk=pk)
 
-    # Prepare data for template (padded hinges)
     items_data = []
     for item in spec_items:
         hinges = item.get('hinge_heights', []) or []
@@ -621,7 +508,6 @@ def station_report(request, pk):
     if not station_code:
         station_code = 'ALL'
 
-    # Determine stage label based on order status
     if order.status in [OrderStatus.PHASE1_PRODUCTION]:
         stage_label = "שלב א'"
     elif order.status in [OrderStatus.PHASE2_PRODUCTION, OrderStatus.PHASE1_READY]:
@@ -630,11 +516,9 @@ def station_report(request, pk):
         stage_label = "קומפלט"
 
     service = ProductionDataService(order)
-
     barcode_data = f"{order.order_number};{order.status}"
 
     if station_code.upper() in ['ALL', 'IN_PRODUCTION', 'FULL', 'FULL_PRODUCTION']:
-        # Master print mode: aggregate all stations
         stations = order.get_production_stations()
         if not stations:
             stations = list(ProductionStation.objects.filter(has_specification=True, active=True))
@@ -679,12 +563,17 @@ def station_report(request, pk):
                 if not include_template:
                     include_template = 'production/includes/report_alum_frames.html'
 
+                enriched_frames = enrich_report_frames_spec(station_spec.items)
+                enriched_doors = enrich_report_doors_spec(station_spec.items)
+
                 sections.append({
                     'station': station,
                     'station_code': station.code,
                     'report_label': station.label or station.name,
                     'order_spec': station_spec,
                     'groups_data': service.prepare_grouped_data(station_spec),
+                    'enriched_frames_items': enriched_frames,
+                    'enriched_doors_items': enriched_doors,
                     'include_template': include_template,
                 })
 
@@ -695,7 +584,6 @@ def station_report(request, pk):
             'now': timezone.now(),
         })
 
-    # Single station report
     station = ProductionStation.objects.filter(code=station_code).first()
     if not station:
         if station_code == 'PHASE1_FRAMES':
@@ -709,7 +597,6 @@ def station_report(request, pk):
         val_res = OrderValidationService.validate_for_report(order, report_type=station_code, station=station)
         val_res.raise_if_invalid()
         spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
-
     except Exception as e:
         errors = getattr(e, 'errors', [str(e)])
         return render(request, 'production/report_validation_error.html', {
@@ -774,14 +661,23 @@ def station_report(request, pk):
     })
 
 
+# production/views.py
+
 @login_required
-@require_order_spec(phase='phase1')
-def spec_json_preview(request, spec_json_dict, **kwargs):
+def spec_json_preview(request, pk):
     """
-    Direct inspection endpoint for the cached JSON specification snapshot.
+    Direct inspection endpoint for the JSON specification snapshot.
     """
+    order = get_object_or_404(Order, pk=pk)
+
+    # Получаем или строим спецификацию (phase1 или phase2)
+    spec_obj, spec_cache = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
+
+    data = spec_obj.model_dump(by_alias=True) if hasattr(spec_obj, 'model_dump') else spec_cache
+
     return JsonResponse(
-        spec_json_dict,
+        data,
+        safe=False,
         json_dumps_params={'indent': 2, 'ensure_ascii': False}
     )
 
@@ -794,16 +690,11 @@ def order_dev_force_rebuild_spec(request, pk):
     """
     order = get_object_or_404(Order, pk=pk)
 
-    # 1. Reset everything
-    order.reset_validation()
-    order.save()
-
-    # 2. Rebuild spec (phase1 is default for now)
     try:
-        TechnicalSpecService.get_or_build_spec(order, phase='phase1')
-        messages.success(request, f"Spec for Order {order.order_number} was forcefully rebuilt.")
-        spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
+        TechnicalSpecService.get_or_build_spec(order, phase='phase1', force_rebuild=True)
+        spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2', force_rebuild=True)
         DoorLabelService.generate_labels_for_order(order, spec_obj)
+        messages.success(request, f"Spec for Order {order.order_number} was forcefully rebuilt.")
     except Exception as e:
         messages.error(request, f"Rebuild failed: {str(e)}")
         return redirect('order-detail', pk=pk)
@@ -920,7 +811,7 @@ def order_compare_snapshots(request, pk):
             val2 = item2.get(field_key)
 
             if val1 != val2:
-                # Requirement: data that does NOT relate to locks/hinges should only be shown 
+                # Requirement: data that does NOT relate to locks/hinges should only be shown
                 # if they were specified in Phase 1 and changed.
                 if field_key not in ('lock_name', 'hinge_name') and val1 in (None, ""):
                     continue
@@ -1017,163 +908,26 @@ def order_sketches_report(request, pk):
     })
 
 
-from collections import Counter
-from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from apps.orders.models import Order
 from .services import TechnicalSpecService
 
 
-def _calculate_sandwich_svg_layers(layers, total_width=200, total_height=100):
-    if not layers:
-        return []
-
-    min_h = 12.0
-    nominal_total = sum(
-        float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 1))
-        for l in layers
-    ) or 1.0
-
-    raw_heights = []
-    for l in layers:
-        th = float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 1))
-        raw_heights.append(max(min_h, (th / nominal_total) * total_height))
-
-    scale = total_height / sum(raw_heights)
-    actual_heights = [h * scale for h in raw_heights]
-
-    svg_layers = []
-    curr_y = 0.0
-    for l, h in zip(layers, actual_heights):
-        name = l.name if hasattr(l, 'name') else l.get('name', '')
-        th = float(l.thickness if hasattr(l, 'thickness') else l.get('thickness', 0))
-        bg = l.bg_color if hasattr(l, 'bg_color') else l.get('bg_color', '#ddd')
-        pat = l.pattern_code if hasattr(l, 'pattern_code') else l.get('pattern_code', 'solid')
-
-        svg_layers.append({
-            'y': round(curr_y, 1),
-            'height': round(h, 1),
-            'bg_color': bg,
-            'pattern_code': pat,
-            'label': f"{name} ({th:g})" if th >= 1 else str(th),
-            'text_y': round(curr_y + (h / 2), 1),
-        })
-        curr_y += h
-    return svg_layers
-
-
-def _calculate_frame_svg(frame_spec, width=100, height=200):
-    is_double = getattr(frame_spec, 'is_double_perimeter', False) if hasattr(frame_spec,
-                                                                             'is_double_perimeter') else frame_spec.get(
-        'is_double_perimeter', False)
-    has_closer = getattr(frame_spec, 'has_closer', False) if hasattr(frame_spec, 'has_closer') else frame_spec.get(
-        'has_closer', False)
-    has_drop_seal = getattr(frame_spec, 'has_drop_seal', False) if hasattr(frame_spec,
-                                                                           'has_drop_seal') else frame_spec.get(
-        'has_drop_seal', False)
-    has_handle = getattr(frame_spec, 'has_handle_reinforcement', False) if hasattr(frame_spec,
-                                                                                   'has_handle_reinforcement') else frame_spec.get(
-        'has_handle_reinforcement', False)
-
-    rim = 14.0 if is_double else 8.0
-    return {
-        'rim_thickness': rim,
-        'rim_right_x': width - rim,
-        'rim_bottom_y': height - rim,
-        'has_closer': has_closer,
-        'has_drop_seal': has_drop_seal,
-        'has_handle_reinforcement': has_handle,
-        'closer': {'x': rim, 'y': rim, 'w': width - (rim * 2), 'h': 16.0},
-        'drop_seal': {'x': rim, 'y': height - rim - 10.0, 'w': width - (rim * 2), 'h': 10.0},
-        'lock': {'x': rim, 'y': (height / 2) - 16.0, 'w': 18.0, 'h': 32.0},
-        'handle': {'x': rim, 'y': (height / 2) - 28.0, 'w': 22.0, 'h': 56.0},
-    }
-
-
 @login_required
 def report_cutting_press(request, pk):
     order = get_object_or_404(Order, pk=pk)
-    order_spec, raw_cache = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
 
-    # Проверяем, откуда брать items (из Pydantic или из сырого dict)
-    items = []
-    if hasattr(order_spec, 'items') and order_spec.items:
-        items = order_spec.items
-    elif isinstance(raw_cache, dict):
-        batch = raw_cache.get('batch_1', {})
-        items = batch.get('items', [])
+    # 1. Спецификация всегда типизирована (Pydantic OrderSpec)
+    order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
 
-    print(f"--- DEBUG CUTTING_PRESS ---")
-    print(f"Total items found: {len(items)}")
-
-    groups_map = {}
-
-    for idx, item in enumerate(items):
-        # Поддержка как Pydantic-объекта, так и словаря
-        is_obj = not isinstance(item, dict)
-
-        has_door = getattr(item, 'has_door', True) if is_obj else item.get('has_door', True)
-        sandwich = getattr(item, 'sandwich_spec', None) if is_obj else item.get('sandwich_spec')
-        frame = getattr(item, 'frame_spec', None) if is_obj else item.get('frame_spec')
-        cut_sheets = getattr(item, 'cut_sheets', []) if is_obj else item.get('cut_sheets', [])
-
-        print(
-            f"Item #{idx + 1}: has_door={has_door}, sandwich={bool(sandwich)}, frame={bool(frame)}, cut_sheets_len={len(cut_sheets)}")
-
-        if not has_door or not sandwich or not frame:
-            print(f"Item #{idx + 1} SKIPPED by header check")
-            continue
-
-        # Получаем слои
-        layers = getattr(sandwich, 'layers', []) if is_obj else sandwich.get('layers', [])
-        sw_title = getattr(sandwich, 'title', '') if is_obj else sandwich.get('title', '')
-        fr_title = getattr(frame, 'title', '') if is_obj else frame.get('title', '')
-
-        # Уникальный ключ группы
-        group_key = (sw_title, fr_title)
-
-        if group_key not in groups_map:
-            groups_map[group_key] = {
-                'composition_title': sw_title,
-                'frame_title': fr_title,
-                'svg_layers': _calculate_sandwich_svg_layers(layers),
-                'svg_frame': _calculate_frame_svg(frame if is_obj else type('obj', (), frame)()),
-                'counter': Counter(),
-            }
-
-        # Сбор размеров заготовок
-        sheet_count = 0
-        for sheet in cut_sheets:
-            panel = sheet.get('exterior_panel') if isinstance(sheet, dict) else getattr(sheet, 'exterior_panel', {})
-            if isinstance(panel, dict):
-                w = panel.get('width')
-                h = panel.get('height')
-            else:
-                w = getattr(panel, 'width', None)
-                h = getattr(panel, 'height', None)
-
-            if w and h:
-                groups_map[group_key]['counter'][(float(w), float(h))] += 1
-                sheet_count += 1
-
-        print(f"Item #{idx + 1} added sheets: {sheet_count}")
-
-    panel_groups = []
-    for grp in groups_map.values():
-        raw_counter = grp.pop('counter')
-        sorted_dims = sorted(raw_counter.items(), key=lambda x: (x[0][1], x[0][0]), reverse=True)
-        grp['dimensions'] = [
-            {'width': w, 'height': h, 'qty': count}
-            for (w, h), count in sorted_dims
-        ]
-        panel_groups.append(grp)
-
-    print(f"Total panel_groups generated: {len(panel_groups)}")
-    print(f"---------------------------")
+    # 2. Агрегация размеров и групп заготовок делегирована сервису
+    service = ProductionDataService(order)
+    panel_groups = service.prepare_press_groups_data(order_spec)
 
     return render(request, 'production/reports/report_press.html', {
         'order': order,
+        'order_spec': order_spec,
         'panel_groups': panel_groups,
         'now': timezone.now(),
     })

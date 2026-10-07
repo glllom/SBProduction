@@ -1,5 +1,5 @@
 import math
-from typing import List, Dict, Any, Optional
+
 
 class BOMCalculator:
     """
@@ -49,7 +49,7 @@ class BOMCalculator:
 
         # 2. General color resolution based on common_name
         selected_color_material = self.context.get('basic_color_frames')
-        
+
         if material.common_name:
             if selected_color_material and selected_color_material.common_name == material.common_name:
                 return selected_color_material
@@ -79,7 +79,7 @@ class BOMCalculator:
 
         # 1. Process Material Slots
         material_slots = [
-            ('covering', 'כיסוי'), ('base', 'בסיס'), ('filling', 'מילוי'),
+            ('covering', 'כיסוי'), ('base', 'בסיס'), ('filling', 'מילוי'), ('panel_frame', 'panel_frame'),
             ('casing', 'הלבשה'), ('frame', 'משקוף'), ('profile1', 'פרופיל 1'),
             ('profile2', 'פרופיל 2'), ('profile3', 'פרופיל 3'), ('other1', 'אחר 1'),
             ('other2', 'אחר 2'), ('other3', 'אחר 3'), ('other4', 'אחר 4'),
