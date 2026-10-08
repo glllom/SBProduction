@@ -13,7 +13,7 @@ from qrcode.image.svg import SvgPathImage
 
 from apps.orders.models import OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus
 from .label_services import DoorLabelService
-from .models import DoorLabel, ProductionStation
+from .models import DoorLabel, ProductionStation, SvgPattern
 from .services import (
     OrderProductionService,
     OrderValidationError,
@@ -261,12 +261,29 @@ def order_transfer_to_production(request, pk):
                     messages.error(request, err)
                 return redirect('order-detail', pk=pk)
 
-        spec_items = TechnicalSpecService.get_batch_items(order, phase='phase1')
+        # GET: Получаем сохраненный снимок Фазы 1 и подготавливаем петли и внутренние размеры
+        raw_items = TechnicalSpecService.get_batch_items(order, phase='phase1')
+        items_data = []
+
+        for item in raw_items:
+            item_copy = dict(item)
+
+            # Выставляем внутренние размеры (если не вычислены ранее, берем габаритные)
+            item_copy['inner_width'] = item.get('inner_width') or item.get('width') or 0.0
+            item_copy['inner_height'] = item.get('inner_height') or item.get('height') or 0.0
+
+            # Дополняем список петель до 5 ячеек для корректного рендера колонок
+            hinges = item.get('hinge_heights') or []
+            item_copy['padded_hinges'] = (list(hinges) + [None] * 5)[:5]
+
+            items_data.append(item_copy)
+
         return render(request, 'production/transfer_to_phase2_form.html', {
             'order': order,
-            'items_data': spec_items,
+            'items_data': items_data,
         })
 
+    # Быстрый запуск в один клик (NEW или дозаказ)
     try:
         OrderProductionService.start_production(order, user=request.user)
 
@@ -665,20 +682,33 @@ def station_report(request, pk):
 
 @login_required
 def spec_json_preview(request, pk):
-    """
-    Direct inspection endpoint for the JSON specification snapshot.
-    """
+    """Direct inspection endpoint for the latest JSON specification snapshot."""
     order = get_object_or_404(Order, pk=pk)
 
-    # Получаем или строим спецификацию (phase1 или phase2)
-    spec_obj, spec_cache = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
+    # Выбираем вторую фазу, если кэш уже есть или заказ во второй фазе/готов
+    if order.phase2_spec_cache or order.status in [
+        OrderStatus.PHASE2_PRODUCTION,
+        OrderStatus.COMPLETED,
+        OrderStatus.IN_PRODUCTION,
+    ]:
+        active_phase = 'phase2'
+    else:
+        active_phase = 'phase1'
 
-    data = spec_obj.model_dump(by_alias=True) if hasattr(spec_obj, 'model_dump') else spec_cache
+    spec_obj, spec_cache = TechnicalSpecService.get_or_build_spec(
+        order, phase=active_phase
+    )
+
+    data = (
+        spec_obj.model_dump(by_alias=True)
+        if hasattr(spec_obj, 'model_dump')
+        else spec_cache
+    )
 
     return JsonResponse(
         data,
         safe=False,
-        json_dumps_params={'indent': 2, 'ensure_ascii': False}
+        json_dumps_params={'indent': 2, 'ensure_ascii': False},
     )
 
 
@@ -929,6 +959,7 @@ def report_cutting_press(request, pk):
         'order': order,
         'order_spec': order_spec,
         'panel_groups': panel_groups,
+        'svg_patterns': SvgPattern.objects.all(),
         'now': timezone.now(),
     })
 

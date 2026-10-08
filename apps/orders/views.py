@@ -384,7 +384,6 @@ def duplicate_item_measurements(request, pk):
 
     if update_data:
         items_to_update.update(**update_data)
-        group.order.invalidate_cache_if_unlocked()
 
     return JsonResponse({'status': 'ok'})
 

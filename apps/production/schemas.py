@@ -34,6 +34,7 @@ class SpecBOMItem(BaseModel):
     type: str
     section: str
     item_name: str
+    common_name: Optional[str] = None
     quantity: float
     tag: Optional[str] = None
     # We might want to store the item ID or other details too
@@ -141,6 +142,7 @@ class ProductionSpec(BaseModel):
     profiles: List[str] = Field(default_factory=list)
 
     # Пресс и раскрой
+    applied_presets: List[Dict[str, Any]] = Field(default_factory=list)
     sandwich_spec: Optional[SandwichSpec] = None
     frame_spec: Optional[FrameStructureSpec] = None
     puzzle_spec: Optional[DoorPuzzleSpec] = None

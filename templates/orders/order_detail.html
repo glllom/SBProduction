@@ -89,13 +89,20 @@
         <!-- Primary CTA and Main Actions based on current status -->
         <div class="d-flex flex-wrap align-items-center gap-2">
             {% if order.can_start_production %}
-                <button type="button"
-                        class="btn btn-primary fw-bold"
-                        data-bs-toggle="tooltip"
-                        title="העברת פריטים לתהליך ייצור"
-                        onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
-                    <i class="bi bi-send-check me-1"></i>{{ order.production_action_label }}
-                </button>
+                {% if order.status == 'PHASE1_READY' %}
+                    {# Прямой переход на форму ввода замеров (GET) без диалогов подтверждения #}
+                    <a href="{% url 'production:order-transfer-to-production' order.pk %}"
+                       class="btn btn-warning">
+                        <i class="bi bi-arrow-right-circle"></i> העבר לשלב ב' (הזנת מידות)
+                    </a>
+                {% else %}
+                    {# Стандартный запуск в 1 клик с подтверждением / AJAX для новых заказов #}
+                    <button type="button"
+                            class="btn btn-primary btn-start-production"
+                            data-url="{% url 'production:order-transfer-to-production' order.pk %}">
+                        מעביר לייצור...
+                    </button>
+                {% endif %}
             {% endif %}
             {% if order.status == 'PHASE1_PRODUCTION' %}
                 <a href="{% url 'production:order-complete-phase1' order.pk %}"
@@ -817,15 +824,17 @@
                         if (options && options.length > 0) {
                             inputHtml = `<select class="form-select form-select-sm cust-param-input" data-id="${item.id}" data-param="par${i}">`;
                             if (isRequired) {
-                                inputHtml += `<option value="" ${!currentValue ? 'selected' : ''}>-- נא לבחור --</option>`;
+                                inputHtml += `<option value="" ${(!currentValue && !defaultValue) ? 'selected' : ''}>-- נא לבחור --</option>`;
                             }
                             options.forEach(opt => {
-                                const selected = (currentValue === opt.key || (!isRequired && !currentValue && defaultValue === opt.key)) ? 'selected' : '';
+                                // Select option if matches currentValue, or fallback to defaultValue if currentValue is empty
+                                const selected = (currentValue === opt.key || (!currentValue && defaultValue === opt.key)) ? 'selected' : '';
                                 inputHtml += `<option value="${opt.key}" ${selected}>${opt.label}</option>`;
                             });
                             inputHtml += `</select>`;
                         } else {
-                            inputHtml = `<input type="text" class="form-control form-control-sm cust-param-input" data-id="${item.id}" data-param="par${i}" value="${currentValue}" placeholder="${hint || (isRequired ? 'שדה חובה' : '')}" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>`;
+                            const effectiveVal = (currentValue !== null && currentValue !== undefined && currentValue !== '') ? currentValue : (defaultValue || '');
+                            inputHtml = `<input type="text" class="form-control form-control-sm cust-param-input" data-id="${item.id}" data-param="par${i}" value="${effectiveVal}" placeholder="${hint || (isRequired ? 'שדה חובה' : '')}" ${hint ? `data-bs-toggle="tooltip" title="${hint}"` : ''}>`;
                         }
 
                         paramsHtml += `

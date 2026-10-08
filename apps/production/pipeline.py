@@ -1,11 +1,13 @@
 import collections
 import math
+import re
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
 
 from apps.catalog.models import Material
 from apps.orders.models import OrderItem, OrderItemsGroup, OrderItemsGroupCustomizer
 from .bom_calculator import BOMCalculator
+from .evaluator import FormulaEvaluator
 from .models import LockStandardHeight, HingeStandardHeight, PuzzleBlockPrototype
 from .schemas import (
     ProductionSpec, SpecBOMItem, SpecCustomizerParam, SpecCustomizerReport,
@@ -47,7 +49,7 @@ class SpecContext:
         else:
             if self.group:
                 self.customizers = list(
-                    self.group.customizers.select_related('customizer')
+                    self.group.customizers.select_related('customizer', 'customizer__puzzle_mapping__preset')
                     .prefetch_related('customizer__hardware__components', 'customizer__materials')
                     .order_by('customizer__tag', 'customizer__code')
                 )
@@ -428,6 +430,7 @@ class MaterialSelectionStep(SpecStep):
                         type=bom_item.type,
                         section=f"{bom_item.section}{section_suffix}",
                         item_name=suitable_material.name,
+                        common_name=common_name,
                         quantity=bom_item.quantity / len(panels),
                         tag=bom_item.tag,
                         item_id=suitable_material.id
@@ -437,6 +440,7 @@ class MaterialSelectionStep(SpecStep):
                         type=bom_item.type,
                         section=f"{bom_item.section}{section_suffix}",
                         item_name=bom_item.item_name,
+                        common_name=common_name,
                         quantity=bom_item.quantity / len(panels),
                         tag=bom_item.tag,
                         item_id=bom_item.item_id
@@ -719,16 +723,17 @@ class SandwichAndFrameStep(SpecStep):
         for preset_field in ['filling_preset', 'panel_frame_preset', 'base_preset', 'covering_preset']:
             preset = getattr(bom, preset_field, None)
             if preset and preset.blocks_config:
-                self._unpack_preset_blocks(preset.blocks_config, prototypes, puzzle_spec, params)
+                self.unpack_preset_blocks(preset.blocks_config, prototypes, puzzle_spec, params)
 
         spec.puzzle_spec = puzzle_spec
 
-    def _unpack_preset_blocks(
+    def unpack_preset_blocks(
             self,
             blocks_config,
             prototypes: dict,
             puzzle_spec: DoorPuzzleSpec,
             params: Optional[dict] = None,
+            labels: Optional[list] = None,
     ):
         params = params or {}
         if not blocks_config:
@@ -738,7 +743,7 @@ class SandwichAndFrameStep(SpecStep):
             for view_name in ('face', 'sandwich'):
                 items = blocks_config.get(view_name, [])
                 for cfg in items:
-                    block = self._create_puzzle_block(cfg, prototypes, params)
+                    block = self._create_puzzle_block(cfg, prototypes, params, labels=labels)
                     if not block:
                         continue
                     if view_name == 'face':
@@ -747,7 +752,7 @@ class SandwichAndFrameStep(SpecStep):
                         puzzle_spec.sandwich_blocks.append(block)
         elif isinstance(blocks_config, list):
             for cfg in blocks_config:
-                block = self._create_puzzle_block(cfg, prototypes, params)
+                block = self._create_puzzle_block(cfg, prototypes, params, labels=labels)
                 if not block:
                     continue
                 view = cfg.get('view')
@@ -756,26 +761,68 @@ class SandwichAndFrameStep(SpecStep):
                 elif view == 'sandwich':
                     puzzle_spec.sandwich_blocks.append(block)
 
-    def _create_puzzle_block(self, cfg: dict, prototypes: dict, params: dict):
+    def _create_puzzle_block(self, cfg: dict, prototypes: dict, params: dict, labels: Optional[list] = None):
         proto = prototypes.get(cfg.get('component'))
         if not proto:
             return None
 
-        w = self._resolve_numeric(cfg.get('w', 0), params)
-        h = self._resolve_numeric(cfg.get('h', 0), params)
-        x = self._resolve_numeric(cfg.get('x', 0), params)
-        y = self._resolve_numeric(cfg.get('y', 0), params)
+        # 1. Расчет геометрии через FormulaEvaluator
+        x = FormulaEvaluator.evaluate(cfg.get('x', 0), params)
+        y = FormulaEvaluator.evaluate(cfg.get('y', 0), params)
+        w = FormulaEvaluator.evaluate(cfg.get('w', 0), params)
+        h = FormulaEvaluator.evaluate(cfg.get('h', 0), params)
 
+        # 2. Форматирование текста надписи
         raw_text = cfg.get('text', '')
         rendered_text = ''
-        if raw_text:
-            try:
-                rendered_text = str(raw_text).format(**params)
-            except (KeyError, ValueError):
-                rendered_text = str(raw_text)
 
-        text_x = self._resolve_numeric(cfg.get('text_x'), params) if cfg.get('text_x') is not None else None
-        text_y = self._resolve_numeric(cfg.get('text_y'), params) if cfg.get('text_y') is not None else None
+        if raw_text:
+            def eval_match(match):
+                expr = match.group(1).strip()
+                try:
+                    # Считаем математику внутри фигурных скобок через FormulaEvaluator
+                    res = FormulaEvaluator.evaluate(expr, params)
+                    # Если число целое — убираем точку с нулем (23.0 -> 23)
+                    return str(int(res)) if res == int(res) else str(round(res, 2))
+                except Exception:
+                    return match.group(0)
+
+            # Заменяет любые {выражения}, например "{p1 + 10}" -> "23"
+            rendered_text = re.sub(r'\{([^}]+)}', eval_match, str(raw_text))
+
+        # 3. Координаты надписи: из формулы или автоцентрирование внутри блока
+        text_x_raw = cfg.get('text_x')
+        text_y_raw = cfg.get('text_y')
+
+        text_x = FormulaEvaluator.evaluate(text_x_raw, params) if text_x_raw is not None else round(x + w / 2, 2)
+        text_y = FormulaEvaluator.evaluate(text_y_raw, params) if text_y_raw is not None else round(y + h / 2, 2)
+
+        # 4. Проверка на измененный параметр для красного цвета
+        # Привязка через явный ключ "text_param": "p1" или автоопределение по {p1}..{p5}
+        params_meta = params.get('params_meta', {})
+        text_param_key = cfg.get('text_param')
+        # Если явный text_param не указан, ищем {p1}..{p5} в сыром тексте
+        if not text_param_key and raw_text:
+            for p_k in ('p1', 'p2', 'p3', 'p4', 'p5'):
+                if f"{{{p_k}" in str(raw_text):
+                    text_param_key = p_k
+                    break
+
+        is_param_custom = False
+        if text_param_key and text_param_key in params_meta:
+            is_param_custom = bool(params_meta[text_param_key].get('is_custom'))
+
+        # Назначаем цвет
+        if is_param_custom:
+            text_color = '#dc3545'  # Красный
+        else:
+            text_color = cfg.get('text_color') or proto.default_text_color or '#000000'
+
+        if rendered_text and labels is not None:
+            labels.append({
+                'text': rendered_text,
+                'is_custom': is_param_custom,
+            })
 
         return SvgPuzzleBlock(
             x=x,
@@ -791,7 +838,7 @@ class SandwichAndFrameStep(SpecStep):
             opacity=proto.opacity,
             order=cfg.get('order', 10),
             text=rendered_text,
-            text_color=cfg.get('text_color') or proto.default_text_color,
+            text_color=text_color,
             text_x=text_x,
             text_y=text_y,
             font_size=cfg.get('font_size') or proto.default_font_size,
@@ -807,6 +854,95 @@ class SandwichAndFrameStep(SpecStep):
             except (KeyError, ValueError):
                 pass
         return 0.0
+
+
+class CustomizerPuzzleStep(SpecStep):
+    """
+    Приоритет 530: Обрабатывает кастомизаторы, у которых есть CustomizerPuzzleMapping.
+    Добавляет геометрию в puzzle_spec и регистрирует примененные пресеты в applied_presets.
+    """
+    priority = 530
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        if not getattr(spec, 'has_door', True) or getattr(context, 'phase', None) == 'phase1':
+            return
+
+        if not spec.puzzle_spec:
+            spec.puzzle_spec = DoorPuzzleSpec()
+
+        prototypes = {p.code: p for p in PuzzleBlockPrototype.objects.select_related('pattern').all()}
+        sandwich_step = SandwichAndFrameStep()
+
+        for gc in context.customizers:
+            c = gc.customizer
+            mapping = getattr(c, 'puzzle_mapping', None)
+            if not mapping or not mapping.preset:
+                continue
+
+            preset = mapping.preset
+            blocks_config = preset.blocks_config
+            if not blocks_config:
+                continue
+
+            # Собираем введенные параметры кастомизатора
+            customizer_params: Dict[str, Any] = {
+                'H': float(spec.height or 0),
+                'W': float(spec.width or 0),
+            }
+            params_meta: Dict[str, Dict[str, Any]] = {}
+            preset_labels = []
+
+            for i in range(1, 6):
+                val_order = getattr(gc, f'par{i}', None)
+                val_default = getattr(c, f'par{i}_value', None)
+                # Нормализуем строки для точного сравнения
+                str_order = str(val_order).strip() if val_order not in (None, '') else ''
+                str_default = str(val_default).strip() if val_default not in (None, '') else ''
+                # Кастомным считается, если в заказе задано значение, отличное от дефолта
+                if str_order != '':
+                    val = val_order
+                    # Сравниваем как числа, если оба числа, иначе как строки
+                    try:
+                        is_custom = float(str_order) != float(str_default) if str_default != '' else True
+                    except ValueError:
+                        is_custom = str_order != str_default
+                else:
+                    val = val_default
+                    is_custom = False
+
+                if val is not None and str(val).strip() != '':
+                    val_str = str(val).strip()
+                    try:
+                        parsed_val = float(val_str)
+                    except ValueError:
+                        parsed_val = val_str
+
+                    p_key = f'p{i}'
+                    customizer_params[p_key] = parsed_val
+                    params_meta[p_key] = {
+                        'val': parsed_val,
+                        'is_custom': is_custom,
+                    }
+
+            customizer_params['params_meta'] = params_meta
+
+            # Распаковываем блоки пресета в puzzle_spec
+            sandwich_step.unpack_preset_blocks(
+                blocks_config=blocks_config,
+                prototypes=prototypes,
+                puzzle_spec=spec.puzzle_spec,
+                params=customizer_params,
+                labels=preset_labels,
+            )
+
+            # Регистрируем пресет для шапки отчета на пресс
+            spec.applied_presets.append({
+                'name': preset.name,
+                'code': getattr(preset, 'code', ''),
+                'customizer_name': c.name,
+                'labels': preset_labels,
+            })
 
 
 class MeasurerDataStep(SpecStep):
@@ -926,6 +1062,7 @@ class SpecPipeline:
             LockPositionStep(),
             HingePositionStep(),
             SandwichAndFrameStep(),
+            CustomizerPuzzleStep(),
             MeasurerDataStep(),
             TechnicalDataStep(),
             MediaStep(),
@@ -1003,7 +1140,7 @@ class OrderItemsStep(OrderStep):
         group_ids = {item.group_id for item in context.items if item.group_id}
         all_group_customizers = OrderItemsGroupCustomizer.objects.filter(
             group_id__in=group_ids
-        ).select_related('customizer').prefetch_related(
+        ).select_related('customizer', 'customizer__puzzle_mapping__preset').prefetch_related(
             'customizer__hardware__components', 'customizer__materials'
         ).order_by('customizer__tag', 'customizer__code')
 

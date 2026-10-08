@@ -39,7 +39,7 @@
                                                 <input type="text"
                                                        inputmode="decimal"
                                                        name="item_{{ item.item_id }}_width"
-                                                       value="{{ item.width|stringformat:".1f" }}"
+                                                       value="{{ item.inner_width|stringformat:".1f" }}"
                                                        class="form-control form-control-sm text-center validate-float"
                                                        style="width: 80px"
                                                        title="{% trans "רוחב פנים (ברוטו)" %}">
@@ -47,7 +47,7 @@
                                                 <input type="text"
                                                        inputmode="decimal"
                                                        name="item_{{ item.item_id }}_height"
-                                                       value="{{ item.height|stringformat:".1f" }}"
+                                                       value="{{ item.inner_height|stringformat:".1f" }}"
                                                        class="form-control form-control-sm text-center validate-float"
                                                        style="width: 80px"
                                                        title="{% trans "גובה פנים (ברוטו)" %}">

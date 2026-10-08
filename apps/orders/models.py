@@ -480,24 +480,48 @@ class OrderItemsGroup(models.Model):
             if self.product:
                 self.auto_populate_required_customizers()
 
-            # Синхронизация физических дверей (OrderItem) с количеством в группе
-            if self.quantity is not None:
-                existing_items = self.items.all().order_by('id')
-                current_count = existing_items.count()
+                # Синхронизация физических дверей (OrderItem) с количеством в группе
+                if self.quantity is not None:
+                    existing_items = self.items.all().order_by('id')
+                    current_count = existing_items.count()
 
-                if current_count < self.quantity:
-                    items_to_create = [
-                        OrderItem(
-                            group=self,
-                            mark=str(item_index),
-                            wall=self.product.product_family.default_value_for_frame or None,
+                    if current_count < self.quantity:
+                        # 1. Находим максимальный существующий номер mark по всему заказу
+                        existing_marks = list(
+                            OrderItem.objects.filter(group__order=self.order)
+                            .exclude(mark="")
+                            .values_list('mark', flat=True)
                         )
-                        for item_index in range(current_count + 1, self.quantity + 1)
-                    ]
-                    OrderItem.objects.bulk_create(items_to_create)
-                elif current_count > self.quantity:
-                    items_to_delete = existing_items[self.quantity:]
-                    OrderItem.objects.filter(id__in=[item.id for item in items_to_delete]).delete()
+
+                        max_mark = 0
+                        for m in existing_marks:
+                            try:
+                                val = int(m)
+                                if val > max_mark:
+                                    max_mark = val
+                            except (ValueError, TypeError):
+                                continue
+
+                        # 2. Создаем недостающие двери со сквозными номерами
+                        wall_default = (
+                            self.product.product_family.default_value_for_frame
+                            if self.product and getattr(self.product, 'product_family', None)
+                            else None
+                        )
+
+                        items_to_create = [
+                            OrderItem(
+                                group=self,
+                                mark=str(max_mark + i),
+                                wall=wall_default,
+                            )
+                            for i in range(1, (self.quantity - current_count) + 1)
+                        ]
+                        OrderItem.objects.bulk_create(items_to_create)
+
+                    elif current_count > self.quantity:
+                        items_to_delete = existing_items[self.quantity:]
+                        OrderItem.objects.filter(id__in=[item.id for item in items_to_delete]).delete()
 
     def delete(self, *args, **kwargs):
         order = self.order
@@ -521,7 +545,8 @@ class OrderItemsGroup(models.Model):
                 front=self.front,
                 basic_color_frames=self.basic_color_frames,
                 panel_paint_option=self.panel_paint_option,
-                color_panels=self.color_panel_outside,
+                color_panel_inside=self.color_panel_inside,
+                color_panel_outside=self.color_panel_outside,
                 frame_paint_option=self.frame_paint_option,
                 color_frames=self.color_frames,
                 is_split_installation=self.is_split_installation,
@@ -604,6 +629,16 @@ class OrderItemsGroupCustomizer(models.Model):
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
+        # Automatically populate defaults from customizer if empty on creation
+        if not self.pk and self.customizer:
+            for i in range(1, 6):
+                field_name = f'par{i}'
+                current_val = getattr(self, field_name)
+                if current_val is None or current_val == '':
+                    default_val = getattr(self.customizer, f'par{i}_value', None)
+                    if default_val:
+                        setattr(self, field_name, str(default_val))
+
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):

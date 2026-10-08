@@ -81,7 +81,7 @@ class BOMAdmin(admin.ModelAdmin):
         }),
     )
 
-    
+
 @admin.register(LockStandardHeight)
 class LockStandardHeightAdmin(admin.ModelAdmin):
     filter_horizontal = ('product_families', 'locks')

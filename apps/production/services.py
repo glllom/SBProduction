@@ -1,4 +1,5 @@
 import io
+import math
 import os
 import shutil
 import zipfile
@@ -12,13 +13,25 @@ from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from apps.orders.models import Order, OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
-from .label_services import DoorLabelService
+from apps.orders.models import OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
 from .models import (
-    ProductionStation, OrderSpecificationSnapshot,
+    ProductionStation, OrderSpecificationSnapshot, SvgPattern,
 )
 from .pipeline import OrderSpecPipeline
 from .schemas import OrderSpec
+
+
+def round_press_dimension(val: float | int) -> float:
+    # Add hardcoded tolerance +1
+    target = float(val) + 1.0
+    integer_part = math.floor(target)
+    fraction = round(target - integer_part, 4)
+
+    if fraction == 0:
+        return float(integer_part)
+    if fraction <= 0.5:
+        return integer_part + 0.5
+    return float(integer_part + 1)
 
 
 class OrderValidationError(Exception):
@@ -376,20 +389,26 @@ class TechnicalSpecService:
             batch_number: Optional[int] = None,
             force_rebuild: bool = False,
             user=None
-    ):
+    ) -> tuple[OrderSpec, dict]:
         """
-        Возвращает спецификацию (OrderSpec).
+        Возвращает пару (OrderSpec, spec_cache_dict).
         Если снимок уже есть в базе и не запрошен force_rebuild — десериализует из JSON.
         Иначе — прогоняет плоскую выборку позиций через пайплайн и фиксирует снимок в БД.
         """
-
         cache_field = 'phase1_spec_cache' if phase == 'phase1' else 'phase2_spec_cache'
-        existing_cache = getattr(order, cache_field) or {}
+        existing_cache = getattr(order, cache_field)
+
+        # Защита от поврежденного кэша (если в поле лежал bool или None)
+        if not isinstance(existing_cache, dict):
+            existing_cache = {}
+
         batch_key = f"batch_{batch_number}" if batch_number is not None else "batch_all"
 
-        # 1. Возврат из снимка без повторного запуска пайплайна
+        # 1. Возврат из существующего снимка
         if not force_rebuild and batch_key in existing_cache:
-            return OrderSpec.model_validate(existing_cache[batch_key]), False
+            target_dict = existing_cache[batch_key]
+            if isinstance(target_dict, dict):
+                return OrderSpec.model_validate(target_dict), existing_cache
 
         # 2. Выборка позиций
         items = cls.get_rich_order_items(order_id=order.id, batch_number=batch_number)
@@ -409,7 +428,7 @@ class TechnicalSpecService:
         if errors:
             raise OrderValidationError("Ошибки при расчете спецификации:", errors=errors)
 
-        # 4. Сохранение снимка в базу
+        # 4. Сериализация и сохранение снимка в базу
         spec_dict = spec_obj.model_dump()
         existing_cache[batch_key] = spec_dict
         setattr(order, cache_field, existing_cache)
@@ -428,7 +447,8 @@ class TechnicalSpecService:
             created_by=user
         )
 
-        return spec_obj, True
+        # Всегда возвращаем кортеж (объект спецификации, словарь кэша)
+        return spec_obj, existing_cache
 
     @classmethod
     def get_batch_items(cls, order, phase: str = 'phase1', batch_number: int = 1) -> List[dict]:
@@ -436,9 +456,16 @@ class TechnicalSpecService:
         Возвращает плоский список рассчитанных позиций из снимка для форм (например, перед Фазой 2).
         """
         cache_field = 'phase1_spec_cache' if phase == 'phase1' else 'phase2_spec_cache'
-        cache = getattr(order, cache_field) or {}
-        batch_dict = cache.get(f"batch_{batch_number}") or cache.get("batch_all") or {}
-        return batch_dict.get('items', [])
+        cache = getattr(order, cache_field)
+        if not isinstance(cache, dict):
+            return []
+
+        # Поддержка структуры с батчами и обратная совместимость со старыми плоскими снимками
+        batch_dict = cache.get(f"batch_{batch_number}") or cache.get("batch_all")
+        if isinstance(batch_dict, dict):
+            return batch_dict.get('items', [])
+
+        return cache.get('items', [])
 
 
 class ProductionDataService:
@@ -626,11 +653,11 @@ class ProductionDataService:
             stage_label = "השלמות"
         else:
             stage_label = "קומפלט"
-
         context = {
             'order': self.order,
             'order_spec': order_spec_for_report,
             'order_spec_json': order_spec_for_report.model_dump_json(by_alias=True),
+            'svg_patterns': SvgPattern.objects.all(),
             'report_type': report_type,
             'station': station,
             'report_label': label,
@@ -761,51 +788,91 @@ class ProductionDataService:
     def prepare_press_groups_data(order_spec):
         groups_map = {}
 
-        for item in order_spec.items:
-            has_door = getattr(item, 'has_door', True)
-            sandwich = getattr(item, 'sandwich_spec', None)
-            frame = getattr(item, 'frame_spec', None)
-
-            if not has_door or not sandwich or not frame:
+        for item in getattr(order_spec, 'items', []):
+            if not getattr(item, 'has_door', True):
                 continue
 
-            layers = getattr(sandwich, 'layers', [])
-            layers_key = tuple(
-                (getattr(l, 'common_name', ''), getattr(l, 'thickness', 0.0))
-                for l in layers
-            )
+            bom_items = getattr(item, 'bom_items', []) or []
 
-            group_key = (
-                getattr(sandwich, 'title', ''),
-                getattr(frame, 'title', ''),
-                layers_key,
-                getattr(frame, 'is_double_perimeter', False),
-                getattr(frame, 'has_closer', False),
-                getattr(frame, 'has_drop_seal', False),
-                getattr(frame, 'has_handle_reinforcement', False),
-            )
+            # 1. Основной состав: filling + covering + base
+            filling_names = [
+                b.item_name for b in bom_items
+                if getattr(b, 'tag', '') == 'filling' and getattr(b, 'item_name', '')
+            ]
+            covering_names = [
+                getattr(b, 'common_name', None) or b.item_name for b in bom_items
+                if
+                getattr(b, 'tag', '') == 'covering' and (getattr(b, 'common_name', None) or getattr(b, 'item_name', ''))
+            ]
+            base_names = [
+                getattr(b, 'common_name', None) or b.item_name for b in bom_items
+                if getattr(b, 'tag', '') == 'base' and (getattr(b, 'common_name', None) or getattr(b, 'item_name', ''))
+            ]
+
+            raw_components = base_names + covering_names + filling_names
+            comp_title = "  |  ".join(dict.fromkeys(raw_components)) or getattr(item, 'product_name', '')
+
+            # 2. Пресеты с вычисленными параметрами (labels)
+            applied_presets = getattr(item, 'applied_presets', []) or []
+            customizer_presets = []
+            preset_signature_parts = []
+
+            for p in applied_presets:
+                p_name = str(p.get('name') if isinstance(p, dict) else getattr(p, 'name', '')).strip()
+                if not p_name:
+                    continue
+
+                raw_labels = p.get('labels', []) if isinstance(p, dict) else getattr(p, 'labels', [])
+                labels = []
+                sig_labels = []
+
+                for lbl in raw_labels:
+                    text_val = str(lbl.get('text', '') if isinstance(lbl, dict) else getattr(lbl, 'text', '')).strip()
+                    is_custom_val = bool(
+                        lbl.get('is_custom', False) if isinstance(lbl, dict) else getattr(lbl, 'is_custom', False))
+                    if text_val:
+                        labels.append({
+                            'text': text_val,
+                            'is_custom': is_custom_val,
+                        })
+                        sig_labels.append(f"{text_val}:{'1' if is_custom_val else '0'}")
+
+                customizer_presets.append({
+                    'name': p_name,
+                    'labels': labels,
+                })
+
+                # Подпись для корректного разделения групп при разных значениях параметров
+                lbl_suffix = f"({','.join(sig_labels)})" if sig_labels else ""
+                preset_signature_parts.append(f"{p_name}{lbl_suffix}")
+
+            presets_signature = " + ".join(dict.fromkeys(preset_signature_parts))
+
+            puzzle = getattr(item, 'puzzle_spec', None)
+            face_blocks = getattr(puzzle, 'face_blocks', []) if puzzle else []
+            sandwich_blocks = getattr(puzzle, 'sandwich_blocks', []) if puzzle else []
+
+            # Группировка с учетом состава и параметров пресетов
+            group_key = (comp_title, presets_signature)
 
             if group_key not in groups_map:
                 groups_map[group_key] = {
-                    'composition_title': getattr(sandwich, 'title', ''),
-                    'frame_title': getattr(frame, 'title', ''),
+                    'composition_title': comp_title,
+                    'customizer_presets': customizer_presets,
+                    'puzzle_face_blocks': face_blocks,
+                    'puzzle_sandwich_blocks': sandwich_blocks,
                     'counter': Counter(),
                 }
 
-            cut_sheets = getattr(item, 'cut_sheets', [])
-            for sheet in cut_sheets:
-                panel = sheet.get('exterior_panel') if isinstance(sheet, dict) else getattr(sheet, 'exterior_panel', {})
-                if isinstance(panel, dict):
-                    w = panel.get('width')
-                    h = panel.get('height')
-                else:
-                    w = getattr(panel, 'width', None)
-                    h = getattr(panel, 'height', None)
-
+            # Direct panel dimensions calculation
+            panel_dims = getattr(item, 'panel_dimensions', []) or []
+            for p_dim in panel_dims:
+                w = p_dim.get('width') if isinstance(p_dim, dict) else getattr(p_dim, 'width', None)
+                h = p_dim.get('height') if isinstance(p_dim, dict) else getattr(p_dim, 'height', None)
                 if w and h:
-                    assert isinstance(w, (int, float, str))
-                    assert isinstance(h, (int, float, str))
-                    groups_map[group_key]['counter'][(float(w), float(h))] += 1
+                    calc_w = round_press_dimension(w)
+                    calc_h = round_press_dimension(h)
+                    groups_map[group_key]['counter'][(calc_w, calc_h)] += 1
 
         panel_groups = []
         for grp in groups_map.values():
@@ -815,7 +882,8 @@ class ProductionDataService:
                 {'width': w, 'height': h, 'qty': count}
                 for (w, h), count in sorted_dims
             ]
-            panel_groups.append(grp)
+            if grp['dimensions']:
+                panel_groups.append(grp)
 
         return panel_groups
 
@@ -966,87 +1034,53 @@ class OrderProductionService:
 
         return order.latest_batch
 
-    @staticmethod
-    def start_production(order, user=None):
-        old_status = order.status
-        has_new_groups = order.groups.filter(
-            production_state=OrderItemsGroup.ProductionState.NEW
-        ).exists()
-        has_new_split_groups = order.groups.filter(
-            production_state=OrderItemsGroup.ProductionState.NEW,
-            is_split_installation=True
-        ).exists()
+    @classmethod
+    def start_production(cls, order, user=None):
+        # 1. Если заказ в ожидании Фазы 2 — переводим его в PHASE2_PRODUCTION
+        if order.status == OrderStatus.PHASE1_READY:
+            active_groups = order.groups.exclude(
+                production_state=OrderItemsGroup.ProductionState.CANCELED
+            )
+            if not active_groups.exists():
+                raise OrderValidationError("Нет активных групп для запуска второй фазы.")
 
-        # 1. Определение фазы и валидация
-        if order.status == OrderStatus.NEW:
-            if order.has_split_installation:
-                phase = 'phase1'
-                new_status = OrderStatus.PHASE1_PRODUCTION
-                val_res = OrderValidationService.validate_partial(order)
-            else:
-                phase = 'phase2'
-                new_status = OrderStatus.IN_PRODUCTION
-                val_res = OrderValidationService.validate_full(order)
+            order.status = OrderStatus.PHASE2_PRODUCTION
+            order.save(update_fields=['status'])
 
-        elif order.status == OrderStatus.PHASE1_READY:
-            if has_new_split_groups:
-                phase = 'phase1'
-                new_status = OrderStatus.PHASE1_PRODUCTION
-                val_res = OrderValidationService.validate_partial(order)
-            else:
-                phase = 'phase2'
-                new_status = OrderStatus.PHASE2_PRODUCTION
-                val_res = OrderValidationService.validate_full(order)
+            # Строим спецификацию для фазы 2
+            TechnicalSpecService.get_or_build_spec(
+                order, phase='phase2', force_rebuild=True, user=user
+            )
+            return
 
-        elif order.status in [OrderStatus.IN_PRODUCTION, OrderStatus.PHASE2_PRODUCTION, OrderStatus.COMPLETED]:
-            if not has_new_groups:
-                raise ValueError("Нет новых групп для запуска в производство.")
-            phase = 'phase2'
-            new_status = OrderStatus.COMPLETION_PRODUCTION if order.status == OrderStatus.COMPLETED else order.status
-            val_res = OrderValidationService.validate_completion(order)
+        # 2. Обычный запуск нового заказа или дозаказа (NEW -> PHASE1 или FULL)
+        waiting_groups = order.groups.filter(
+            production_state=OrderItemsGroup.ProductionState.WAITING
+        )
+        if not waiting_groups.exists():
+            raise OrderValidationError("Нет новых групп для запуска в производство.")
+
+        # Присваиваем номер батча и переводим в IN_PRODUCTION
+        next_batch = (order.latest_batch or 0) + 1
+        order.latest_batch = next_batch
+
+        if getattr(order, 'has_split_installation', False):
+            order.status = OrderStatus.PHASE1_PRODUCTION
         else:
-            raise ValueError(f"Невозможно запустить производство из статуса '{order.status}'.")
+            order.status = OrderStatus.IN_PRODUCTION
 
-        val_res.raise_if_invalid()
+        order.save(update_fields=['status', 'latest_batch'])
 
-        with transaction.atomic():
-            order = Order.objects.select_for_update().get(pk=order.pk)
+        waiting_groups.update(
+            production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
+            batch_number=next_batch
+        )
 
-            # Фиксация даты первого запуска
-            if not order.production_start_date:
-                order.production_start_date = timezone.now().date()
-
-            # 2. Инкремент и назначение батча новым группам
-            target_batch = OrderProductionService._assign_release_batch(order)
-
-            # 3. Обновление статуса заказа
-            order.status = new_status
-            order.save(update_fields=['status', 'production_start_date'])
-
-            # 4. Расчет спецификации через пайплайн и сохранение снимка
-            # При штатном переходе в Phase 2 считаем все готовые коробки (None), для остальных — только целевой батч
-            batch_filter = None if (
-                    old_status == OrderStatus.PHASE1_READY and not has_new_split_groups) else target_batch
-
-            spec_obj, _ = TechnicalSpecService.get_or_build_spec(
-                order, phase=phase, batch_number=batch_filter, user=user
-            )
-
-            # 5. Генерация этикеток и ЧПУ
-            DoorLabelService.generate_labels_for_order(order, spec_obj)
-            service = ProductionDataService(order)
-            service.generate_cnc_files(spec_items=spec_obj.items)
-
-            # 6. Лог изменений
-            OrderChangeLog.objects.create(
-                order=order,
-                user=user,
-                field_name='status',
-                old_value=old_status,
-                new_value=order.status
-            )
-
-        return order
+        # Строим спецификацию для текущей фазы
+        phase = 'phase1' if order.status == OrderStatus.PHASE1_PRODUCTION else 'phase2'
+        TechnicalSpecService.get_or_build_spec(
+            order, phase=phase, batch_number=next_batch, force_rebuild=True, user=user
+        )
 
     @staticmethod
     def complete_phase1(order, user=None):
