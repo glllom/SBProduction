@@ -132,8 +132,8 @@ class Order(models.Model):
         auto_now_add=True, verbose_name="נוצר במערכת"
     )
 
-    latest_batch = models.PositiveSmallIntegerField(
-        default=0,
+    current_batch = models.PositiveSmallIntegerField(
+        default=1,
         help_text="Tracks the latest released production batch number"
     )
 
@@ -472,6 +472,9 @@ class OrderItemsGroup(models.Model):
         if self.frame_paint_option != self.PaintOption.SPECIAL_COLOR:
             self.color_frames = None
 
+        if self.order_id and self.batch_number is None:
+            self.batch_number = self.order.current_batch
+            
         # 4. Сохранение группы, синхронизация дверей и пересчет позиций
         with transaction.atomic():
             super().save(*args, **kwargs)

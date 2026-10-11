@@ -1016,23 +1016,24 @@ class OrderProductionService:
     @staticmethod
     def _assign_release_batch(order) -> int:
         """
-        Increments order.latest_batch if there are NEW groups and assigns it to them.
+        Increments order.current_batch if there are NEW groups and assigns it to them.
         Returns the target batch number to process.
         """
         new_groups = order.groups.filter(
             production_state=OrderItemsGroup.ProductionState.NEW
         )
         if new_groups.exists():
-            order.latest_batch += 1
-            order.save(update_fields=['latest_batch'])
+            batch_num = order.current_batch
+            # Убеждаемся, что всем новым группам назначен текущий батч
+            new_groups.filter(batch_number__isnull=True).update(batch_number=batch_num)
+            new_groups.update(production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION)
 
-            new_groups.update(
-                batch_number=order.latest_batch,
-                production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION
-            )
-            return order.latest_batch
+            # Закрываем батч намертво для будущих добавлений
+            order.current_batch += 1
+            order.save(update_fields=['current_batch'])
+            return batch_num
 
-        return order.latest_batch
+        return order.current_batch
 
     @classmethod
     def start_production(cls, order, user=None):
@@ -1053,35 +1054,36 @@ class OrderProductionService:
             )
             return
 
-        # 2. Обычный запуск нового заказа или дозаказа (NEW -> PHASE1 или FULL)
-        waiting_groups = order.groups.filter(
-            production_state=OrderItemsGroup.ProductionState.WAITING
+        # 2. Обычный запуск нового заказа или дозаказа (ищем группы со статусом NEW)
+        new_groups = order.groups.filter(
+            production_state=OrderItemsGroup.ProductionState.NEW
         )
-        if not waiting_groups.exists():
+        if not new_groups.exists():
             raise OrderValidationError("Нет новых групп для запуска в производство.")
 
-        # Присваиваем номер батча и переводим в IN_PRODUCTION
-        next_batch = (order.latest_batch or 0) + 1
-        order.latest_batch = next_batch
+        # Фиксируем текущий номер батча для запускаемой партии
+        released_batch = order.current_batch
 
+        # Всем запускаемым группам проставляем номер и переводим в работу
+        new_groups.filter(batch_number__isnull=True).update(batch_number=released_batch)
+        new_groups.update(production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION)
+
+        # Переводим статус заказа в зависимости от раздельного монтажа
         if getattr(order, 'has_split_installation', False):
             order.status = OrderStatus.PHASE1_PRODUCTION
         else:
             order.status = OrderStatus.IN_PRODUCTION
 
-        order.save(update_fields=['status', 'latest_batch'])
+        # Инкрементируем счетчик: батч закрыт, любые новые двери пойдут в released_batch + 1
+        order.current_batch = released_batch + 1
+        order.save(update_fields=['status', 'current_batch'])
 
-        waiting_groups.update(
-            production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
-            batch_number=next_batch
-        )
-
-        # Строим спецификацию для текущей фазы
+        # Строим спецификацию именно для этого запущенного батча
         phase = 'phase1' if order.status == OrderStatus.PHASE1_PRODUCTION else 'phase2'
         TechnicalSpecService.get_or_build_spec(
-            order, phase=phase, batch_number=next_batch, force_rebuild=True, user=user
+            order, phase=phase, batch_number=released_batch, force_rebuild=True, user=user
         )
-
+        
     @staticmethod
     def complete_phase1(order, user=None):
         """

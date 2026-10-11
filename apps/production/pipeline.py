@@ -790,6 +790,12 @@ class SandwichAndFrameStep(SpecStep):
             # Заменяет любые {выражения}, например "{p1 + 10}" -> "23"
             rendered_text = re.sub(r'\{([^}]+)}', eval_match, str(raw_text))
 
+        # 5. Свойства заливки и прототипа
+        fill_color = cfg.get('fill_color') or proto.fill_color
+        border_color = cfg.get('border_color') or proto.border_color
+        border_width = cfg.get('border_width', proto.border_width)
+        opacity = cfg.get('opacity', proto.opacity)
+
         # 3. Координаты надписи: из формулы или автоцентрирование внутри блока
         text_x_raw = cfg.get('text_x')
         text_y_raw = cfg.get('text_y')
@@ -830,12 +836,11 @@ class SandwichAndFrameStep(SpecStep):
             w=w,
             h=h,
             fill_type=proto.fill_type,
-            fill_color=proto.fill_color,
+            fill_color=fill_color,
             pattern_name=proto.pattern.name if proto.pattern else None,
-            border_color=proto.border_color,
-            border_width=proto.border_width,
-            border_dasharray=proto.border_dasharray or '',
-            opacity=proto.opacity,
+            border_color=border_color,
+            border_width=border_width,
+            opacity=opacity,
             order=cfg.get('order', 10),
             text=rendered_text,
             text_color=text_color,
