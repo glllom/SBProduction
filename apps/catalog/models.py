@@ -217,6 +217,24 @@ class Hardware(models.Model):
         help_text='Components that make up this assembly',
     )
 
+    common_name = models.CharField(
+        'שם קבוצה (Common Name)',
+        max_length=255,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text='מזהה משותף לרכיבים דומים (למשל: סוג אטם, כיסויי ציר)'
+    )
+    color = models.ForeignKey(
+        'Color',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='hardware_items',
+        verbose_name='גוון / צבע'
+    )
+
+
     class Meta:
         verbose_name = 'פרזול'
         verbose_name_plural = 'פרזול'

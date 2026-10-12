@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="container mt-4" dir="rtl">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">הגדרות מחסן וליקוט - הזמנה {{ order.order_number }}</h5>
+                <span class="badge bg-secondary">{{ order.customer }}</span>
+            </div>
+            <form method="post">
+                {% csrf_token %}
+                <div class="card-body">
+                    <!-- Указания для склада -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">הערות למחסן / תעודת ליקוט:</label>
+                        <textarea name="warehouse_notes"
+                                  class="form-control"
+                                  rows="3"
+                                  placeholder="הוראות מיוחדות לליקוט (למשל: הלקוח מביא ידיות משלו, לתאם מנעול מיוחד...)">{{ order.warehouse_notes }}</textarea>
+                    </div>
+                    <!-- Блок выбора цветов комплектующих -->
+                    <h6 class="border-bottom pb-2 mb-3 fw-bold">רכיבים בעלי גוון לבחירה (אטמים, כיסויי ציר וכו')</h6>
+                    {% if customizable_hardware %}
+                        <div class="row">
+                            {% for comp in customizable_hardware %}
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label fw-bold small">{{ comp.common_name }}:</label>
+                                    <select name="comp_{{ comp.common_name }}" class="form-select">
+                                        <option value="" {% if not comp.selected_id %}selected{% endif %}>-- לבחירת לקוח / טרם נקבע --</option>
+                                        {% for opt in comp.options %}
+                                            <option value="{{ opt.id }}"
+                                                    {% if comp.selected_id == opt.id %}selected{% endif %}>
+                                                {{ opt.name }} [{{ opt.color_name }}] ({{ opt.sku }})
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted small">בהזמנה זו לא זוהו רכיבים מרובי גוונים מתוך ה-BOM.</p>
+                    {% endif %}
+                    <!-- Аккордеон с заметками для пресса и коробок -->
+                    <div class="accordion mt-3" id="deptNotesAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed py-2 text-muted small"
+                                        type="button"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#collapseDeptNotes">
+                                    הערות למחלקות נוספות (מכבש / משקופים)
+                                </button>
+                            </h2>
+                            <div id="collapseDeptNotes" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="row">
+                                        <div class="col-md-6 mb-2">
+                                            <label class="form-label small">הערות למכבש:</label>
+                                            <textarea name="press_notes" class="form-control form-control-sm" rows="2">{{ order.press_notes }}</textarea>
+                                        </div>
+                                        <div class="col-md-6 mb-2">
+                                            <label class="form-label small">הערות למשקופים:</label>
+                                            <textarea name="frames_notes" class="form-control form-control-sm" rows="2">{{ order.frames_notes }}</textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-light d-flex justify-content-between">
+                    <a href="{% url 'order-detail' order.id %}"
+                       class="btn btn-outline-secondary">חזרה להזמנה</a>
+                    <div>
+                        <button type="submit" name="save_only" class="btn btn-primary me-2">שמור</button>
+                        <button type="submit" name="save_and_print" class="btn btn-success">שמור והפק תעודת ליקוט</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}

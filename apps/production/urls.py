@@ -20,11 +20,13 @@ urlpatterns = [
     path('order/<int:pk>/split-measurer-report/', views.split_measurer_report, name='split-measurer-report'),
     path('orders/<int:pk>/reports/sketches/', views.order_sketches_report, name='order-sketches-report'),
     path('order/<int:pk>/compare-snapshots/', views.order_compare_snapshots, name='order-compare-snapshots'),
+    path('order/<int:pk>/export-labels-csv/', views.export_door_labels_csv, name='export-labels-csv'),
 
     # ЧПУ, файлы и выгрузки
     path('order/<int:pk>/production-data/', views.order_production_data, name='order-production-data'),
     path("sync-usb/", views.sync_usb_view, name="sync_usb"),
     path('api/bartender/confirm-print/', views.bartender_confirm_print, name='bartender-confirm-print'),
+    path('order/<int:pk>/warehouse-setup/', views.order_warehouse_setup, name='order-warehouse-setup'),
 
     # Dev Tools / Режим бога (инспекция и принудительный пересчет батча)
     path('order/<int:pk>/spec-json/', views.spec_json_preview, name='spec-json-preview'),

@@ -1,4 +1,5 @@
 import base64
+import csv
 import json
 from io import BytesIO
 
@@ -7,11 +8,13 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from qrcode.image.svg import SvgPathImage
 
-from apps.orders.models import OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus
+from apps.catalog.models import Hardware
+from apps.orders.models import OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus, OrderComponentSelection
 from .label_services import DoorLabelService
 from .models import DoorLabel, ProductionStation, SvgPattern
 from .services import (
@@ -625,15 +628,26 @@ def station_report(request, pk):
             'report_label': (station.label if station else (station.name if station else station_code)) or "דוח ייצור"
         })
 
-    if station_code and station_code.upper() in ['WOODEN_FRAMES', 'WOOD_FRAMES']:
-        frames_data = service.get_wooden_frames_data(spec_obj)
-        return render(request, 'production/reports/report_wooden_frames.html', {
+    is_wood_frames_station = (
+            (station_code and station_code.upper() in ['FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES']) or
+            (station and 'report_wood_frames.html' in (station.template_name or ''))
+    )
+
+    if is_wood_frames_station:
+        frame_groups = service.prepare_wood_frames_report_data(spec_obj)
+        template_name = station.template_name if (
+                station and station.template_name) else 'production/reports/report_wood_frames.html'
+        report_label = (station.label if station else None) or 'דו"ח משקופי עץ'
+
+        return render(request, template_name, {
             'order': order,
             'order_spec': spec_obj,
-            'frames_data': frames_data,
-            'report_label': 'דוח משקופי עץ',
+            'frame_groups': frame_groups,
+            'station': station,
+            'report_label': report_label,
             'now': timezone.now(),
             'order_qr': get_qr_base64(barcode_data),
+            'barcode_text': barcode_data,
         })
 
     if station_code and station_code.upper() in ['WAREHOUSE', 'HARDWARE', 'PICK_LIST']:
@@ -999,3 +1013,179 @@ def bartender_confirm_print(request):
         updated_count += 1
 
     return JsonResponse({'status': 'ok', 'updated': updated_count})
+
+
+@login_required
+def report_wood_frames(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+
+    # Спецификация для производства
+    order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
+
+    service = ProductionDataService(order)
+    frame_groups = service.prepare_wood_frames_report_data(order_spec)
+
+    barcode_data = f"{order.order_number};FRAMES"
+
+    return render(request, 'production/reports/report_wood_frames.html', {
+        'order': order,
+        'order_spec': order_spec,
+        'frame_groups': frame_groups,
+        'order_qr': get_qr_base64(barcode_data),
+        'now': timezone.now(),
+    })
+
+
+@login_required
+def order_warehouse_setup(request, pk):
+    """
+    Form for editing warehouse instructions and choosing color-specific hardware variants.
+    """
+    order = get_object_or_404(Order, pk=pk)
+
+    # Используем актуальную спецификацию фазы 2 или фазы 1
+    phase = 'phase2' if (order.phase2_spec_cache or order.status != OrderStatus.PHASE1_PRODUCTION) else 'phase1'
+    spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
+
+    customizable_hardware = ProductionDataService.get_order_customizable_hardware(order, spec_obj)
+
+    if request.method == 'POST':
+        # 1. Текстовые заметки для отделов
+        order.warehouse_notes = request.POST.get('warehouse_notes', '').strip()
+        order.press_notes = request.POST.get('press_notes', '').strip()
+        order.frames_notes = request.POST.get('frames_notes', '').strip()
+        order.save(update_fields=['warehouse_notes', 'press_notes', 'frames_notes'])
+
+        # 2. Сохранение выбранных цветов
+        for item in customizable_hardware:
+            field_name = f"comp_{item['common_name']}"
+            chosen_val = request.POST.get(field_name)
+
+            if chosen_val:
+                try:
+                    chosen_id = int(chosen_val)
+                    OrderComponentSelection.objects.update_or_create(
+                        order=order,
+                        common_name=item['common_name'],
+                        defaults={'selected_hardware_id': chosen_id}
+                    )
+                except (ValueError, TypeError):
+                    pass
+            else:
+                # Если сбросили на "לבחירת לקוח" (пусто) — удаляем запись
+                OrderComponentSelection.objects.filter(
+                    order=order,
+                    common_name=item['common_name']
+                ).delete()
+
+        messages.success(request, 'הגדרות המחסן נשמרו בהצלחה.')
+
+        if 'save_and_print' in request.POST:
+            return redirect(f"{reverse('production:station-report', kwargs={'pk': pk})}?station=WAREHOUSE")
+
+        return redirect('order-detail', pk=pk)
+
+    return render(request, 'production/order_warehouse_setup.html', {
+        'order': order,
+        'customizable_hardware': customizable_hardware,
+    })
+
+
+@login_required
+def export_door_labels_csv(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+
+    # 1. Получаем объект спецификации
+    phase = 'phase2' if (order.phase2_spec_cache or order.status != OrderStatus.PHASE1_PRODUCTION) else 'phase1'
+    spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
+
+    # Приводим к dict, если передан Pydantic-объект или сериализованный кэш
+    items_raw = getattr(spec_obj, 'items', []) or []
+    items = [it if isinstance(it, dict) else it.dict() for it in items_raw]
+
+    # Отбираем только позиции с полотном
+    door_items = [it for it in items if it.get('has_door', True)]
+    total_doors = len(door_items)
+
+    # 2. Пакетная подгрузка артикулов (SKU) за 1 SQL-запрос, чтобы избежать N+1
+    hardware_ids = set()
+    for it in door_items:
+        if it.get('lock_id'):
+            hardware_ids.add(it['lock_id'])
+        # Ищем ID петли из bom_items с тегом hinge
+        for b in it.get('bom_items', []) or []:
+            if str(b.get('tag', '')).lower() == 'hinge' and b.get('item_id'):
+                hardware_ids.add(b['item_id'])
+
+    hw_map = Hardware.objects.in_bulk(hardware_ids) if hardware_ids else {}
+
+    # 3. Формирование CSV
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="labels_{order.order_number}.csv"'
+
+    writer = csv.writer(response)
+    customer = getattr(order, 'customer', '') or ''
+
+    for it in door_items:
+        door_mark = it.get('number') or it.get('mark') or str(it.get('item_id', ''))
+        direction = it.get('direction') or it.get('direction_code') or ''
+
+        # Иерархия каталога
+        family_name = it.get('product_family') or ''
+        series_name = it.get('series') or ''
+        model_code = it.get('model') or ''
+
+        # Размеры именно дверной панели (берем первое полотно из panel_dimensions)
+        panel_dims = it.get('panel_dimensions') or []
+        first_panel = panel_dims[0] if panel_dims else {}
+        panel_w = first_panel.get('width', '')
+        panel_h = first_panel.get('height', '')
+
+        # Замок: название, артикул (SKU) из справочника, высота
+        lock_name = it.get('lock') or ''
+        lock_id = it.get('lock_id')
+        lock_sku = hw_map[lock_id].sku if lock_id in hw_map else ''
+        lock_h = it.get("lock's height", '')
+
+        # Петли: название, артикул (SKU), высоты
+        hinge_name = it.get('hinges') or ''
+        hinge_id = None
+        for b in it.get('bom_items', []) or []:
+            if str(b.get('tag', '')).lower() == 'hinge' and b.get('item_id'):
+                hinge_id = b['item_id']
+                break
+        hinge_sku = hw_map[hinge_id].sku if hinge_id in hw_map else ''
+
+        raw_hinges = it.get('hinges height') or []
+        hinges = [(h if h is not None else '') for h in (list(raw_hinges) + [''] * 5)[:5]]
+
+        base_data = [
+            order.order_number,
+            customer,
+            door_mark,
+            total_doors,
+            family_name,
+            series_name,
+            model_code,
+            direction,
+            panel_w,
+            panel_h,
+            lock_name,
+            lock_sku,
+            lock_h,
+            hinge_name,
+            hinge_sku,
+            hinges[0],
+            hinges[1],
+            hinges[2],
+            hinges[3],
+            hinges[4],
+        ]
+
+        # Наклейка 1: Обгонка
+        writer.writerow(base_data + [1])
+
+        # Наклейка 2: Врезка замков и петель
+        writer.writerow(base_data + [2])
+
+    return response

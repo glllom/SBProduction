@@ -13,7 +13,8 @@ from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from apps.orders.models import OrderItemsGroup, OrderItem, OrderStatus, OrderChangeLog
+from apps.orders.models import OrderItemsGroup, OrderItem, OrderChangeLog
+from apps.orders.models import OrderStatus
 from .models import (
     ProductionStation, OrderSpecificationSnapshot, SvgPattern,
 )
@@ -958,6 +959,311 @@ class ProductionDataService:
 
         return summary_list
 
+    @staticmethod
+    def prepare_wood_frames_report_data(order_spec):
+        """
+        Group and aggregate wood frame specifications using external site measurements.
+        """
+        groups_map = {}
+
+        for item in getattr(order_spec, 'items', []):
+            # Пропускаем позиции без коробки или со скрытыми коробами
+            if not getattr(item, 'has_frame', True):
+                continue
+            if getattr(item, 'is_hidden_frame', False):
+                continue
+
+            # Извлечение door_casing из эффективного BOM позиции
+            bom_items = getattr(item, 'bom_items', []) or []
+            casing_names = [
+                getattr(b, 'common_name', None) or getattr(b, 'item_name', '')
+                for b in bom_items
+                if getattr(b, 'tag', '') in ('door_casing', 'casing')
+                or getattr(b, 'section', '') in ('door_casing', 'casing', 'הלבשה', 'הלבשות')
+            ]
+            door_casing = " / ".join(dict.fromkeys(filter(None, casing_names))) or "-"
+
+            # Релевантные кастомизаторы коробки
+            raw_cmz = getattr(item, 'frames_report_customizers', []) or []
+            cmz_signature = []
+            for c in raw_cmz:
+                c_name = c.get('name') if isinstance(c, dict) else getattr(c, 'name', '')
+                c_params = c.get('params', []) if isinstance(c, dict) else getattr(c, 'params', [])
+                p_strs = [f"{p.get('label')}:{p.get('value')}" for p in c_params]
+                cmz_signature.append(f"{c_name}({', '.join(p_strs)})")
+            cmz_key = " + ".join(cmz_signature)
+
+            # Петли
+            raw_hinges = getattr(item, 'hinge_heights', []) or []
+            hinges_tuple = tuple(h for h in raw_hinges if h is not None)
+
+            # Ключ группировки шапки
+            group_key = (
+                getattr(item, 'product_family', '') or getattr(item, 'product_name', ''),
+                getattr(item, 'series', ''),
+                getattr(item, 'frame', ''),
+                door_casing,
+                getattr(item, 'basic_color_frames', ''),
+                getattr(item, 'color_frames', ''),
+                getattr(item, 'lock_name', ''),
+                getattr(item, 'lock_height', None),
+                getattr(item, 'hinge_name', ''),
+                hinges_tuple,
+                cmz_key,
+            )
+
+            if group_key not in groups_map:
+                groups_map[group_key] = {
+                    'product_name': getattr(item, 'product_family', '') or getattr(item, 'product_name', ''),
+                    'series': getattr(item, 'series', ''),
+                    'frame_type': getattr(item, 'frame', ''),
+                    'door_casing': door_casing,
+                    'color_frames': getattr(item, 'color_frames', '') or getattr(item, 'basic_color_frames', ''),
+                    'lock_name': getattr(item, 'lock_name', ''),
+                    'lock_height': getattr(item, 'lock_height', None),
+                    'hinge_name': getattr(item, 'hinge_name', ''),
+                    'hinge_heights': list(hinges_tuple),
+                    'customizers_title': cmz_key,
+                    'items': [],
+                    'size_counter': Counter(),
+                }
+
+            # Внешние замеры замерщика без пересчёта
+            w = getattr(item, 'width', None)
+            h = getattr(item, 'height', None)
+            wall = getattr(item, 'wall', None)
+
+            groups_map[group_key]['items'].append(item)
+            if w and h:
+                groups_map[group_key]['size_counter'][(h, w, wall)] += 1
+
+        result_groups = []
+        for grp in groups_map.values():
+            raw_counter = grp.pop('size_counter')
+            # Сортировка: H по убыванию, W по убыванию, T
+            sorted_sizes = sorted(
+                raw_counter.items(),
+                key=lambda x: (x[0][0], x[0][1], x[0][2] or 0),
+                reverse=True
+            )
+            grp['aggregated_sizes'] = [
+                {'height': h, 'width': w, 'wall': wall, 'qty': count}
+                for (h, w, wall), count in sorted_sizes
+            ]
+
+            def parse_mark(it):
+                try:
+                    return int(getattr(it, 'mark', 0) or 0)
+                except (ValueError, TypeError):
+                    return 999999
+
+            grp['items'].sort(key=parse_mark)
+            result_groups.append(grp)
+
+        return result_groups
+
+    @classmethod
+    def get_order_customizable_hardware(cls, order, spec_obj):
+        """
+        Scans effective BOM items from compiled spec_obj.
+        Finds hardware groups by common_name that have multiple color variants in the catalog.
+        """
+        from apps.catalog.models import Hardware
+
+        # 1. Извлекаем все уникальные common_name из BOM позиций спецификации
+        common_names = set()
+        for item in getattr(spec_obj, 'items', []):
+            for bom_item in getattr(item, 'bom_items', []) or []:
+                c_name = getattr(bom_item, 'common_name', None) or (
+                    bom_item.get('common_name') if isinstance(bom_item, dict) else None
+                )
+                if c_name:
+                    common_names.add(c_name.strip())
+
+        # 2. Текущие сохраненные выборы для заказа
+        saved_selections = {
+            s.common_name: s.selected_hardware_id
+            for s in order.component_selections.all()
+        }
+
+        result = []
+        for c_name in sorted(common_names):
+            # Ищем все активные артикулы с данным common_name, у которых задан цвет
+            items_qs = Hardware.objects.filter(
+                common_name=c_name,
+                active=True,
+                color__isnull=False
+            ).select_related('color')
+
+            # Проверяем, есть ли реальная вариативность по цвету (больше одного уникального цвета)
+            colors_count = items_qs.values('color').distinct().count()
+            if colors_count > 1:
+                options = [
+                    {
+                        'id': h.id,
+                        'name': h.name,
+                        'color_name': h.color.name if h.color else '',
+                        'sku': h.sku,
+                    }
+                    for h in items_qs
+                ]
+                result.append({
+                    'common_name': c_name,
+                    'options': options,
+                    'selected_id': saved_selections.get(c_name),
+                })
+
+        return result
+
+    @classmethod
+    def prepare_warehouse_packing_slip_data(cls, order, spec_obj):
+        """
+        Aggregates hardware and accessories for warehouse picking slip:
+        1. Handles & Escutcheons
+        2. Locks & Accessories
+        3. Hinges (exact piece count based on cutouts) & Covers
+        4. Color-selected or TBD components (from OrderComponentSelection)
+        5. Default BOM & customizer physical hardware (stoppers, drop seals, closers)
+        """
+        from collections import defaultdict
+        from apps.catalog.models import Hardware
+
+        # 1. Считываем сохраненные выборы вариантов для заказа
+        saved_selections = {
+            s.common_name: s.selected_hardware
+            for s in order.component_selections.select_related('selected_hardware__color').all()
+        }
+
+        # 2. Счетчики категорий
+        handles_count = defaultdict(int)
+        locks_count = defaultdict(int)
+        hinges_count = defaultdict(int)
+        bom_hardware_count = defaultdict(lambda: {'qty': 0, 'sku': '', 'obj': None, 'common_name': ''})
+
+        processed_common_names = set()
+
+        # 3. Обход позиций спецификации
+        for item in getattr(spec_obj, 'items', []):
+            # Ручки
+            handle_name = getattr(item, 'handle_name', None) or getattr(order, 'handle_name', None)
+            if not handle_name and getattr(order, 'handle', None):
+                handle_name = order.handle.name
+            if handle_name and getattr(item, 'has_door', True):
+                handles_count[handle_name] += 1
+
+            # Замки
+            lock = getattr(item, 'lock_name', None)
+            if lock and getattr(item, 'has_door', True):
+                locks_count[lock] += 1
+
+            # Петли — считаем строго по числу врезок
+            hinge = getattr(item, 'hinge_name', None)
+            if hinge:
+                raw_hinges = getattr(item, 'hinge_heights', []) or []
+                count = len([h for h in raw_hinges if h is not None])
+                hinges_count[hinge] += count if count > 0 else 3
+
+            # Дополнительная фурнитура из эффективного BOM (стопоры, доводчики, уплотнители и т.д.)
+            for bom_item in getattr(item, 'bom_items', []) or []:
+                tag = getattr(bom_item, 'tag', '')
+                # Исключаем позиции, которые уже посчитаны в отдельных блоках выше
+                if tag in ('lock', 'hinges', 'frame', 'covering', 'base', 'filling', 'door_casing', 'casing'):
+                    continue
+
+                item_name = getattr(bom_item, 'item_name', '')
+                c_name = getattr(bom_item, 'common_name', '') or ''
+                sku = getattr(bom_item, 'sku', '') or ''
+                qty = float(getattr(bom_item, 'quantity', 1) or 1)
+
+                if item_name:
+                    key = c_name or item_name
+                    bom_hardware_count[key]['qty'] += qty
+                    bom_hardware_count[key]['sku'] = sku
+                    bom_hardware_count[key]['common_name'] = c_name
+
+        # 4. Формируем раздел элементов с выбором цвета
+        color_variants_items = []
+        regular_hardware_items = []
+
+        for key, data in bom_hardware_count.items():
+            c_name = data['common_name']
+            if c_name:
+                # Проверяем, есть ли по этому common_name цветовая линейка
+                color_qs = Hardware.objects.filter(common_name=c_name, active=True, color__isnull=False).select_related(
+                    'color')
+                if color_qs.values('color').distinct().count() > 1:
+                    processed_common_names.add(c_name)
+                    chosen_hw = saved_selections.get(c_name)
+
+                    if chosen_hw:
+                        color_variants_items.append({
+                            'common_name': c_name,
+                            'name': chosen_hw.name,
+                            'color_name': chosen_hw.color.name if chosen_hw.color else '',
+                            'sku': chosen_hw.sku,
+                            'qty': int(data['qty']) if data['qty'].is_integer() else data['qty'],
+                            'is_selected': True,
+                        })
+                    else:
+                        # Цвет еще не выбран менеджером
+                        available_options = [
+                            {'name': h.name, 'color': h.color.name if h.color else '', 'sku': h.sku}
+                            for h in color_qs
+                        ]
+                        color_variants_items.append({
+                            'common_name': c_name,
+                            'name': c_name,
+                            'color_name': 'טרם נבחר / לבחירת לקוח',
+                            'sku': '-',
+                            'qty': int(data['qty']) if data['qty'].is_integer() else data['qty'],
+                            'is_selected': False,
+                            'available_options': available_options,
+                        })
+                    continue
+
+            # Обычные фиксированные комплектующие (стопоры, пороги и т.д.)
+            regular_hardware_items.append({
+                'name': key,
+                'sku': data['sku'],
+                'qty': int(data['qty']) if data['qty'].is_integer() else data['qty'],
+            })
+
+        # 5. Итоговые структурированные группы
+        groups = []
+
+        if handles_count:
+            groups.append({
+                'title': 'ידיות ורוזטות (Ручки и розетки)',
+                'items': [{'name': k, 'qty': v, 'sku': ''} for k, v in sorted(handles_count.items())]
+            })
+
+        if locks_count:
+            groups.append({
+                'title': 'מנעולים וצילינדרים (Замки и цилиндры)',
+                'items': [{'name': k, 'qty': v, 'sku': ''} for k, v in sorted(locks_count.items())]
+            })
+
+        if hinges_count:
+            groups.append({
+                'title': 'צירים (Петли - штучный подсчет)',
+                'items': [{'name': k, 'qty': v, 'sku': ''} for k, v in sorted(hinges_count.items())]
+            })
+
+        if color_variants_items:
+            groups.append({
+                'title': 'רכיבים לפי גוון (Комплектующие с выбором цвета)',
+                'is_color_group': True,
+                'items': color_variants_items
+            })
+
+        if regular_hardware_items:
+            groups.append({
+                'title': 'פרזול משלים ומעצורים (Стопоры и доп. фурнитура из BOM)',
+                'items': regular_hardware_items
+            })
+
+        return groups
+
 
 class OrderProductionService:
     """
@@ -1083,7 +1389,7 @@ class OrderProductionService:
         TechnicalSpecService.get_or_build_spec(
             order, phase=phase, batch_number=released_batch, force_rebuild=True, user=user
         )
-        
+
     @staticmethod
     def complete_phase1(order, user=None):
         """

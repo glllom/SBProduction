@@ -128,6 +128,22 @@ class Order(models.Model):
     comments = models.TextField(
         blank=True, null=True, verbose_name="הערות"
     )
+    press_notes = models.TextField(
+        'הערות למכבש (Пресс)',
+        blank=True,
+        default=''
+    )
+    frames_notes = models.TextField(
+        'הערות למשקופים (Коробки)',
+        blank=True,
+        default=''
+    )
+    warehouse_notes = models.TextField(
+        'הערות למחסן (Склад / Комплектация)',
+        blank=True,
+        default='',
+        help_text='הוראות מיוחדות לליקוט (למשל: הלקוח מביא ידיות משלו)'
+    )
     created_at = models.DateTimeField(
         auto_now_add=True, verbose_name="נוצר במערכת"
     )
@@ -474,7 +490,7 @@ class OrderItemsGroup(models.Model):
 
         if self.order_id and self.batch_number is None:
             self.batch_number = self.order.current_batch
-            
+
         # 4. Сохранение группы, синхронизация дверей и пересчет позиций
         with transaction.atomic():
             super().save(*args, **kwargs)
@@ -1046,3 +1062,29 @@ class GroupSpecificationCustomizer(models.Model):
 
     def __str__(self):
         return f"{self.specification.name} - {self.customizer.name}"
+
+
+class OrderComponentSelection(models.Model):
+    order = models.ForeignKey(
+        'orders.Order',
+        on_delete=models.CASCADE,
+        related_name='component_selections',
+        verbose_name='הזמנה'
+    )
+    common_name = models.CharField('שם קבוצה (Common Name)', max_length=255, db_index=True)
+    selected_hardware = models.ForeignKey(
+        'catalog.Hardware',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='פרזול שנבחר'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'בחירת רכיב להזמנה'
+        verbose_name_plural = 'בחירות רכיבים להזמנות'
+        unique_together = ('order', 'common_name')
+
+    def __str__(self):
+        return f"{self.order.order_number} - {self.common_name}: {self.selected_hardware}"
