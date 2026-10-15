@@ -1,9 +1,9 @@
 import math
+from datetime import date
 
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db import transaction
-from django.utils import timezone
 
 from apps.catalog.models import ProductModel, Front
 
@@ -166,10 +166,17 @@ class Order(models.Model):
     def __str__(self):
         return f"הזמנה מס' {self.order_number} ({self.customer or 'ללא לקוח'})"
 
+    def is_editable_by(self, user) -> bool:
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser or getattr(user, 'role', None) == 'ADMIN':
+            return True
+        return self.status in [OrderStatus.NEW, OrderStatus.PHASE1_READY]
+
     def save(self, *args, **kwargs):
         from apps.orders.utils import add_israeli_working_days
 
-        base_date = self.created_at.date() if self.created_at else timezone.now().date()
+        base_date = self.created_at.date() if self.created_at else date.today()
         if not self.completion_date:
             self.completion_date = add_israeli_working_days(base_date, 10)
         if not self.painting_completion_date:
@@ -311,6 +318,13 @@ class OrderItemsGroup(models.Model):
         default=ProductionState.NEW,
         db_index=True,
         verbose_name="סטטוס ייצור של הקבוצה",
+    )
+
+    # Зафиксированная дата запуска батча в производство (не меняется после старта)
+    batch_date = models.DateField(
+        null=True, blank=True,
+        verbose_name="תאריך ירידה לייצור (באץ')",
+        help_text="Зафиксированная дата запуска группы в производство"
     )
 
     quantity = models.PositiveIntegerField(
@@ -469,6 +483,32 @@ class OrderItemsGroup(models.Model):
         # Fallback на цвет коробки из шапки заказа
         return getattr(self.order, 'color_frames', None)
 
+    def is_editable_by(self, user=None) -> bool:
+        """
+        Проверка прав редактирования группы:
+        1. Администраторы могут всегда.
+        2. Если production_state в [NEW, WAITING] -> True.
+        3. Если зафиксированная дата батча совпадает с текущей датой -> True.
+        4. Иначе -> False.
+        """
+
+        # 0. Администраторы имеют полный доступ
+        if user and (user.is_staff or getattr(user, 'is_admin_user', False) or getattr(user, 'role', None) == 'ADMIN'):
+            return True
+
+        # 1. Если производственный статус NEW или WAITING — разрешено
+        if self.production_state in [
+            self.ProductionState.NEW,
+            self.ProductionState.WAITING
+        ]:
+            return True
+
+        if not self.batch_date:
+            return False
+
+        # 4. Проверяем, совпадает ли зафиксированная дата батча с сегодняшним днем
+        return self.batch_date == date.today()
+
     def save(self, *args, **kwargs):
         # 2. Наследование серии и фронта по умолчанию из заказа
         if self.order_id:
@@ -487,9 +527,6 @@ class OrderItemsGroup(models.Model):
 
         if self.frame_paint_option != self.PaintOption.SPECIAL_COLOR:
             self.color_frames = None
-
-        if self.order_id and self.batch_number is None:
-            self.batch_number = self.order.current_batch
 
         # 4. Сохранение группы, синхронизация дверей и пересчет позиций
         with transaction.atomic():

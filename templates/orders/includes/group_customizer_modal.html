@@ -1,4 +1,7 @@
-<div class="modal fade" id="groupCustomizerModal" tabindex="-1">
+<div class="modal fade"
+     id="groupCustomizerModal"
+     tabindex="-1"
+     data-is-locked="false">
     <div class="modal-dialog modal-lg">
         <div class="modal-content border-0 shadow">
             <div class="modal-header bg-light">
@@ -6,6 +9,13 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <!-- Уведомление о блокировке -->
+                <div id="customizerLockedAlert"
+                     class="alert alert-warning d-none mb-3"
+                     role="alert">
+                    <i class="bi bi-lock-fill me-2"></i> הקבוצה נעולה לעריכה (עבר תאריך תחילת הייצור). הצפייה בלבד
+                    פעילה.
+                </div>
                 <div id="customizerGroupInfo" class="mb-4 p-3 border rounded bg-light">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
@@ -18,7 +28,8 @@
                         </div>
                     </div>
                 </div>
-                <div class="mb-4 position-relative">
+                <!-- Блок поиска скрывается, если группа заблокирована -->
+                <div class="mb-4 position-relative" id="customizerSearchContainer">
                     <label class="form-label fw-bold"
                            data-bs-toggle="tooltip"
                            title="הקלד שם או קוד קסטומייזר לחיפוש מהיר והוספה לקבוצה">
@@ -49,7 +60,7 @@
                             <tr>
                                 <th data-bs-toggle="tooltip" title="שם וקוד השינוי / השדרוג">שינוי / שדרוג</th>
                                 <th data-bs-toggle="tooltip" title="פרמטרים מותאמים אישית לשדרוג">פרמטרים</th>
-                                <th style="width: 50px;"></th>
+                                <th style="width: 50px;" id="customizerActionsHeader"></th>
                             </tr>
                         </thead>
                         <tbody id="groupCustomizersList">

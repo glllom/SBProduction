@@ -13,6 +13,7 @@
                     <form method="post">
                         {% csrf_token %}
                         <!-- Номер заказа и Имя клиента -->
+                        <!-- Номер заказа и Имя клиента -->
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold"
@@ -20,9 +21,9 @@
                                        title="{{ form.order_number.help_text|default:'מספר הזמנה ייחודי במערכת' }}">
                                     מספר הזמנה <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
-                                {% if form.instance.pk %}
+                                {% if form.order_number.field.disabled or form.order_number.field.widget.attrs.readonly %}
                                     <input type="text"
-                                           class="form-control bg-light"
+                                           class="form-control bg-light text-muted"
                                            value="{{ form.instance.order_number }}"
                                            readonly
                                            disabled>
@@ -74,7 +75,7 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold"
-                                       data-bs-toggle="tooltip"
+                                       data-bs-toggle="Tooltip"
                                        title="{{ form.handle.help_text|default:'דגם ידית נבחר' }}">
                                     ידית <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
@@ -92,7 +93,7 @@
                                     <div class="col-md-6 border-start">
                                         <div class="form-check form-switch mb-2 pt-1">
                                             {{ form.is_frames_to_paint }}
-                                            <label class="form-check-label fw-bold ms-1"
+                                            <label class="form-check-label fw-bold"
                                                    for="{{ form.is_frames_to_paint.id_for_label }}"
                                                    data-bs-toggle="tooltip"
                                                    title="{{ form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים' }}">
@@ -124,9 +125,9 @@
                                                 (דו-צדדי)
                                             </label>
                                             <div class="form-check form-switch m-0">
-                                                {{ form.different_door_sides }}
+                                                {{ form.is_door_inside_different_color }}
                                                 <label class="form-check-label small"
-                                                       for="{{ form.different_door_sides.id_for_label }}">
+                                                       for="{{ form.is_door_inside_different_color.id_for_label }}">
                                                     צדדים שונים
                                                 </label>
                                             </div>
@@ -140,7 +141,7 @@
                                         {% if form.color_panel_outside.errors %}
                                             <div class="text-danger small mb-1">{{ form.color_panel_outside.errors }}</div>
                                         {% endif %}
-                                        <!-- Внутренняя сторона (раскрывается при включении тумблера) -->
+                                        <!-- Внутренняя сторона -->
                                         <div id="panel-inside-wrapper" style="display: none;">
                                             <label class="form-label small text-muted mb-1">צבע כנף צד פנים:</label>
                                             <div class="input-group input-group-sm">
@@ -170,8 +171,6 @@
                         <div class="mt-4 pt-3 border-top d-flex justify-content-end gap-2">
                             <a href="
 
-
-
 									{% if form.instance.pk %}{% url 'order-detail' form.instance.pk %}{% else %}{% url 'order-list' %}{% endif %}"
                                class="btn btn-light"
                                data-bs-toggle="tooltip"
@@ -191,9 +190,19 @@
 {% endblock %}
 {% block extra_js %}
     <style>
-        /* Коррекция кнопки очистки (X) для RTL в теме Bootstrap 5 */
-        html[dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single .select2-selection__clear,
-        body[dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single .select2-selection__clear,
+        /* Фикс RTL для Bootstrap 5 Switch */
+        [dir="rtl"] .form-check.form-switch {
+            padding-right: 2.5em;
+            padding-left: 0;
+        }
+
+        [dir="rtl"] .form-check.form-switch .form-check-input {
+            float: right;
+            margin-right: -2.5em;
+            margin-left: 0;
+        }
+
+        /* Коррекция кнопки очистки (X) для RTL в Select2 */
         [dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single .select2-selection__clear {
             position: absolute;
             left: 2.2rem;
@@ -207,16 +216,23 @@
             cursor: pointer;
         }
 
-        /* Отступ слева у текста, чтобы он не перекрывался крестиком и стрелкой */
         [dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
             padding-left: 3rem !important;
             padding-right: 0.75rem !important;
         }
 
-        /* Сама стрелка выпадающего списка в RTL */
         [dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single {
             background-position: left 0.75rem center;
         }
+
+        /* Единый вид для заблокированных Select2 и инпутов в Bootstrap 5 */
+        .form-control:disabled, .form-control[readonly],
+        .select2-container--bootstrap-5.select2-container--disabled .select2-selection {
+            background-color: #e9ecef !important;
+            opacity: 1 !important;
+            color: #6c757d !important;
+        }
+
     </style>
     <!-- Select2 CSS & Theme -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
@@ -235,11 +251,9 @@
         }
 
         $(document).ready(function () {
-            // Базовые стили Bootstrap
             $('input[type="text"], input[type="number"], textarea').addClass('form-control');
             $('select:not([name="series"]):not([name="front"]):not([name="handle"])').addClass('form-select');
 
-            // 1. Инициализация Select2 с поиском по имени
             function initSelect2Fields() {
                 $('select[name="series"], select[name="front"], select[name="handle"]').each(function () {
                     const $el = $(this);
@@ -255,7 +269,6 @@
 
             initSelect2Fields();
 
-            // 2. Асинхронная связка Series -> Front с поддержкой Select2
             $(document).on('change', 'select[name="series"]', function () {
                 const seriesId = $(this).val();
                 const $frontSelect = $('select[name="front"]');
@@ -285,7 +298,7 @@
                     });
             });
 
-            // 3. Логика тумблеров покраски
+            // Тумблеры покраски
             const $toggleFrames = $('#toggle-paint-frames');
             const $frameWrapper = $('#frame-color-wrapper');
             const $toggleSides = $('#toggle-different-sides');
@@ -319,14 +332,8 @@
                 });
             }
 
-            // Инициализация отображения цвета при загрузке
-            if ($toggleFrames.is(':checked')) {
-                $frameWrapper.show();
-            }
-            if ($toggleSides.is(':checked')) {
-                $insideWrapper.show();
-                $labelOutside.text('צבע כנף חוץ:');
-            }
+            // Инициализация при открытии
+            syncColorsUI();
         });
     </script>
 {% endblock %}

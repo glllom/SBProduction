@@ -1,3 +1,6 @@
+from datetime import date
+from typing import Dict
+
 from django import forms
 
 from apps.catalog.models import Front, ProductType, ProductFamily, Series, ProductModel, Material
@@ -6,7 +9,7 @@ from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer, OrderItem
 
 class TooltipSelect(forms.Select):
     """
-    Select widget that extracts description/help_text from Model instances
+    Select a widget that extracts description/help_text from Model instances
     and adds 'title' and 'data-description' attributes to each <option>.
     """
 
@@ -55,8 +58,10 @@ class TooltipFormMixin:
     """
     Mixin that configures tooltip data attributes on fields with help_text or descriptions.
     """
+    fields: Dict[str, forms.Field]
 
     def apply_tooltips(self):
+
         for field_name, field in self.fields.items():
             if field.help_text:
                 ht = str(field.help_text).strip()
@@ -70,6 +75,8 @@ class TooltipFormMixin:
 
 
 class OrderItemForm(TooltipFormMixin, forms.ModelForm):
+    instance: OrderItem
+
     class Meta:
         model = OrderItem
         fields = [
@@ -122,13 +129,16 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+        if cleaned_data is None:
+            cleaned_data = {}
+
         instance = self.instance
         if not instance or not instance.group or not instance.group.product:
             return cleaned_data
 
         product_type = instance.group.product.product_family.product_type
 
-        # 1. Dimensions (width, height) - needed if has_door OR has_frame
+        # 1. Dimensions (width, height) - needed if it has_door OR has_frame
         if not (product_type.has_door or product_type.has_frame):
             # For Wall Cladding, dimensions might be optional or hidden
             pass
@@ -163,15 +173,8 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
 
 class OrderForm(TooltipFormMixin, forms.ModelForm):
     """
-    Единая форма для создания и редактирования заказа (ранее дублировалась с OrderHeaderForm).
+    Единая форма для создания и редактирования заказа.
     """
-    # Служебный UI-тумблер: по умолчанию выключен (две стороны одинаковые)
-    different_door_sides = forms.BooleanField(
-        required=False,
-        initial=False,
-        label="צדדים שונים (חוץ / פנים)",
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'toggle-different-sides'})
-    )
 
     class Meta:
         model = Order
@@ -182,6 +185,7 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
             'front',
             'handle',
             'color_panel_outside',
+            'is_door_inside_different_color',
             'color_panel_inside',
             'is_frames_to_paint',
             'color_frames',
@@ -194,6 +198,7 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
             'front': 'חזית או גימור הכנף',
             'handle': 'דגם ידית נבחר',
             'color_panel_outside': 'גוון צבע עבור כנפי הדלתות (צד חוץ / ברירת מחדל)',
+            'is_door_inside_different_color': 'צבע שונה לצד פנימי של הדלת',
             'color_panel_inside': 'גוון צבע עבור כנפי הדלתות (צד פנים)',
             'is_frames_to_paint': 'האם לצבוע את המשקופים בצבע ייעודי',
             'color_frames': 'גוון צבע עבור המשקופים',
@@ -206,12 +211,16 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
             'front': TooltipSelect(attrs={'class': 'form-select'}),
             'handle': TooltipSelect(attrs={'class': 'form-select'}),
             'color_panel_outside': forms.TextInput(attrs={
-                'class': 'form-control',
+                'class': 'form-control form-control-sm',
                 'placeholder': 'צבע כנף (חוץ / דו-צדדי)',
                 'id': 'id_color_panel_outside'
             }),
+            'is_door_inside_different_color': forms.CheckboxInput(attrs={
+                'class': 'form-check-input',
+                'id': 'toggle-different-sides'
+            }),
             'color_panel_inside': forms.TextInput(attrs={
-                'class': 'form-control',
+                'class': 'form-control form-control-sm',
                 'placeholder': 'צבע כנף פנים',
                 'id': 'id_color_panel_inside'
             }),
@@ -220,7 +229,7 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
                 'id': 'toggle-paint-frames'
             }),
             'color_frames': forms.TextInput(attrs={
-                'class': 'form-control',
+                'class': 'form-control form-control-sm',
                 'placeholder': 'צבע משקופים',
                 'id': 'id_color_frames'
             }),
@@ -228,18 +237,41 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
 
-        # Если заказ уже существует, делаем order_number readonly или скрываем
-        if self.instance and self.instance.pk:
-            if 'order_number' in self.fields:
-                self.fields['order_number'].widget.attrs['readonly'] = True
+        is_editable = True
+        today = date.today()
 
-            # Если стороны уже отличаются, взводим чекбокс
+        if self.instance and self.instance.pk:
+            # 1. Номер заказа закрыт для редактирования, если статус не NEW
+            if self.instance.status != 'NEW':
+                if 'order_number' in self.fields:
+                    self.fields['order_number'].widget.attrs['readonly'] = True
+
+            # 2. Проверка Grace Period и блокировка по дате / статусу
+            if self.instance.status != 'NEW':
+                prod_date = self.instance.production_start_date
+
+                if hasattr(prod_date, 'date'):
+                    prod_date = prod_date.date()
+
+                if prod_date and prod_date < today:
+                    is_editable = False
+                elif not prod_date:
+                    is_editable = False
+
             c_out = self.instance.color_panel_outside or ''
             c_in = self.instance.color_panel_inside or ''
             if c_in and c_in != c_out:
-                self.fields['different_door_sides'].initial = True
+                self.initial['is_door_inside_different_color'] = True
+
+        # Применяем блокировку полей шапки
+        if not is_editable:
+            self.fields['series'].disabled = True
+            self.fields['front'].disabled = True
+            if 'customer' in self.fields:
+                self.fields['customer'].widget.attrs['readonly'] = True
 
         # Инициализация списка front по series
         series_id = None
@@ -260,21 +292,24 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        diff_sides = cleaned_data.get('different_door_sides')
+        diff_sides = cleaned_data.get('is_door_inside_different_color')
         c_out = cleaned_data.get('color_panel_outside')
 
         # Если тумблер выключен, дублируем наружный цвет внутрь
         if not diff_sides:
             cleaned_data['color_panel_inside'] = c_out
+            cleaned_data['is_door_inside_different_color'] = False
 
         # Если коробки не красятся, сбрасываем краску коробки
         if not cleaned_data.get('is_frames_to_paint'):
             cleaned_data['color_frames'] = ''
+            cleaned_data['is_frames_to_paint'] = False
 
         return cleaned_data
 
 
 class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
+    instance: OrderItemsGroup
     product_type = forms.ModelChoiceField(
         queryset=ProductType.objects.filter(active=True),
         label='סוג מוצר',
@@ -301,22 +336,33 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
             'is_split_installation', 'comments'
         ]
         widgets = {
-            'panel_paint_option': forms.Select(attrs={'class': 'form-select form-select-sm group-panel-option-select'}),
-            'frame_paint_option': forms.Select(attrs={'class': 'form-select form-select-sm group-frame-option-select'}),
+            'panel_paint_option': forms.Select(
+                attrs={'class': 'form-select form-select-sm group-panel-option-select'}
+            ),
+            'frame_paint_option': forms.Select(
+                attrs={'class': 'form-select form-select-sm group-frame-option-select'}
+            ),
             'is_door_inside_different_color': forms.CheckboxInput(
-                attrs={'class': 'form-check-input group-toggle-diff-sides'}),
+                attrs={'class': 'form-check-input group-toggle-diff-sides'}
+            ),
             'color_panel_outside': forms.TextInput(
-                attrs={'class': 'form-control form-control-sm', 'placeholder': 'קוד צבע'}),
+                attrs={'class': 'form-control form-control-sm', 'placeholder': 'קוד צבע'}
+            ),
             'color_panel_inside': forms.TextInput(
-                attrs={'class': 'form-control form-control-sm', 'placeholder': 'קוד צבע פנים'}),
+                attrs={'class': 'form-control form-control-sm', 'placeholder': 'קוד צבע פנים'}
+            ),
             'color_frames': forms.TextInput(
-                attrs={'class': 'form-control form-control-sm', 'placeholder': 'קוד צבע משקוף'}),
-            'comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'הערות לקבוצה...'}),
+                attrs={'class': 'form-control form-control-sm', 'placeholder': 'קוד צבע משקוף'}
+            ),
+            'comments': forms.Textarea(
+                attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'הערות לקבוצה...'}
+            ),
             'is_split_installation': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
     def __init__(self, *args, **kwargs):
         self.order = kwargs.pop('order', None)
+        self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
 
         # Set initial values for product_type and product_family if product is set
@@ -336,9 +382,10 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
                 self.initial['series'] = self.order.series
 
         series_id = None
-        if 'series' in self.data:
+        series_val = self.data.get('series') if self.data else None
+        if series_val:
             try:
-                series_id = int(self.data.get('series'))
+                series_id = int(str(series_val))
             except (ValueError, TypeError):
                 series_id = None
         elif self.instance.pk and self.instance.series:
@@ -346,25 +393,29 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
         elif self.order and self.order.series_id:
             series_id = self.order.series_id
 
-        if series_id:
-            self.fields['front'].queryset = Front.objects.filter(series_id=series_id, active=True).order_by('name')
-        else:
-            self.fields['front'].queryset = Front.objects.none()
+        front_field = self.fields.get('front')
+        if isinstance(front_field, forms.ModelChoiceField):
+            if series_id:
+                front_field.queryset = Front.objects.filter(series_id=series_id, active=True).order_by('name')
+            else:
+                front_field.queryset = Front.objects.none()
 
         # Resolve product for frame color queryset
         product = None
-        if 'product' in self.data:
+        product_val = self.data.get('product') if self.data else None
+        if product_val:
             try:
-                product_id = int(self.data.get('product'))
+                product_id = int(str(product_val))
                 product = ProductModel.objects.filter(id=product_id).first()
             except (ValueError, TypeError):
                 product = None
 
         if not product and series_id:
             family_id = None
-            if 'product_family' in self.data:
+            family_val = self.data.get('product_family') if self.data else None
+            if family_val:
                 try:
-                    family_id = int(self.data.get('product_family'))
+                    family_id = int(str(family_val))
                 except (ValueError, TypeError):
                     family_id = None
             elif self.instance.pk and self.instance.product_id:
@@ -376,49 +427,131 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
         if not product and self.instance.pk and self.instance.product:
             product = self.instance.product
 
-        # Populate basic_color_frames queryset
-        if product:
-            available_frames = product.available_frames
-            self.fields[
-                'basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.none()
-        elif series_id:
-            series = Series.objects.filter(id=series_id).first()
-            if series:
-                available_frames = series.available_frames
-                self.fields[
-                    'basic_color_frames'].queryset = available_frames if available_frames.exists() else Material.objects.none()
+        # Populate basic_color_frames queryset without extra .exists() queries
+        basic_color_field = self.fields.get('basic_color_frames')
+        if isinstance(basic_color_field, forms.ModelChoiceField):
+            if product:
+                basic_color_field.queryset = product.available_frames
+            elif series_id:
+                series = Series.objects.filter(id=series_id).first()
+                basic_color_field.queryset = series.available_frames if series else Material.objects.none()
             else:
-                self.fields['basic_color_frames'].queryset = Material.objects.none()
-        else:
-            self.fields['basic_color_frames'].queryset = Material.objects.none()
+                basic_color_field.queryset = Material.objects.none()
 
-        if self.instance.pk and self.instance.basic_color_frames_id:
-            self.fields['basic_color_frames'].queryset = (
-                    self.fields['basic_color_frames'].queryset | Material.objects.filter(
-                id=self.instance.basic_color_frames_id)).distinct()
+            if self.instance.pk and self.instance.basic_color_frames_id:
+                extra_qs = Material.objects.filter(id=self.instance.basic_color_frames_id)
+                if basic_color_field.queryset is not None:
+                    basic_color_field.queryset = (basic_color_field.queryset | extra_qs).distinct()
+                else:
+                    basic_color_field.queryset = extra_qs
 
         # Handle product_family queryset filtering if product_type is in data
-        if 'product_type' in self.data:
-            try:
-                type_id = int(self.data.get('product_type'))
-                self.fields['product_family'].queryset = ProductFamily.objects.filter(product_type_id=type_id).order_by(
-                    'name')
-            except (ValueError, TypeError):
-                self.fields['product_family'].queryset = ProductFamily.objects.none()
-        elif self.instance.pk and self.instance.product:
-            self.fields['product_family'].queryset = ProductFamily.objects.filter(
-                product_type=self.instance.product.product_family.product_type
-            ).order_by('name')
+        product_family_field = self.fields.get('product_family')
+        if isinstance(product_family_field, forms.ModelChoiceField):
+            product_type_val = self.data.get('product_type') if self.data else None
+            if product_type_val:
+                try:
+                    type_id = int(str(product_type_val))
+                    product_family_field.queryset = ProductFamily.objects.filter(
+                        product_type_id=type_id
+                    ).order_by('name')
+                except (ValueError, TypeError):
+                    product_family_field.queryset = ProductFamily.objects.none()
+            elif self.instance.pk and self.instance.product:
+                product_family_field.queryset = ProductFamily.objects.filter(
+                    product_type=self.instance.product.product_family.product_type
+                ).order_by('name')
 
         # Inheritance logic for front from order (if possible)
         if not self.instance.pk and self.order:
-            if self.order.front and self.order.front in self.fields['front'].queryset:
+            front_field_obj = self.fields.get('front')
+            if (
+                    isinstance(front_field_obj, forms.ModelChoiceField)
+                    and front_field_obj.queryset is not None
+                    and self.order.front
+                    and self.order.front in front_field_obj.queryset
+            ):
                 self.initial['front'] = self.order.front
+
+        # --- RBAC Field Locking Logic ---
+        if self.instance.pk:
+            can_edit = self.instance.is_editable_by(self.user)
+            if not can_edit:
+                # Lock structural parameters
+                locked_fields = [
+                    'product_type', 'product_family', 'series', 'front',
+                    'basic_color_frames', 'quantity', 'product', 'is_split_installation'
+                ]
+                for f in locked_fields:
+                    field = self.fields.get(f)
+                    if field is not None:
+                        field.disabled = True
+
+                # Lock panel paint if already set and not pending customer choice
+                if not getattr(self.instance, 'is_panel_color_tbd', False):
+                    for f in [
+                        'panel_paint_option', 'is_door_inside_different_color',
+                        'color_panel_outside', 'color_panel_inside'
+                    ]:
+                        field = self.fields.get(f)
+                        if field is not None:
+                            field.disabled = True
+
+                # Lock frame paint if already set and not pending customer choice
+                if not getattr(self.instance, 'is_frame_color_tbd', False):
+                    for f in ['frame_paint_option', 'color_frames']:
+                        field = self.fields.get(f)
+                        if field is not None:
+                            field.disabled = True
 
         self.apply_tooltips()
 
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data is None:
+            cleaned_data = {}
+
+        if self.instance.pk:
+            can_edit = self.instance.is_editable_by(self.user)
+            if not can_edit:
+                cleaned_data['product'] = self.instance.product
+                cleaned_data['series'] = self.instance.series
+                cleaned_data['front'] = self.instance.front
+                cleaned_data['quantity'] = self.instance.quantity
+                cleaned_data['basic_color_frames'] = self.instance.basic_color_frames
+                cleaned_data['is_split_installation'] = self.instance.is_split_installation
+
+                if not getattr(self.instance, 'is_panel_color_tbd', False):
+                    cleaned_data['panel_paint_option'] = self.instance.panel_paint_option
+                    cleaned_data['color_panel_outside'] = self.instance.color_panel_outside
+                    cleaned_data['color_panel_inside'] = self.instance.color_panel_inside
+                    cleaned_data['is_door_inside_different_color'] = self.instance.is_door_inside_different_color
+
+                if not getattr(self.instance, 'is_frame_color_tbd', False):
+                    cleaned_data['frame_paint_option'] = self.instance.frame_paint_option
+                    cleaned_data['color_frames'] = self.instance.color_frames
+
+        # Нормализация покраски полотна
+        panel_paint = cleaned_data.get('panel_paint_option')
+        if panel_paint != OrderItemsGroup.PaintOption.SPECIAL_COLOR:
+            cleaned_data['color_panel_outside'] = ''
+            cleaned_data['color_panel_inside'] = ''
+            cleaned_data['is_door_inside_different_color'] = False
+        else:
+            if not cleaned_data.get('is_door_inside_different_color'):
+                cleaned_data['color_panel_inside'] = cleaned_data.get('color_panel_outside')
+
+        # Нормализация покраски коробки
+        frame_paint = cleaned_data.get('frame_paint_option')
+        if frame_paint != OrderItemsGroup.PaintOption.SPECIAL_COLOR:
+            cleaned_data['color_frames'] = ''
+
+        return cleaned_data
+
 
 class OrderItemsGroupCustomizerForm(TooltipFormMixin, forms.ModelForm):
+    instance: OrderItemsGroupCustomizer
+
     class Meta:
         model = OrderItemsGroupCustomizer
         fields = ['customizer', 'par1', 'par2', 'par3', 'par4']

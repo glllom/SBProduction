@@ -1,10 +1,12 @@
 import json
+from typing import cast
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import PermissionDenied, ObjectDoesNotExist, ValidationError
+from django.core.exceptions import PermissionDenied, ObjectDoesNotExist
+from django.core.files.uploadedfile import UploadedFile
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpRequest
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy, reverse
 from django.views.decorators.http import require_POST
@@ -32,12 +34,14 @@ from .serializers import (
 
 def user_is_admin(user) -> bool:
     """Safely check if the user is authenticated and has admin privileges."""
-    return bool(user.is_authenticated and getattr(user, 'is_admin_user', False))
+    if not user or not user.is_authenticated:
+        return False
+    return bool(user.is_superuser or getattr(user, 'role', None) == 'ADMIN')
 
 
 def check_order_editable(order: Order, user):
     """Ensure an order can be edited by a current user."""
-    if order.status != OrderStatus.NEW and not user_is_admin(user):
+    if not order.is_editable_by(user):
         raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
 
 
@@ -105,7 +109,7 @@ class OrderEditPermissionMixin(View):
         if not order:
             if 'order_pk' in self.kwargs:
                 order = get_object_or_404(Order, pk=self.kwargs.get('order_pk'))
-            elif 'pk' in self.kwargs and isinstance(self, (OrderHeaderUpdateView, OrderDeleteView)):
+            elif 'pk' in self.kwargs and isinstance(self, OrderDeleteView):
                 order = get_object_or_404(Order, pk=self.kwargs.get('pk'))
 
         if order:
@@ -114,9 +118,17 @@ class OrderEditPermissionMixin(View):
         return super().dispatch(request, *args, **kwargs)
 
 
-class OrderItemUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, UpdateView):
+class OrderItemUpdateView(LoginRequiredMixin, UpdateView):
     model = OrderItem
     form_class = OrderItemForm
+
+    def dispatch(self, request, *args, **kwargs):
+        item = self.get_object()
+        if item.state == OrderItem.ItemState.CANCELED:
+            raise PermissionDenied("פריט מבוטל אינו ניתן לעריכה.")
+        if not item.group.is_editable_by(request.user):
+            raise PermissionDenied("עריכת פריט זה נעולה.")
+        return super().dispatch(request, *args, **kwargs)
 
     def get_success_url(self):
         return reverse_lazy('order-detail', kwargs={'pk': self.object.group.order.pk})
@@ -164,11 +176,29 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        order = self.object
+        user = self.request.user
+
+        context['can_edit_order'] = order.is_editable_by(user)
+        context['is_admin_user'] = user_is_admin(user)
+
         context['families'] = ProductFamily.objects.all()
         context['series'] = Series.objects.all()
         context['product_types'] = ProductType.objects.filter(active=True)
-        context['header_form'] = OrderForm(instance=self.object)
-        context['group_form'] = OrderItemsGroupForm(order=self.object)
+        context['header_form'] = OrderForm(instance=order, user=user)
+        context['group_form'] = OrderItemsGroupForm(order=order, user=user)
+
+        # Annotate edit permission per group
+        groups = list(
+            order.groups.all().select_related(
+                'product__product_family__product_type', 'product__product_family',
+                'series', 'front', 'basic_color_frames'
+            ).prefetch_related('items', 'customizers__customizer')
+        )
+        for g in groups:
+            g.can_edit = g.is_editable_by(user)
+        context['groups'] = groups
+
         context['saved_specifications'] = GroupSpecification.objects.all().select_related(
             'product', 'product__product_family__product_type', 'product__product_family',
             'series', 'front', 'basic_color_frames', 'created_by'
@@ -204,14 +234,36 @@ class OrderMeasurementsView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['product_types'] = ProductType.objects.filter(active=True)
+
+        user = self.request.user
+        groups = list(
+            self.object.groups.all().select_related(
+                'product__product_family__product_type'
+            ).prefetch_related('items', 'customizers__customizer')
+        )
+        for g in groups:
+            g.can_edit = g.is_editable_by(user)
+
+        context['groups'] = groups
         return context
 
 
-class OrderHeaderUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, UpdateView):
+class OrderHeaderUpdateView(LoginRequiredMixin, UpdateView):
     model = Order
     form_class = OrderForm
     template_name = 'orders/order_form.html'
     context_object_name = 'order'
+
+    def dispatch(self, request, *args, **kwargs):
+        order = self.get_object()
+        if order.status == OrderStatus.CANCELED:
+            raise PermissionDenied("הזמנה מבוטלת אינה ניתנת לעריכה.")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
 
     def form_valid(self, form):
         order = self.get_object()
@@ -253,6 +305,9 @@ class OrderDeleteView(LoginRequiredMixin, OrderEditPermissionMixin, DeleteView):
 
 class OrderItemsGroupFormMixin(FormMixin):
     """Shared configuration and form handling logic for OrderItemsGroup views."""
+    request: HttpRequest
+    object: OrderItemsGroup
+
     model = OrderItemsGroup
     form_class = OrderItemsGroupForm
     template_name = 'orders/orderitemsgroup_form.html'
@@ -272,6 +327,7 @@ class OrderItemsGroupCreateView(LoginRequiredMixin, OrderEditPermissionMixin, Or
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs['order'] = get_object_or_404(Order, pk=self.kwargs.get('order_pk'))
+        kwargs['user'] = self.request.user
         return kwargs
 
     def form_valid(self, form):
@@ -279,15 +335,46 @@ class OrderItemsGroupCreateView(LoginRequiredMixin, OrderEditPermissionMixin, Or
         return super().form_valid(form)
 
 
-class OrderItemsGroupUpdateView(LoginRequiredMixin, OrderEditPermissionMixin, OrderItemsGroupFormMixin, UpdateView):
+class OrderItemsGroupUpdateView(LoginRequiredMixin, OrderItemsGroupFormMixin, UpdateView):
+    def dispatch(self, request, *args, **kwargs):
+        group = self.get_object()
+        if group.production_state == OrderItemsGroup.ProductionState.CANCELED:
+            raise PermissionDenied("קבוצה מבוטלת אינה ניתנת לעריכה.")
+        return super().dispatch(request, *args, **kwargs)
+
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs['order'] = self.object.order
+        kwargs['user'] = self.request.user
         return kwargs
 
+    def form_valid(self, form):
+        old_instance = OrderItemsGroup.objects.get(pk=self.object.pk)
+        response = super().form_valid(form)
+        new_instance = self.object
 
-class OrderItemsGroupDeleteView(LoginRequiredMixin, OrderEditPermissionMixin, DeleteView):
+        changed_fields = form.changed_data
+        for field in changed_fields:
+            old_val = getattr(old_instance, field)
+            new_val = getattr(new_instance, field)
+            OrderChangeLog.objects.create(
+                order=new_instance.order,
+                user=self.request.user,
+                field_name=f"group_{new_instance.id}_{field}",
+                old_value=str(old_val) if old_val is not None else None,
+                new_value=str(new_val) if new_val is not None else None
+            )
+        return response
+
+
+class OrderItemsGroupDeleteView(LoginRequiredMixin, DeleteView):
     model = OrderItemsGroup
+
+    def dispatch(self, request, *args, **kwargs):
+        group = self.get_object()
+        if not group.is_editable_by(request.user):
+            raise PermissionDenied("לא ניתן למחוק קבוצה בייצור. יש להשתמש בביטול קבוצה (פורס-מז'ור).")
+        return super().dispatch(request, *args, **kwargs)
 
     def get_success_url(self):
         return reverse_lazy('order-detail', kwargs={'pk': self.object.order.pk})
@@ -305,6 +392,23 @@ class OrderItemsGroupCustomizerViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(group_id=group_id)
         return queryset
 
+    def perform_create(self, serializer):
+        group = serializer.validated_data.get('group')
+        if group and not group.is_editable_by(self.request.user):
+            raise PermissionDenied("קבוצה זו נעולה לעריכה.")
+        serializer.save()
+
+    def perform_update(self, serializer):
+        group = serializer.instance.group
+        if not group.is_editable_by(self.request.user):
+            raise PermissionDenied("קבוצה זו נעולה לעריכה.")
+        serializer.save()
+
+    def perform_destroy(self, instance: OrderItemsGroupCustomizer):
+        if not instance.group.is_editable_by(self.request.user):
+            raise PermissionDenied("קבוצה זו נעולה לעריכה.")
+        instance.delete()
+
 
 # ==========================================
 # Item Measurements & Actions
@@ -313,8 +417,13 @@ class OrderItemsGroupCustomizerViewSet(viewsets.ModelViewSet):
 @login_required
 @require_POST
 def update_item_measurements(request, pk):
-    item = get_object_or_404(OrderItem, pk=pk)
-    check_order_editable(item.group.order, request.user)
+    item = get_object_or_404(OrderItem.objects.select_related('group__order'), pk=pk)
+
+    if item.state == OrderItem.ItemState.CANCELED:
+        return JsonResponse({'status': 'error', 'message': 'פריט מבוטל אינו ניתן לעריכה'}, status=400)
+
+    if not item.group.is_editable_by(request.user):
+        return JsonResponse({'status': 'error', 'message': 'עריכת פריט זה נעולה'}, status=403)
 
     fields = [
         'height', 'width', 'wall', 'direction', 'opening', 'mark',
@@ -322,18 +431,61 @@ def update_item_measurements(request, pk):
         'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
         'custom_hinge3', 'custom_hinge4', 'custom_hinge5'
     ]
+
+    changes = []
     for field in fields:
         if field in request.POST:
             val = request.POST.get(field)
-            setattr(item, field, None if val == '' else val)
+            val = None if val == '' or val is None else val
+            old_val = getattr(item, field)
+
+            old_str = str(old_val) if old_val is not None else ''
+            new_str = str(val) if val is not None else ''
+
+            if old_str != new_str:
+                setattr(item, field, val)
+                changes.append(
+                    OrderChangeLog(
+                        order=item.group.order,
+                        user=request.user,
+                        field_name=f"door_{item.mark or item.id}_{field}",
+                        old_value=old_str or None,
+                        new_value=new_str or None,
+                    )
+                )
 
     if 'sketch' in request.FILES:
-        item.sketch = request.FILES['sketch']
-    elif request.POST.get('delete_sketch') == 'true':
+        old_sketch = item.sketch.name if item.sketch else None
+        uploaded_sketch = cast(UploadedFile, request.FILES['sketch'])
+        item.sketch = uploaded_sketch
+        changes.append(
+            OrderChangeLog(
+                order=item.group.order,
+                user=request.user,
+                field_name=f"door_{item.mark or item.id}_sketch",
+                old_value=old_sketch,
+                new_value=item.sketch.name,
+            )
+        )
+    elif request.POST.get('delete_sketch') == 'true' and item.sketch:
+        old_sketch = item.sketch.name
         item.sketch.delete(save=False)
         item.sketch = None
+        changes.append(
+            OrderChangeLog(
+                order=item.group.order,
+                user=request.user,
+                field_name=f"door_{item.mark or item.id}_sketch",
+                old_value=old_sketch,
+                new_value=None,
+            )
+        )
 
     item.save()
+
+    if changes:
+        OrderChangeLog.objects.bulk_create(changes)
+
     return JsonResponse({
         'status': 'ok',
         'sketch_url': item.sketch.url if item.sketch else None
@@ -343,27 +495,23 @@ def update_item_measurements(request, pk):
 @login_required
 @require_POST
 def duplicate_item_measurements(request, pk):
-    item = get_object_or_404(OrderItem, pk=pk)
+    item = get_object_or_404(OrderItem.objects.select_related('group__order'), pk=pk)
 
-    # 1. Безопасная проверка прав
-    try:
-        check_order_editable(item.group.order, request.user)
-    except (PermissionDenied, ValidationError) as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=403)
+    if not item.group.is_editable_by(request.user):
+        return JsonResponse({'status': 'error', 'message': 'עריכת פריט זה נעולה'}, status=403)
 
     group = item.group
-    items_to_update = OrderItem.objects.filter(group=group, id__gte=item.id)
+    items_to_update = OrderItem.objects.filter(
+        group=group,
+        id__gte=item.id
+    ).exclude(state=OrderItem.ItemState.CANCELED)
 
-    # Числовые поля (пустая строка превращается в None)
     numeric_fields = [
         'height', 'width', 'wall', 'bottom_correction',
         'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
         'custom_hinge3', 'custom_hinge4', 'custom_hinge5'
     ]
-
-    # Текстовые поля (пустая строка остается "")
     char_fields = ['direction', 'opening', 'place', 'comment']
-
     update_data = {}
 
     for field in numeric_fields:
@@ -384,6 +532,13 @@ def duplicate_item_measurements(request, pk):
 
     if update_data:
         items_to_update.update(**update_data)
+        OrderChangeLog.objects.create(
+            order=group.order,
+            user=request.user,
+            field_name=f"group_{group.id}_duplicate_measurements",
+            old_value=f"From door #{item.mark or item.id}",
+            new_value=json.dumps(update_data, ensure_ascii=False)
+        )
 
     return JsonResponse({'status': 'ok'})
 
@@ -446,7 +601,8 @@ def save_group_specification(request, pk):
 @require_POST
 def apply_group_specification(request, pk, spec_pk):
     group = get_object_or_404(OrderItemsGroup, pk=pk)
-    check_order_editable(group.order, request.user)
+    if not group.is_editable_by(request.user):
+        raise PermissionDenied("קבוצה זו נעולה לעריכה.")
 
     spec = get_object_or_404(GroupSpecification, pk=spec_pk)
     update_qty = request.POST.get('update_quantity') in ['true', '1', 'on', True]
@@ -493,6 +649,61 @@ def delete_group_specification(request, pk):
         request.META.get('HTTP_REFERER', '/'),
         {'status': 'ok', 'message': 'המפרט נמחק בהצלחה'}
     )
+
+
+@login_required
+@require_POST
+def order_item_cancel(request, pk):
+    """Force-majeure door cancellation."""
+    item = get_object_or_404(OrderItem.objects.select_related('group__order'), pk=pk)
+
+    if item.group.order.status in [OrderStatus.COMPLETED, OrderStatus.CANCELED]:
+        return JsonResponse({'status': 'error', 'message': 'לא ניתן לבטל בהזמנה שהסתיימה או בוטלה'}, status=400)
+
+    if item.state != OrderItem.ItemState.CANCELED:
+        item.state = OrderItem.ItemState.CANCELED
+        item.save(update_fields=['state'])
+
+        OrderChangeLog.objects.create(
+            order=item.group.order,
+            user=request.user,
+            field_name=f"door_{item.mark or item.id}_state",
+            old_value=OrderItem.ItemState.ACTIVE,
+            new_value=OrderItem.ItemState.CANCELED
+        )
+
+    return JsonResponse({'status': 'ok', 'message': f'דלת מס {item.mark} בוטלה בהצלחה'})
+
+
+@login_required
+@require_POST
+def order_group_cancel(request, pk):
+    """Force-majeure group cancellation."""
+    group = get_object_or_404(OrderItemsGroup.objects.select_related('order'), pk=pk)
+
+    if group.order.status in [OrderStatus.COMPLETED, OrderStatus.CANCELED]:
+        return JsonResponse({'status': 'error', 'message': 'לא ניתן לבטל בהזמנה שהסתיימה או בוטלה'}, status=400)
+
+    if group.production_state != OrderItemsGroup.ProductionState.CANCELED:
+        old_state = group.production_state
+        group.production_state = OrderItemsGroup.ProductionState.CANCELED
+        group.save(update_fields=['production_state'])
+
+        group.items.filter(state=OrderItem.ItemState.ACTIVE).update(state=OrderItem.ItemState.CANCELED)
+
+        OrderChangeLog.objects.create(
+            order=group.order,
+            user=request.user,
+            field_name=f"group_{group.id}_production_state",
+            old_value=old_state,
+            new_value=OrderItemsGroup.ProductionState.CANCELED
+        )
+
+    target_url = reverse('order-detail', kwargs={'pk': group.order.pk})
+    return json_or_redirect(request, target_url, {
+        'status': 'ok',
+        'message': f'קבוצה מס #{group.id} בוטלה בהצלחה'
+    })
 
 
 class GroupSpecificationViewSet(viewsets.ModelViewSet):

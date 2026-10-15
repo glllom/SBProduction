@@ -58,7 +58,7 @@ class OrderItemsGroupAdmin(admin.ModelAdmin):
         (
             "Привязка к заказу и Объем",
             {
-                "fields": ("order", "product", "quantity", "production_state",),
+                "fields": ("order", "product", "quantity", "production_state", "batch_date"),
             },
         ),
         (

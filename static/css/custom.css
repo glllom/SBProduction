@@ -98,10 +98,22 @@ body {
 }
 
 @media (max-width: 768px) {
-    #sidebar { margin-right: calc(-1 * var(--sidebar-width)); }
-    #sidebar.active { margin-right: 0; }
-    #content { width: 100%; margin-right: 0; }
-    #content.active { margin-right: var(--sidebar-width); }
+    #sidebar {
+        margin-right: calc(-1 * var(--sidebar-width));
+    }
+
+    #sidebar.active {
+        margin-right: 0;
+    }
+
+    #content {
+        width: 100%;
+        margin-right: 0;
+    }
+
+    #content.active {
+        margin-right: var(--sidebar-width);
+    }
 }
 
 #sidebar ul li a i {
@@ -132,7 +144,7 @@ body {
 
 .card {
     border: none;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     border-radius: 8px;
 }
 
@@ -213,3 +225,25 @@ body {
     color: rgba(255, 255, 255, 0.85) !important;
 }
 
+
+.row-locked {
+    cursor: not-allowed !important;
+}
+
+/* Фикс отображения Bootstrap 5 form-switch в RTL */
+[dir="rtl"] .form-switch .form-check-input {
+    float: right;
+    margin-right: 0;
+    margin-left: 0.5rem;
+}
+
+/* Фикс чекбоксов и свитчей Bootstrap 5 для RTL */
+[dir="rtl"] .form-check {
+    padding-right: 0;
+    padding-left: 0;
+}
+
+[dir="rtl"] .form-switch {
+    padding-right: 0;
+    padding-left: 0;
+}

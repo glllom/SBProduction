@@ -16,7 +16,7 @@
             <p class="mb-0">לקוח: {{ order.customer }}</p>
             <hr>
         </div>
-        {% for group in order.groups.all %}
+        {% for group in groups %}
             <div class="card mb-4 border-excel shadow-none">
                 <div class="card-header bg-light border-bottom py-2 d-flex justify-content-between align-items-center">
                     <div>
@@ -89,8 +89,10 @@
             <tbody id="group-body-{{ group.id }}">
                 {% for item in group.items.all %}
                     <tr id="row-{{ item.id }}"
-                        class="item-row clickable-row"
+                        class="item-row {% if not group.can_edit or item.state == 'CANCELED' %}table-secondary text-muted row-locked{% else %}clickable-row{% endif %}"
                         data-item-id="{{ item.id }}"
+                        data-can-edit="{% if group.can_edit and item.state != 'CANCELED' %}true{% else %}false{% endif %}"
+                        data-state="{{ item.state }}"
                         data-mark="{{ item.mark|default:'' }}"
                         data-height="{{ item.h_fmt }}"
                         data-width="{{ item.w_fmt }}"
@@ -109,8 +111,7 @@
                         data-custom-hinge5="{{ item.custom_hinge5|default:'' }}"
                         data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
                         data-has-door="{{ group.product.product_family.product_type.has_door|yesno:'true,false' }}"
-                        data-has-frame="{{ group.product.product_family.product_type.has_frame|yesno:'true,false' }}"
-                        title="לחץ לעריכת מידות פריט {{ item.mark }}">
+                        data-has-frame="{{ group.product.product_family.product_type.has_frame|yesno:'true,false' }}">
                         <td class="fw-bold bg-light">{{ item.mark }}</td>
                         <td class="field-place small text-start">{{ item.place|default:'' }}</td>
                         <td class="field-width">{{ item.w_fmt }}</td>
@@ -130,8 +131,6 @@
                             {% if order.sketch or item.sketch %}
                                 <a href="
 
-
-
 												{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
                                    target="_blank"
                                    class="btn btn-sm btn-primary py-0"
@@ -140,10 +139,14 @@
                                     <i class="bi bi-file-earmark-image"></i>
                                 </a>
                             {% endif %}
-                            {% if order.status == 'NEW' or user.is_admin_user %}
+                            {% if group.can_edit and item.state != 'CANCELED' %}
                                 <i class="bi bi-pencil-square opacity-50 ms-2"
                                    data-bs-toggle="tooltip"
                                    title="עריכת פריט"></i>
+                            {% else %}
+                                <i class="bi bi-lock-fill opacity-25 ms-2"
+                                   data-bs-toggle="tooltip"
+                                   title="פריט נעול לעריכה"></i>
                             {% endif %}
                         </td>
                     </tr>

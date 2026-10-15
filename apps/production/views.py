@@ -7,23 +7,40 @@ import qrcode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from qrcode.image.svg import SvgPathImage
 
 from apps.catalog.models import Hardware
-from apps.orders.models import OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus, OrderComponentSelection
+from apps.orders.models import (
+    Order, OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus, OrderComponentSelection
+)
 from .label_services import DoorLabelService
 from .models import DoorLabel, ProductionStation, SvgPattern
 from .services import (
     OrderProductionService,
-    OrderValidationError,
     OrderValidationService,
     ProductionDataService,
+    OrderValidationError,
+    TechnicalSpecService,
 )
 from .usb_sync import run_usb_sync
+
+
+def extract_items_from_batches(batches_dict: dict, batch_filter: str = None) -> list:
+    """Извлекает плоский список позиций из структуры batches с опциональной фильтрацией."""
+    if not batches_dict or not isinstance(batches_dict, dict):
+        return []
+
+    items = []
+    for b_num, b_items in batches_dict.items():
+        if batch_filter is not None and str(b_num) != str(batch_filter):
+            continue
+        items.extend(b_items)
+    return items
 
 
 def enrich_report_doors_spec(items):
@@ -42,7 +59,7 @@ def enrich_report_doors_spec(items):
         }, sort_keys=True, default=str)
 
     items_data = [
-        item.model_dump() if hasattr(item, 'model_dump') else item
+        item.model_dump() if hasattr(item, 'model_dump') else (item if isinstance(item, dict) else item.dict())
         for item in items
     ]
     n = len(items_data)
@@ -100,7 +117,7 @@ def enrich_report_frames_spec(items):
         }, sort_keys=True, default=str)
 
     items_data = [
-        item.model_dump() if hasattr(item, 'model_dump') else item
+        item.model_dump() if hasattr(item, 'model_dump') else (item if isinstance(item, dict) else item.dict())
         for item in items
     ]
     n = len(items_data)
@@ -166,10 +183,10 @@ def get_qr_base64(data: str) -> str:
 @login_required
 def order_transfer_to_production(request, pk):
     """
-    Единая точка запуска в производство:
-    - Из PHASE1_READY (GET): показывает форму ввода замеров второй фазы.
-    - Из PHASE1_READY (POST): сохраняет замеры и запускает Фазу 2.
-    - Из NEW / дозаказ: сразу запускает производство в один клик.
+    Unified entry point for production launch:
+    - From PHASE1_READY (GET): displays measurement entry form with gross heights.
+    - From PHASE1_READY (POST): converts input gross heights to net values, saves and starts Phase 2.
+    - From NEW / reorder: immediately launches production in 1-click.
     """
     order = get_object_or_404(Order, pk=pk)
 
@@ -178,7 +195,7 @@ def order_transfer_to_production(request, pk):
             items_by_id = {
                 item.id: item for item in OrderItem.objects.filter(
                     group__order=order
-                ).exclude(
+                ).select_related('group__product__product_family').exclude(
                     group__production_state__in=[
                         OrderItemsGroup.ProductionState.WAITING,
                         OrderItemsGroup.ProductionState.CANCELED,
@@ -191,6 +208,12 @@ def order_transfer_to_production(request, pk):
                 modified = False
                 mark = order_item.mark or str(item_id)
 
+                top_clearance = 0.3
+                if order_item.group and order_item.group.product and order_item.group.product.product_family:
+                    raw_cl = order_item.group.product.product_family.leaf_top_clearance
+                    if raw_cl is not None:
+                        top_clearance = abs(float(raw_cl))
+
                 for field in ['height', 'width', 'wall']:
                     key = f"item_{item_id}_{field}"
                     if key in request.POST:
@@ -202,8 +225,9 @@ def order_transfer_to_production(request, pk):
                                 setattr(order_item, field, new_val)
                                 modified = True
                                 change_logs.append(OrderChangeLog(
-                                    order=order, user=request.user,
-                                    field_name=f"Item {mark} - {field.capitalize()}",
+                                    order=order,
+                                    user=request.user,
+                                    field_name=f"Item {mark} {field.capitalize()}",
                                     old_value=str(old_val) if old_val is not None else "None",
                                     new_value=str(new_val) if new_val is not None else "None"
                                 ))
@@ -214,14 +238,16 @@ def order_transfer_to_production(request, pk):
                 if lh_key in request.POST:
                     try:
                         val = request.POST.get(lh_key)
-                        new_lh = float(val) if val else None
+                        gross_lh = float(val) if val else None
+                        new_lh = round(gross_lh - top_clearance, 2) if gross_lh is not None else None
                         old_lh = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
                         if new_lh != old_lh:
                             order_item.custom_lock_height = new_lh
                             modified = True
                             change_logs.append(OrderChangeLog(
-                                order=order, user=request.user,
-                                field_name=f"Item {mark} - Lock Height",
+                                order=order,
+                                user=request.user,
+                                field_name=f"Item {mark} Lock Height",
                                 old_value=str(old_lh) if old_lh is not None else "None",
                                 new_value=str(new_lh) if new_lh is not None else "None"
                             ))
@@ -234,14 +260,16 @@ def order_transfer_to_production(request, pk):
                     if hh_key in request.POST:
                         try:
                             val = request.POST.get(hh_key)
-                            new_hh = float(val) if val else None
+                            gross_hh = float(val) if val else None
+                            new_hh = round(gross_hh - top_clearance, 2) if gross_hh is not None else None
                             old_hh = float(getattr(order_item, field_name)) if getattr(order_item, field_name) else None
                             if new_hh != old_hh:
                                 setattr(order_item, field_name, new_hh)
                                 modified = True
                                 change_logs.append(OrderChangeLog(
-                                    order=order, user=request.user,
-                                    field_name=f"Item {mark} - Hinge {i}",
+                                    order=order,
+                                    user=request.user,
+                                    field_name=f"Item {mark} Hinge {i}",
                                     old_value=str(old_hh) if old_hh is not None else "None",
                                     new_value=str(new_hh) if new_hh is not None else "None"
                                 ))
@@ -264,21 +292,32 @@ def order_transfer_to_production(request, pk):
                     messages.error(request, err)
                 return redirect('order-detail', pk=pk)
 
-        # GET: Получаем сохраненный снимок Фазы 1 и подготавливаем петли и внутренние размеры
         raw_items = TechnicalSpecService.get_batch_items(order, phase='phase1')
         items_data = []
 
         for item in raw_items:
             item_copy = dict(item)
+            top_clearance = abs(float(item.get('leaf_top_clearance') or 0.3))
 
-            # Выставляем внутренние размеры (если не вычислены ранее, берем габаритные)
             item_copy['inner_width'] = item.get('inner_width') or item.get('width') or 0.0
             item_copy['inner_height'] = item.get('inner_height') or item.get('height') or 0.0
 
-            # Дополняем список петель до 5 ячеек для корректного рендера колонок
-            hinges = item.get('hinge_heights') or []
-            item_copy['padded_hinges'] = (list(hinges) + [None] * 5)[:5]
+            if 'lock_height_on_frame' in item and item['lock_height_on_frame'] is not None:
+                item_copy['lock_height'] = item['lock_height_on_frame']
+            elif item.get('lock_height') is not None:
+                item_copy['lock_height'] = round(float(item['lock_height']) + top_clearance, 2)
+            elif item.get("lock's height") is not None:
+                item_copy['lock_height'] = round(float(item["lock's height"]) + top_clearance, 2)
 
+            gross_hinges = []
+            if item.get('hinge_heights_on_frame'):
+                gross_hinges = [h for h in item['hinge_heights_on_frame'] if h is not None]
+            elif item.get('hinge_heights'):
+                gross_hinges = [round(float(h) + top_clearance, 2) for h in item['hinge_heights'] if h is not None]
+            elif item.get('hinges height'):
+                gross_hinges = [round(float(h) + top_clearance, 2) for h in item['hinges height'] if h is not None]
+
+            item_copy['padded_hinges'] = (list(gross_hinges) + [None] * 5)[:5]
             items_data.append(item_copy)
 
         return render(request, 'production/transfer_to_phase2_form.html', {
@@ -286,7 +325,6 @@ def order_transfer_to_production(request, pk):
             'items_data': items_data,
         })
 
-    # Быстрый запуск в один клик (NEW или дозаказ)
     try:
         OrderProductionService.start_production(order, user=request.user)
 
@@ -295,7 +333,6 @@ def order_transfer_to_production(request, pk):
                 'application/json' in request.headers.get('Accept', '')
         )
         if is_ajax:
-            from django.urls import reverse
             master_url = f"{reverse('production:station-report', kwargs={'pk': pk})}?station=ALL"
             return JsonResponse({
                 'status': 'ok',
@@ -316,9 +353,7 @@ def order_transfer_to_production(request, pk):
 
 @login_required
 def group_toggle_state(request, pk, group_id):
-    """
-    Toggles or sets the production state of an OrderItemsGroup.
-    """
+    """Toggles or sets the production state of an OrderItemsGroup."""
     order = get_object_or_404(Order, pk=pk)
     group = get_object_or_404(order.groups, pk=group_id)
     new_state = request.POST.get('state') or request.GET.get('state')
@@ -341,9 +376,7 @@ def group_toggle_state(request, pk, group_id):
 
 @login_required
 def order_check_validation(request, pk):
-    """
-    Manual validation check triggered from the UI before starting production.
-    """
+    """Manual validation check triggered from the UI before starting production."""
     order = get_object_or_404(Order, pk=pk)
     is_valid, errors = OrderProductionService.validate_for_production(order)
     if is_valid:
@@ -357,7 +390,7 @@ def order_check_validation(request, pk):
 @login_required
 def order_complete_phase1(request, pk):
     """
-    Marks Phase 1 production as completed.
+    Marks Phase 1 production as completed and bakes updated measurements into Phase 1 spec snapshot.
     """
     order = get_object_or_404(Order, pk=pk)
 
@@ -366,52 +399,48 @@ def order_complete_phase1(request, pk):
         return redirect('order-detail', pk=pk)
 
     try:
-        spec_obj, spec_cache = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
+        spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
     except Exception as e:
         messages.error(request, f"Error building spec: {str(e)}")
         return redirect('order-detail', pk=pk)
 
-    spec_items = [item.model_dump() for item in spec_obj.items]
+    # Получаем элементы из структуры batches
+    batches = getattr(spec_obj, 'batches', {}) or {}
+    items_raw = [it for b in batches.values() for it in b]
+    spec_items = [
+        it.model_dump() if hasattr(it, 'model_dump') else (it if isinstance(it, dict) else it.dict())
+        for it in items_raw
+    ]
 
     if request.method == 'POST':
-        modified_cache = False
         change_logs = []
         items_by_id = {item.id: item for item in OrderItem.objects.filter(group__order=order)}
-
-        target_batch_dict = spec_cache.get('batch_1', spec_cache)
-        cached_items_map = {
-            item['item_id']: item for item in target_batch_dict.get('items', [])
-        }
+        any_modified = False
 
         for item_spec in spec_items:
             item_id = item_spec.get('item_id')
-            mark = item_spec.get('mark', str(item_id))
+            mark = item_spec.get('number') or item_spec.get('mark') or str(item_id)
             order_item = items_by_id.get(item_id)
             if not order_item:
                 continue
 
             item_modified = False
-            cached_item = cached_items_map.get(item_id)
 
             lh_key = f"item_{item_id}_lock_height"
             if lh_key in request.POST:
                 val = request.POST.get(lh_key)
                 try:
                     new_val = float(val) if val else None
-                    order_item.custom_lock_height = new_val
-                    item_modified = True
-
-                    old_cache_val = item_spec.get('lock_height')
-                    if new_val != old_cache_val:
-                        if cached_item:
-                            cached_item['lock_height'] = new_val
-                        modified_cache = True
+                    old_val = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
+                    if new_val != old_val:
+                        order_item.custom_lock_height = new_val
+                        item_modified = True
                         change_logs.append(OrderChangeLog(
                             order=order,
                             user=request.user,
-                            field_name=f"Item {mark} - Lock Height",
-                            old_value=str(old_cache_val),
-                            new_value=str(new_val)
+                            field_name=f"Item {mark} Lock Height",
+                            old_value=str(old_val) if old_val is not None else "None",
+                            new_value=str(new_val) if new_val is not None else "None"
                         ))
                 except (ValueError, TypeError):
                     pass
@@ -432,46 +461,45 @@ def order_complete_phase1(request, pk):
             if hinges_in_post:
                 for i in range(5):
                     field_name = f"custom_hinge{i + 1}"
-                    val = new_hinge_heights[i] if i < len(new_hinge_heights) else None
-                    setattr(order_item, field_name, val)
-                item_modified = True
-
-                old_hinges = item_spec.get('hinge_heights', [])
-                if new_hinge_heights != old_hinges:
-                    if cached_item:
-                        cached_item['hinge_heights'] = new_hinge_heights
-                    modified_cache = True
-                    change_logs.append(OrderChangeLog(
-                        order=order,
-                        user=request.user,
-                        field_name=f"Item {mark} - Hinge Heights",
-                        old_value=str(old_hinges),
-                        new_value=str(new_hinge_heights)
-                    ))
+                    new_h = new_hinge_heights[i] if i < len(new_hinge_heights) else None
+                    old_h = float(getattr(order_item, field_name)) if getattr(order_item, field_name) else None
+                    if new_h != old_h:
+                        setattr(order_item, field_name, new_h)
+                        item_modified = True
+                        change_logs.append(OrderChangeLog(
+                            order=order,
+                            user=request.user,
+                            field_name=f"Item {mark} Hinge {i + 1}",
+                            old_value=str(old_h) if old_h is not None else "None",
+                            new_value=str(new_h) if new_h is not None else "None"
+                        ))
 
             if item_modified:
                 order_item.save()
+                any_modified = True
 
-        if modified_cache:
-            order.phase1_spec_cache = spec_cache
-            order.save(update_fields=['phase1_spec_cache'])
-            if change_logs:
-                OrderChangeLog.objects.bulk_create(change_logs)
+        if change_logs:
+            OrderChangeLog.objects.bulk_create(change_logs)
+
+        if any_modified:
+            TechnicalSpecService.get_or_build_spec(order, phase='phase1', force_rebuild=True)
 
         try:
             OrderProductionService.complete_phase1(order, user=request.user)
-            messages.success(request, "Phase 1 successfully completed and specification updated.")
+            messages.success(request, "שלב א' הסתיים בהצלחה והמפרט עודכן.")
             return redirect('order-detail', pk=pk)
-        except ValueError as e:
+        except (ValueError, OrderValidationError) as e:
             messages.error(request, str(e))
             return redirect('order-detail', pk=pk)
 
     items_data = []
     for item in spec_items:
-        hinges = item.get('hinge_heights', []) or []
-        padded_hinges = (hinges + [None] * 5)[:5]
+        hinges = item.get('hinge_heights') or item.get('hinges height') or []
+        lock_h = item.get('lock_height') or item.get("lock's height") or ''
+
         item_copy = item.copy()
-        item_copy['padded_hinges'] = padded_hinges
+        item_copy['lock_height'] = lock_h
+        item_copy['padded_hinges'] = (list(hinges) + [None] * 5)[:5]
         items_data.append(item_copy)
 
     return render(request, 'production/complete_phase1_form.html', {
@@ -482,9 +510,7 @@ def order_complete_phase1(request, pk):
 
 @login_required
 def order_complete_production(request, pk):
-    """
-    Completes overall production for the order.
-    """
+    """Completes overall production for the order."""
     order = get_object_or_404(Order, pk=pk)
     try:
         OrderProductionService.complete_production(order, user=request.user)
@@ -498,9 +524,7 @@ def order_complete_production(request, pk):
 
 @login_required
 def order_production_data(request, pk, **kwargs):
-    """
-    Generates and downloads the ZIP archive containing CNC machine files and technical reports.
-    """
+    """Generates and downloads the ZIP archive containing CNC machine files and technical reports."""
     order = get_object_or_404(Order, pk=pk)
     service = ProductionDataService(order)
     try:
@@ -517,10 +541,12 @@ def order_production_data(request, pk, **kwargs):
 def station_report(request, pk):
     """
     Single entry point for all station HTML reports.
-    Supports individual station reports (e.g. ?station=FRAMES) and master print (?station=ALL).
+    Supports individual station reports (e.g. ?station=FRAMES) and master print (?station=ALL),
+    with optional batch filtering (?batch=1).
     """
     order = get_object_or_404(Order, pk=pk)
     station_code = request.GET.get('station') or request.GET.get('type')
+    batch_filter = request.GET.get('batch')
 
     if station_code and station_code.upper() in ['PRESS', 'CUTTING_PRESS']:
         return report_cutting_press(request, pk)
@@ -538,6 +564,7 @@ def station_report(request, pk):
     service = ProductionDataService(order)
     barcode_data = f"{order.order_number};{order.status}"
 
+    # Master Print Mode (ALL stations)
     if station_code.upper() in ['ALL', 'IN_PRODUCTION', 'FULL', 'FULL_PRODUCTION']:
         stations = order.get_production_stations()
         if not stations:
@@ -562,12 +589,27 @@ def station_report(request, pk):
                 })
 
             filtered_items = service.get_filtered_items(station=station)
-            filtered_item_ids = [item.id for item in filtered_items]
+            filtered_item_ids = {item.id for item in filtered_items}
 
             station_spec = spec_obj.model_copy()
-            station_spec.items = [item for item in spec_obj.items if item.item_id in filtered_item_ids]
 
-            if station_spec.items or not order.groups.exists():
+            # Фильтрация батчей и позиций под станцию и запрошенный батч
+            station_batches = {}
+            for b_num, b_items in spec_obj.batches.items():
+                if batch_filter and str(b_num) != str(batch_filter):
+                    continue
+                matched = [
+                    item for item in b_items
+                    if (getattr(item, 'item_id', None) or (
+                        item.get('item_id') if isinstance(item, dict) else None)) in filtered_item_ids
+                ]
+                if matched:
+                    station_batches[str(b_num)] = matched
+
+            station_spec.batches = station_batches
+            station_items = [it for b in station_batches.values() for it in b]
+
+            if station_items or not order.groups.exists():
                 include_template = None
                 code_lower = station.code.lower() if station.code else ''
                 if code_lower in ['frames', 'alum_frames']:
@@ -583,14 +625,15 @@ def station_report(request, pk):
                 if not include_template:
                     include_template = 'production/includes/report_alum_frames.html'
 
-                enriched_frames = enrich_report_frames_spec(station_spec.items)
-                enriched_doors = enrich_report_doors_spec(station_spec.items)
+                enriched_frames = enrich_report_frames_spec(station_items)
+                enriched_doors = enrich_report_doors_spec(station_items)
 
                 sections.append({
                     'station': station,
                     'station_code': station.code,
                     'report_label': station.label or station.name,
                     'order_spec': station_spec,
+                    'batches': station_batches,
                     'groups_data': service.prepare_grouped_data(station_spec),
                     'enriched_frames_items': enriched_frames,
                     'enriched_doors_items': enriched_doors,
@@ -604,6 +647,7 @@ def station_report(request, pk):
             'now': timezone.now(),
         })
 
+    # Individual Station Report Mode
     station = ProductionStation.objects.filter(code=station_code).first()
     if not station:
         if station_code == 'PHASE1_FRAMES':
@@ -642,6 +686,7 @@ def station_report(request, pk):
         return render(request, template_name, {
             'order': order,
             'order_spec': spec_obj,
+            'batches': spec_obj.batches,
             'frame_groups': frame_groups,
             'station': station,
             'report_label': report_label,
@@ -655,6 +700,7 @@ def station_report(request, pk):
         return render(request, 'production/reports/report_warehouse_hardware.html', {
             'order': order,
             'order_spec': spec_obj,
+            'batches': spec_obj.batches,
             'hardware_summary': hardware_summary,
             'report_label': 'דוח ליקוט פירזול',
             'now': timezone.now(),
@@ -670,16 +716,32 @@ def station_report(request, pk):
         template_name = 'production/reports/alum_frames_report.html'
         report_label = station_code
 
-    filtered_item_ids = [item.id for item in filtered_items]
-    spec_obj.items = [item for item in spec_obj.items if item.item_id in filtered_item_ids]
+    filtered_item_ids = {item.id for item in filtered_items}
 
-    enriched_doors_items = enrich_report_doors_spec(spec_obj.items)
-    enriched_frames_items = enrich_report_frames_spec(spec_obj.items)
+    # Прямая фильтрация словаря batches
+    filtered_batches = {}
+    for b_num, b_items in spec_obj.batches.items():
+        if batch_filter and str(b_num) != str(batch_filter):
+            continue
+        matched = [
+            it for it in b_items
+            if
+            (getattr(it, 'item_id', None) or (it.get('item_id') if isinstance(it, dict) else None)) in filtered_item_ids
+        ]
+        if matched:
+            filtered_batches[str(b_num)] = matched
+
+    spec_obj.batches = filtered_batches
+    station_items = [it for b in filtered_batches.values() for it in b]
+
+    enriched_doors_items = enrich_report_doors_spec(station_items)
+    enriched_frames_items = enrich_report_frames_spec(station_items)
 
     return render(request, template_name, {
         'order': order,
         'order_spec': spec_obj,
-        'spec_json': spec_obj.model_dump(by_alias=True),
+        'batches': spec_obj.batches,
+        'spec_json': spec_obj.model_dump(by_alias=True) if hasattr(spec_obj, 'model_dump') else spec_obj,
         'station': station,
         'report_label': report_label,
         'groups_data': service.prepare_grouped_data(spec_obj),
@@ -692,14 +754,11 @@ def station_report(request, pk):
     })
 
 
-# production/views.py
-
 @login_required
 def spec_json_preview(request, pk):
     """Direct inspection endpoint for the latest JSON specification snapshot."""
     order = get_object_or_404(Order, pk=pk)
 
-    # Выбираем вторую фазу, если кэш уже есть или заказ во второй фазе/готов
     if order.phase2_spec_cache or order.status in [
         OrderStatus.PHASE2_PRODUCTION,
         OrderStatus.COMPLETED,
@@ -754,17 +813,11 @@ def split_measurer_report(request, pk):
     """
     order = get_object_or_404(Order, pk=pk)
 
-    # Strictly for split installation
     if not order.has_split_installation:
         messages.error(request, "This report is only available for split installations.")
         return redirect('order-detail', pk=pk)
 
-    if order.status not in [OrderStatus.PHASE1_READY, OrderStatus.PHASE2_PRODUCTION]:
-        # We can be strict or lose here. Let's be helpful but follow the prompt logic for the button visibility later.
-        pass
-
     try:
-        # Get Phase 1 spec (it should be already built and "baked" after phase 1 completion)
         spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
     except Exception as e:
         errors = getattr(e, 'errors', [str(e)])
@@ -777,6 +830,7 @@ def split_measurer_report(request, pk):
     return render(request, 'production/reports/split_measurer_report.html', {
         'order': order,
         'order_spec': spec_obj,
+        'batches': spec_obj.batches,
         'report_label': "דו''ח מדידה לאחר שלב א'",
         'now': timezone.now(),
     })
@@ -786,7 +840,7 @@ def split_measurer_report(request, pk):
 def order_compare_snapshots(request, pk):
     """
     Compares Phase 1 and Phase 2 specification snapshots for administrators.
-    Shows mandatory fields (lock/hinge heights) and any changed fields.
+    Extracts item data directly from JSON batches structure.
     """
     order = get_object_or_404(Order, pk=pk)
 
@@ -817,8 +871,14 @@ def order_compare_snapshots(request, pk):
         'hinge_name': 'צירים',
     }
 
-    items1 = {item['item_id']: item for item in order.phase1_spec_cache.get('items', [])}
-    items2 = {item['item_id']: item for item in order.phase2_spec_cache.get('items', [])}
+    batches1 = order.phase1_spec_cache.get('batches', {}) if isinstance(order.phase1_spec_cache, dict) else {}
+    batches2 = order.phase2_spec_cache.get('batches', {}) if isinstance(order.phase2_spec_cache, dict) else {}
+
+    items1_list = [it for b in batches1.values() for it in b]
+    items2_list = [it for b in batches2.values() for it in b]
+
+    items1 = {item['item_id']: item for item in items1_list if isinstance(item, dict) and 'item_id' in item}
+    items2 = {item['item_id']: item for item in items2_list if isinstance(item, dict) and 'item_id' in item}
 
     comparison_results = []
 
@@ -829,7 +889,6 @@ def order_compare_snapshots(request, pk):
 
         changes = []
 
-        # 1. Mandatory fields (Lock Height)
         lh1 = item1.get('lock_height')
         lh2 = item2.get('lock_height')
         changes.append({
@@ -839,7 +898,6 @@ def order_compare_snapshots(request, pk):
             'changed': lh1 != lh2
         })
 
-        # 2. Mandatory fields (Hinge Heights)
         hh1 = item1.get('hinge_heights', [])
         hh2 = item2.get('hinge_heights', [])
         changes.append({
@@ -849,14 +907,11 @@ def order_compare_snapshots(request, pk):
             'changed': hh1 != hh2
         })
 
-        # 3. Changed fields in Phase 1
         for field_key, label in spec_labels.items():
             val1 = item1.get(field_key)
             val2 = item2.get(field_key)
 
             if val1 != val2:
-                # Requirement: data that does NOT relate to locks/hinges should only be shown
-                # if they were specified in Phase 1 and changed.
                 if field_key not in ('lock_name', 'hinge_name') and val1 in (None, ""):
                     continue
 
@@ -892,7 +947,6 @@ def sync_usb_view(request):
 def order_sketches_report(request, pk):
     order = get_object_or_404(Order, pk=pk)
 
-    # Исключаем группы в статусах WAITING и CANCELED
     groups_qs = order.groups.exclude(
         production_state__in=[
             OrderItemsGroup.ProductionState.WAITING,
@@ -900,14 +954,11 @@ def order_sketches_report(request, pk):
         ]
     )
 
-    # Если это дозаказ (השלמות), исключаем уже закрытые группы
     if order.status == OrderStatus.COMPLETION_PRODUCTION:
         groups_qs = groups_qs.exclude(
             production_state=OrderItemsGroup.ProductionState.COMPLETED
         )
 
-    # Собираем позиции строго с чертежами, сортируя по номеру позиции
-    sketches = []
     items_qs = (
         order.groups.filter(id__in=groups_qs.values_list('id', flat=True))
         .prefetch_related('items')
@@ -917,7 +968,6 @@ def order_sketches_report(request, pk):
     for group in items_qs:
         all_items.extend(list(group.items.all()))
 
-    # Сортируем по числовому значению mark (или по ID)
     def parse_mark(it):
         try:
             return int(it.mark)
@@ -926,8 +976,8 @@ def order_sketches_report(request, pk):
 
     all_items.sort(key=parse_mark)
 
+    sketches = []
     for it in all_items:
-        # Проверяем наличие файла: либо поле ImageField/FileField, либо sketch_url
         url = None
         if hasattr(it, 'sketch') and it.sketch:
             try:
@@ -952,26 +1002,18 @@ def order_sketches_report(request, pk):
     })
 
 
-from django.shortcuts import get_object_or_404, render
-from django.utils import timezone
-from apps.orders.models import Order
-from .services import TechnicalSpecService
-
-
 @login_required
 def report_cutting_press(request, pk):
     order = get_object_or_404(Order, pk=pk)
-
-    # 1. Спецификация всегда типизирована (Pydantic OrderSpec)
     order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
 
-    # 2. Агрегация размеров и групп заготовок делегирована сервису
     service = ProductionDataService(order)
     panel_groups = service.prepare_press_groups_data(order_spec)
 
     return render(request, 'production/reports/report_press.html', {
         'order': order,
         'order_spec': order_spec,
+        'batches': order_spec.batches,
         'panel_groups': panel_groups,
         'svg_patterns': SvgPattern.objects.all(),
         'now': timezone.now(),
@@ -1018,18 +1060,16 @@ def bartender_confirm_print(request):
 @login_required
 def report_wood_frames(request, pk):
     order = get_object_or_404(Order, pk=pk)
-
-    # Спецификация для производства
     order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
 
     service = ProductionDataService(order)
     frame_groups = service.prepare_wood_frames_report_data(order_spec)
-
     barcode_data = f"{order.order_number};FRAMES"
 
     return render(request, 'production/reports/report_wood_frames.html', {
         'order': order,
         'order_spec': order_spec,
+        'batches': order_spec.batches,
         'frame_groups': frame_groups,
         'order_qr': get_qr_base64(barcode_data),
         'now': timezone.now(),
@@ -1038,25 +1078,19 @@ def report_wood_frames(request, pk):
 
 @login_required
 def order_warehouse_setup(request, pk):
-    """
-    Form for editing warehouse instructions and choosing color-specific hardware variants.
-    """
+    """Form for editing warehouse instructions and choosing color-specific hardware variants."""
     order = get_object_or_404(Order, pk=pk)
-
-    # Используем актуальную спецификацию фазы 2 или фазы 1
     phase = 'phase2' if (order.phase2_spec_cache or order.status != OrderStatus.PHASE1_PRODUCTION) else 'phase1'
     spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
 
     customizable_hardware = ProductionDataService.get_order_customizable_hardware(order, spec_obj)
 
     if request.method == 'POST':
-        # 1. Текстовые заметки для отделов
         order.warehouse_notes = request.POST.get('warehouse_notes', '').strip()
         order.press_notes = request.POST.get('press_notes', '').strip()
         order.frames_notes = request.POST.get('frames_notes', '').strip()
         order.save(update_fields=['warehouse_notes', 'press_notes', 'frames_notes'])
 
-        # 2. Сохранение выбранных цветов
         for item in customizable_hardware:
             field_name = f"comp_{item['common_name']}"
             chosen_val = request.POST.get(field_name)
@@ -1072,7 +1106,6 @@ def order_warehouse_setup(request, pk):
                 except (ValueError, TypeError):
                     pass
             else:
-                # Если сбросили на "לבחירת לקוח" (пусто) — удаляем запись
                 OrderComponentSelection.objects.filter(
                     order=order,
                     common_name=item['common_name']
@@ -1095,31 +1128,30 @@ def order_warehouse_setup(request, pk):
 def export_door_labels_csv(request, pk):
     order = get_object_or_404(Order, pk=pk)
 
-    # 1. Получаем объект спецификации
     phase = 'phase2' if (order.phase2_spec_cache or order.status != OrderStatus.PHASE1_PRODUCTION) else 'phase1'
     spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
 
-    # Приводим к dict, если передан Pydantic-объект или сериализованный кэш
-    items_raw = getattr(spec_obj, 'items', []) or []
-    items = [it if isinstance(it, dict) else it.dict() for it in items_raw]
+    # Извлекаем все позиции из структуры batches
+    batches = getattr(spec_obj, 'batches', {}) or {}
+    items_raw = [it for b in batches.values() for it in b]
+    items = [
+        it.model_dump() if hasattr(it, 'model_dump') else (it if isinstance(it, dict) else it.dict())
+        for it in items_raw
+    ]
 
-    # Отбираем только позиции с полотном
     door_items = [it for it in items if it.get('has_door', True)]
     total_doors = len(door_items)
 
-    # 2. Пакетная подгрузка артикулов (SKU) за 1 SQL-запрос, чтобы избежать N+1
     hardware_ids = set()
     for it in door_items:
         if it.get('lock_id'):
             hardware_ids.add(it['lock_id'])
-        # Ищем ID петли из bom_items с тегом hinge
         for b in it.get('bom_items', []) or []:
             if str(b.get('tag', '')).lower() == 'hinge' and b.get('item_id'):
                 hardware_ids.add(b['item_id'])
 
     hw_map = Hardware.objects.in_bulk(hardware_ids) if hardware_ids else {}
 
-    # 3. Формирование CSV
     response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
     response['Content-Disposition'] = f'attachment; filename="labels_{order.order_number}.csv"'
 
@@ -1130,24 +1162,20 @@ def export_door_labels_csv(request, pk):
         door_mark = it.get('number') or it.get('mark') or str(it.get('item_id', ''))
         direction = it.get('direction') or it.get('direction_code') or ''
 
-        # Иерархия каталога
         family_name = it.get('product_family') or ''
         series_name = it.get('series') or ''
         model_code = it.get('model') or ''
 
-        # Размеры именно дверной панели (берем первое полотно из panel_dimensions)
         panel_dims = it.get('panel_dimensions') or []
         first_panel = panel_dims[0] if panel_dims else {}
         panel_w = first_panel.get('width', '')
         panel_h = first_panel.get('height', '')
 
-        # Замок: название, артикул (SKU) из справочника, высота
         lock_name = it.get('lock') or ''
         lock_id = it.get('lock_id')
         lock_sku = hw_map[lock_id].sku if lock_id in hw_map else ''
         lock_h = it.get("lock's height", '')
 
-        # Петли: название, артикул (SKU), высоты
         hinge_name = it.get('hinges') or ''
         hinge_id = None
         for b in it.get('bom_items', []) or []:
@@ -1182,10 +1210,7 @@ def export_door_labels_csv(request, pk):
             hinges[4],
         ]
 
-        # Наклейка 1: Обгонка
         writer.writerow(base_data + [1])
-
-        # Наклейка 2: Врезка замков и петель
         writer.writerow(base_data + [2])
 
     return response

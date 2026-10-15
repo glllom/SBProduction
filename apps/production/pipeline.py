@@ -1108,7 +1108,6 @@ class OrderSpecContext:
                 ]
             )
         )
-        # Empty schema container; populated by pipeline steps
         self.spec = OrderSpec(
             order=OrderHeaderSpec(
                 number="",
@@ -1118,9 +1117,35 @@ class OrderSpecContext:
                 completion_date="",
                 painting_completion_date="",
             ),
-            items=[]
+            batches={}
         )
         self.data: Dict[str, Any] = {}
+
+
+class OrderItemsStep(OrderStep):
+    def process(self, context: OrderSpecContext):
+        group_ids = {item.group_id for item in context.items if item.group_id}
+        all_group_customizers = OrderItemsGroupCustomizer.objects.filter(
+            group_id__in=group_ids
+        ).select_related('customizer', 'customizer__puzzle_mapping__preset').prefetch_related(
+            'customizer__hardware__components', 'customizer__materials'
+        ).order_by('customizer__tag', 'customizer__code')
+
+        customizers_by_group = collections.defaultdict(list)
+        for gc in all_group_customizers:
+            customizers_by_group[gc.group_id].append(gc)
+
+        item_pipeline = SpecPipeline()
+
+        # Группируем позиции по номеру партии и наполняем batches
+        for item in context.items:
+            batch_num = str(item.group.batch_number if (item.group and item.group.batch_number) else 1)
+            if batch_num not in context.spec.batches:
+                context.spec.batches[batch_num] = []
+
+            group_customizers = customizers_by_group.get(item.group_id, [])
+            item_spec = item_pipeline.execute(item, customizers=group_customizers, phase=context.phase)
+            context.spec.batches[batch_num].append(item_spec)
 
 
 class OrderHeaderStep(OrderStep):
@@ -1138,26 +1163,6 @@ class OrderHeaderStep(OrderStep):
             completion_date=format_spec_date(getattr(order, 'completion_date', None)),
             painting_completion_date=format_spec_date(getattr(order, 'painting_completion_date', None)),
         )
-
-
-class OrderItemsStep(OrderStep):
-    def process(self, context: OrderSpecContext):
-        group_ids = {item.group_id for item in context.items if item.group_id}
-        all_group_customizers = OrderItemsGroupCustomizer.objects.filter(
-            group_id__in=group_ids
-        ).select_related('customizer', 'customizer__puzzle_mapping__preset').prefetch_related(
-            'customizer__hardware__components', 'customizer__materials'
-        ).order_by('customizer__tag', 'customizer__code')
-
-        customizers_by_group = collections.defaultdict(list)
-        for gc in all_group_customizers:
-            customizers_by_group[gc.group_id].append(gc)
-
-        item_pipeline = SpecPipeline()
-        for item in context.items:
-            group_customizers = customizers_by_group.get(item.group_id, [])
-            item_spec = item_pipeline.execute(item, customizers=group_customizers, phase=context.phase)
-            context.spec.items.append(item_spec)
 
 
 class OrderSpecPipeline:

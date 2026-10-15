@@ -5,6 +5,7 @@ import shutil
 import zipfile
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import date
 from typing import List, Optional
 
 from django.conf import settings
@@ -331,7 +332,7 @@ class TechnicalSpecService:
     """
     Единый шлюз спецификаций заказа.
     Отвечает за сборку среза позиций, запуск пайплайна, сохранение и чтение снимков.
-    Структура кэша в JSONField: {"batch_1": {...}, "batch_2": {...}}
+    Структура кэша в JSONField: {"order": {...}, "batches": {"1": [...], "2": [...]}}
     """
 
     @staticmethod
@@ -394,22 +395,26 @@ class TechnicalSpecService:
         """
         Возвращает пару (OrderSpec, spec_cache_dict).
         Если снимок уже есть в базе и не запрошен force_rebuild — десериализует из JSON.
-        Иначе — прогоняет плоскую выборку позиций через пайплайн и фиксирует снимок в БД.
+        Иначе — прогоняет выборку позиций через пайплайн и фиксирует снимок в БД.
         """
         cache_field = 'phase1_spec_cache' if phase == 'phase1' else 'phase2_spec_cache'
         existing_cache = getattr(order, cache_field)
 
-        # Защита от поврежденного кэша (если в поле лежал bool или None)
-        if not isinstance(existing_cache, dict):
-            existing_cache = {}
+        # Гарантируем корректную базовую структуру кэша
+        if not isinstance(existing_cache, dict) or 'batches' not in existing_cache:
+            existing_cache = {
+                'order': {},
+                'batches': {}
+            }
 
-        batch_key = f"batch_{batch_number}" if batch_number is not None else "batch_all"
+        batch_str = str(batch_number) if batch_number is not None else None
 
-        # 1. Возврат из существующего снимка
-        if not force_rebuild and batch_key in existing_cache:
-            target_dict = existing_cache[batch_key]
-            if isinstance(target_dict, dict):
-                return OrderSpec.model_validate(target_dict), existing_cache
+        # 1. Возврат из существующего снимка (если запрашивался конкретный батч и он есть)
+        if not force_rebuild:
+            if batch_str and batch_str in existing_cache.get('batches', {}):
+                return OrderSpec.model_validate(existing_cache), existing_cache
+            elif batch_str is None and existing_cache.get('batches'):
+                return OrderSpec.model_validate(existing_cache), existing_cache
 
         # 2. Выборка позиций
         items = cls.get_rich_order_items(order_id=order.id, batch_number=batch_number)
@@ -422,16 +427,24 @@ class TechnicalSpecService:
 
         # Проверка ошибок расчетов в узлах
         errors = []
-        for it in spec_obj.items:
-            if it.errors:
-                mark_label = f"Item {it.mark}" if it.mark else f"Item #{it.item_id}"
-                errors.extend([f"{mark_label}: {err}" for err in it.errors])
+        for b_items in spec_obj.batches.values():
+            for it in b_items:
+                if it.errors:
+                    mark_label = f"Item {it.mark}" if it.mark else f"Item #{it.item_id}"
+                    errors.extend([f"{mark_label}: {err}" for err in it.errors])
         if errors:
             raise OrderValidationError("Ошибки при расчете спецификации:", errors=errors)
 
-        # 4. Сериализация и сохранение снимка в базу
+        # 4. Обновление кэша (слияние батчей, сохранение шапки)
         spec_dict = spec_obj.model_dump()
-        existing_cache[batch_key] = spec_dict
+        existing_cache['order'] = spec_dict.get('order', {})
+
+        if 'batches' not in existing_cache:
+            existing_cache['batches'] = {}
+
+        for b_key, b_items in spec_dict.get('batches', {}).items():
+            existing_cache['batches'][b_key] = b_items
+
         setattr(order, cache_field, existing_cache)
         order.save(update_fields=[cache_field])
 
@@ -444,29 +457,27 @@ class TechnicalSpecService:
         OrderSpecificationSnapshot.objects.create(
             order=order,
             snapshot_type=snapshot_type,
-            spec_data=spec_dict,
+            spec_data=existing_cache,
             created_by=user
         )
 
-        # Всегда возвращаем кортеж (объект спецификации, словарь кэша)
-        return spec_obj, existing_cache
+        return OrderSpec.model_validate(existing_cache), existing_cache
 
     @classmethod
     def get_batch_items(cls, order, phase: str = 'phase1', batch_number: int = 1) -> List[dict]:
         """
-        Возвращает плоский список рассчитанных позиций из снимка для форм (например, перед Фазой 2).
+        Возвращает плоский список рассчитанных позиций конкретной партии из снимка.
         """
         cache_field = 'phase1_spec_cache' if phase == 'phase1' else 'phase2_spec_cache'
         cache = getattr(order, cache_field)
         if not isinstance(cache, dict):
             return []
 
-        # Поддержка структуры с батчами и обратная совместимость со старыми плоскими снимками
-        batch_dict = cache.get(f"batch_{batch_number}") or cache.get("batch_all")
-        if isinstance(batch_dict, dict):
-            return batch_dict.get('items', [])
+        batches = cache.get('batches', {})
+        if isinstance(batches, dict):
+            return batches.get(str(batch_number), [])
 
-        return cache.get('items', [])
+        return []
 
 
 class ProductionDataService:
@@ -515,12 +526,11 @@ class ProductionDataService:
     def _add_cnc_files_to_zip(self, zip_file):
         pass
 
-    def generate_cnc_files(self, spec_items=None):
+    def generate_cnc_files(self, spec_items=None, batch_number=None):
         """
         Standalone method to generate CNC files on the server filesystem.
         Creates folder structure cnc_files/mecal/<order_number>/ and fills it with XML files.
-        If spec_items is provided, generates only for those items.
-        If order is in COMPLETION_PRODUCTION, generates only for items from active/uncompleted groups.
+        If batch_number is specified, generates only for that batch.
         """
         is_phase_a = self.order.status == OrderStatus.PHASE1_PRODUCTION
         is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
@@ -530,7 +540,11 @@ class ProductionDataService:
             items_to_process = spec_items
         else:
             order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
-            items_to_process = order_spec.items
+            if batch_number is not None:
+                items_to_process = order_spec.batches.get(str(batch_number), [])
+            else:
+                items_to_process = [it for b_items in order_spec.batches.values() for it in b_items]
+
             if is_completion:
                 active_item_ids = set(OrderItem.objects.filter(
                     group__order=self.order
@@ -539,26 +553,21 @@ class ProductionDataService:
                 ).values_list('id', flat=True))
                 items_to_process = [it for it in items_to_process if it.item_id in active_item_ids]
 
-        # Paths
         cnc_root = os.path.join(settings.BASE_DIR, 'cnc_files')
         mecal_dir = os.path.join(cnc_root, 'mecal')
         order_dir = os.path.join(mecal_dir, str(self.order.order_number))
 
-        # Create base directories
         os.makedirs(mecal_dir, exist_ok=True)
 
-        # Clean up order folder if it exists
         if os.path.exists(order_dir):
             shutil.rmtree(order_dir)
         os.makedirs(order_dir)
 
-        # Create main subdirectories
         frames_root = os.path.join(order_dir, 'frames')
         doors_root = os.path.join(order_dir, 'doors')
         os.makedirs(frames_root)
         os.makedirs(doors_root)
 
-        # Iterate through items in the order specification
         for spec in items_to_process:
             mark = spec.mark
 
@@ -571,6 +580,336 @@ class ProductionDataService:
                 item_door_dir = os.path.join(doors_root, f"door_{mark}")
                 os.makedirs(item_door_dir, exist_ok=True)
                 self._write_xml_files(item_door_dir, spec, "door")
+
+    @staticmethod
+    def _extract_items(spec_or_items):
+        """Вспомогательный метод для распаковки позиций из OrderSpec или прямого списка."""
+        if isinstance(spec_or_items, list):
+            return spec_or_items
+        batches = getattr(spec_or_items, 'batches', {})
+        return [it for b in batches.values() for it in b]
+
+    @classmethod
+    def get_wooden_frames_data(cls, spec_obj):
+        frames_items = []
+        for item in cls._extract_items(spec_obj):
+            is_hidden = getattr(item, 'is_hidden_frame', False)
+            has_frame = getattr(item, 'has_frame', True)
+            if not has_frame or is_hidden:
+                continue
+
+            frames_items.append({
+                'mark': getattr(item, 'mark', ''),
+                'place': getattr(item, 'place', '') or '',
+                'opening_width': getattr(item, 'opening_width', None) or getattr(item, 'width', ''),
+                'opening_height': getattr(item, 'opening_height', None) or getattr(item, 'height', ''),
+                'wall_thickness': getattr(item, 'wall', '') or getattr(item, 'wall_thickness', ''),
+                'direction': getattr(item, 'direction', ''),
+                'opening': getattr(item, 'opening', ''),
+                'color_frames': getattr(item, 'color_frames', '') or getattr(item, 'color', ''),
+                'lock_name': getattr(item, 'lock_name', ''),
+                'hinge_name': getattr(item, 'hinge_name', ''),
+                'comment': getattr(item, 'comment', ''),
+            })
+        return frames_items
+
+    @classmethod
+    def get_warehouse_hardware_summary(cls, spec_obj):
+        from collections import defaultdict
+
+        locks = defaultdict(int)
+        handles = defaultdict(int)
+        hinges = defaultdict(int)
+
+        for item in cls._extract_items(spec_obj):
+            lock = getattr(item, 'lock_name', None) or (item.get('lock_name') if isinstance(item, dict) else None)
+            if lock:
+                locks[lock] += 1
+
+            handle = getattr(item, 'handle_name', None) or (item.get('handle_name') if isinstance(item, dict) else None)
+            if handle:
+                handles[handle] += 1
+
+            hinge = getattr(item, 'hinge_name', None) or (item.get('hinge_name') if isinstance(item, dict) else None)
+            if hinge:
+                raw_hinges = getattr(item, 'hinge_heights', []) or (
+                    item.get('hinge_heights', []) if isinstance(item, dict) else [])
+                count = len([h for h in raw_hinges if h is not None])
+                hinges[hinge] += count if count > 0 else 3
+
+        summary_list = []
+        for name, qty in sorted(locks.items()):
+            summary_list.append({'category': 'מנעולים (Замки)', 'name': name, 'quantity': qty})
+        for name, qty in sorted(handles.items()):
+            summary_list.append({'category': 'ידיות (Ручки)', 'name': name, 'quantity': qty})
+        for name, qty in sorted(hinges.items()):
+            summary_list.append({'category': 'צירים (Петли)', 'name': name, 'quantity': qty})
+
+        return summary_list
+
+    @classmethod
+    def prepare_wood_frames_report_data(cls, spec_obj):
+        groups_map = {}
+
+        for item in cls._extract_items(spec_obj):
+            if not getattr(item, 'has_frame', True) or getattr(item, 'is_hidden_frame', False):
+                continue
+
+            bom_items = getattr(item, 'bom_items', []) or []
+            casing_names = [
+                getattr(b, 'common_name', None) or getattr(b, 'item_name', '')
+                for b in bom_items
+                if getattr(b, 'tag', '') in ('door_casing', 'casing')
+                or getattr(b, 'section', '') in ('door_casing', 'casing', 'הלבשה', 'הלבשות')
+            ]
+            door_casing = " / ".join(dict.fromkeys(filter(None, casing_names))) or "-"
+
+            raw_cmz = getattr(item, 'frames_report_customizers', []) or []
+            cmz_signature = []
+            for c in raw_cmz:
+                c_name = c.get('name') if isinstance(c, dict) else getattr(c, 'name', '')
+                c_params = c.get('params', []) if isinstance(c, dict) else getattr(c, 'params', [])
+                p_strs = [f"{p.get('label')}:{p.get('value')}" for p in c_params]
+                cmz_signature.append(f"{c_name}({', '.join(p_strs)})")
+            cmz_key = " + ".join(cmz_signature)
+
+            raw_hinges = getattr(item, 'hinge_heights', []) or []
+            hinges_tuple = tuple(h for h in raw_hinges if h is not None)
+
+            group_key = (
+                getattr(item, 'product_family', '') or getattr(item, 'product_name', ''),
+                getattr(item, 'series', ''),
+                getattr(item, 'frame', ''),
+                door_casing,
+                getattr(item, 'basic_color_frames', ''),
+                getattr(item, 'color_frames', ''),
+                getattr(item, 'lock_name', ''),
+                getattr(item, 'lock_height', None),
+                getattr(item, 'hinge_name', ''),
+                hinges_tuple,
+                cmz_key,
+            )
+
+            if group_key not in groups_map:
+                groups_map[group_key] = {
+                    'product_name': getattr(item, 'product_family', '') or getattr(item, 'product_name', ''),
+                    'series': getattr(item, 'series', ''),
+                    'frame_type': getattr(item, 'frame', ''),
+                    'door_casing': door_casing,
+                    'color_frames': getattr(item, 'color_frames', '') or getattr(item, 'basic_color_frames', ''),
+                    'lock_name': getattr(item, 'lock_name', ''),
+                    'lock_height': getattr(item, 'lock_height', None),
+                    'hinge_name': getattr(item, 'hinge_name', ''),
+                    'hinge_heights': list(hinges_tuple),
+                    'customizers_title': cmz_key,
+                    'items': [],
+                    'size_counter': Counter(),
+                }
+
+            w = getattr(item, 'width', None)
+            h = getattr(item, 'height', None)
+            wall = getattr(item, 'wall', None)
+
+            groups_map[group_key]['items'].append(item)
+            if w and h:
+                groups_map[group_key]['size_counter'][(h, w, wall)] += 1
+
+        result_groups = []
+        for grp in groups_map.values():
+            raw_counter = grp.pop('size_counter')
+            sorted_sizes = sorted(
+                raw_counter.items(),
+                key=lambda x: (x[0][0], x[0][1], x[0][2] or 0),
+                reverse=True
+            )
+            grp['aggregated_sizes'] = [
+                {'height': h, 'width': w, 'wall': wall, 'qty': count}
+                for (h, w, wall), count in sorted_sizes
+            ]
+
+            def parse_mark(it):
+                try:
+                    return int(getattr(it, 'mark', 0) or 0)
+                except (ValueError, TypeError):
+                    return 999999
+
+            grp['items'].sort(key=parse_mark)
+            result_groups.append(grp)
+
+        return result_groups
+
+    @classmethod
+    def get_order_customizable_hardware(cls, order, spec_obj):
+        from apps.catalog.models import Hardware
+
+        common_names = set()
+        for item in cls._extract_items(spec_obj):
+            for bom_item in getattr(item, 'bom_items', []) or []:
+                c_name = getattr(bom_item, 'common_name', None) or (
+                    bom_item.get('common_name') if isinstance(bom_item, dict) else None
+                )
+                if c_name:
+                    common_names.add(c_name.strip())
+
+        saved_selections = {
+            s.common_name: s.selected_hardware_id
+            for s in order.component_selections.all()
+        }
+
+        result = []
+        for c_name in sorted(common_names):
+            items_qs = Hardware.objects.filter(
+                common_name=c_name,
+                active=True,
+                color__isnull=False
+            ).select_related('color')
+
+            colors_count = items_qs.values('color').distinct().count()
+            if colors_count > 1:
+                options = [
+                    {
+                        'id': h.id,
+                        'name': h.name,
+                        'color_name': h.color.name if h.color else '',
+                        'sku': h.sku,
+                    }
+                    for h in items_qs
+                ]
+                result.append({
+                    'common_name': c_name,
+                    'options': options,
+                    'selected_id': saved_selections.get(c_name),
+                })
+
+        return result
+
+    @classmethod
+    def prepare_warehouse_packing_slip_data(cls, order, spec_obj):
+        from collections import defaultdict
+        from apps.catalog.models import Hardware
+
+        saved_selections = {
+            s.common_name: s.selected_hardware
+            for s in order.component_selections.select_related('selected_hardware__color').all()
+        }
+
+        handles_count = defaultdict(int)
+        locks_count = defaultdict(int)
+        hinges_count = defaultdict(int)
+        bom_hardware_count = defaultdict(lambda: {'qty': 0, 'sku': '', 'obj': None, 'common_name': ''})
+
+        processed_common_names = set()
+
+        for item in cls._extract_items(spec_obj):
+            handle_name = getattr(item, 'handle_name', None) or getattr(order, 'handle_name', None)
+            if not handle_name and getattr(order, 'handle', None):
+                handle_name = order.handle.name
+            if handle_name and getattr(item, 'has_door', True):
+                handles_count[handle_name] += 1
+
+            lock = getattr(item, 'lock_name', None)
+            if lock and getattr(item, 'has_door', True):
+                locks_count[lock] += 1
+
+            hinge = getattr(item, 'hinge_name', None)
+            if hinge:
+                raw_hinges = getattr(item, 'hinge_heights', []) or []
+                count = len([h for h in raw_hinges if h is not None])
+                hinges_count[hinge] += count if count > 0 else 3
+
+            for bom_item in getattr(item, 'bom_items', []) or []:
+                tag = getattr(bom_item, 'tag', '')
+                if tag in ('lock', 'hinges', 'frame', 'covering', 'base', 'filling', 'door_casing', 'casing'):
+                    continue
+
+                item_name = getattr(bom_item, 'item_name', '')
+                c_name = getattr(bom_item, 'common_name', '') or ''
+                sku = getattr(bom_item, 'sku', '') or ''
+                qty = float(getattr(bom_item, 'quantity', 1) or 1)
+
+                if item_name:
+                    key = c_name or item_name
+                    bom_hardware_count[key]['qty'] += qty
+                    bom_hardware_count[key]['sku'] = sku
+                    bom_hardware_count[key]['common_name'] = c_name
+
+        color_variants_items = []
+        regular_hardware_items = []
+
+        for key, data in bom_hardware_count.items():
+            c_name = data['common_name']
+            if c_name:
+                color_qs = Hardware.objects.filter(common_name=c_name, active=True, color__isnull=False).select_related(
+                    'color')
+                if color_qs.values('color').distinct().count() > 1:
+                    processed_common_names.add(c_name)
+                    chosen_hw = saved_selections.get(c_name)
+
+                    if chosen_hw:
+                        color_variants_items.append({
+                            'common_name': c_name,
+                            'name': chosen_hw.name,
+                            'color_name': chosen_hw.color.name if chosen_hw.color else '',
+                            'sku': chosen_hw.sku,
+                            'qty': int(data['qty']) if data['qty'].is_integer() else data['qty'],
+                            'is_selected': True,
+                        })
+                    else:
+                        available_options = [
+                            {'name': h.name, 'color': h.color.name if h.color else '', 'sku': h.sku}
+                            for h in color_qs
+                        ]
+                        color_variants_items.append({
+                            'common_name': c_name,
+                            'name': c_name,
+                            'color_name': 'טרם נבחר / לבחירת לקוח',
+                            'sku': '-',
+                            'qty': int(data['qty']) if data['qty'].is_integer() else data['qty'],
+                            'is_selected': False,
+                            'available_options': available_options,
+                        })
+                    continue
+
+            regular_hardware_items.append({
+                'name': key,
+                'sku': data['sku'],
+                'qty': int(data['qty']) if data['qty'].is_integer() else data['qty'],
+            })
+
+        groups = []
+
+        if handles_count:
+            groups.append({
+                'title': 'ידיות ורוזטות (Ручки и розетки)',
+                'items': [{'name': k, 'qty': v, 'sku': ''} for k, v in sorted(handles_count.items())]
+            })
+
+        if locks_count:
+            groups.append({
+                'title': 'מנעולים וצילינדרים (Замки и цилиндры)',
+                'items': [{'name': k, 'qty': v, 'sku': ''} for k, v in sorted(locks_count.items())]
+            })
+
+        if hinges_count:
+            groups.append({
+                'title': 'צירים (Петли - штучный подсчет)',
+                'items': [{'name': k, 'qty': v, 'sku': ''} for k, v in sorted(hinges_count.items())]
+            })
+
+        if color_variants_items:
+            groups.append({
+                'title': 'רכיבים לפי גוון (Комплектующие с выбором цвета)',
+                'is_color_group': True,
+                'items': color_variants_items
+            })
+
+        if regular_hardware_items:
+            groups.append({
+                'title': 'פרזול משלים ומעצורים (Стопоры и доп. фурнитура из BOM)',
+                'items': regular_hardware_items
+            })
+
+        return groups
 
     def _write_xml_files(self, target_dir, spec, item_type):
         """
@@ -605,10 +944,10 @@ class ProductionDataService:
         return '<?xml version="1.0" encoding="UTF-8"?>\n<lock>\n  <status>placeholder</status>\n  <item_id>' + str(
             spec.item_id) + str(item_type) + '</item_id>\n</lock>'
 
-    def generate_report_html(self, report_type=None, station_code=None, validate=True):
+    def generate_report_html(self, report_type=None, station_code=None, batch_number=None, validate=True):
         """
         Creates an HTML file for the requested technical report.
-        Performs validation before creation (unless validate=False).
+        Builds report strictly for requested batch_number, or aggregates all batches if batch_number is None.
         """
         station = None
         if station_code:
@@ -628,23 +967,33 @@ class ProductionDataService:
                 label = str(report_type)
             template = 'production/alum_frames_report.html'
 
-            # Adjust label if no split installation in the whole order
             if not getattr(self.order, 'has_split_installation', False):
                 if report_type == self.ReportType.PHASE2_DOORS:
                     label = 'Doors'
 
-        # Use TechnicalSpecService as the single point of entry
         phase = 'phase1' if (
                 report_type == self.ReportType.PHASE1_FRAMES or (station and station.is_phase1)) else 'phase2'
+
+        # Получаем спецификацию заказа из единого шлюза
         order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
 
-        # Filter items if report_type or station is specified
-        filtered_items = self.get_filtered_items(report_type, station=station)
-        filtered_item_ids = [item.id for item in filtered_items]
+        # 1. Извлечение позиций: конкретный батч или все доступные батчи
+        if batch_number is not None:
+            raw_spec_items = order_spec.batches.get(str(batch_number), [])
+        else:
+            raw_spec_items = [it for b_items in order_spec.batches.values() for it in b_items]
 
-        # Clone order_spec to avoid modifying the cached version if it's still in memory
+        # 2. Фильтрация по участку/типу отчета (коробки, двери и т.д.)
+        filtered_items = self.get_filtered_items(report_type, station=station)
+        filtered_item_ids = {item.id for item in filtered_items}
+
+        target_items = [it for it in raw_spec_items if it.item_id in filtered_item_ids]
+
+        # 3. Клонирование структуры OrderSpec с выбранными позициями для рендера
         order_spec_for_report = order_spec.model_copy()
-        order_spec_for_report.items = [item for item in order_spec.items if item.item_id in filtered_item_ids]
+        order_spec_for_report.batches = {
+            str(batch_number or "all"): target_items
+        }
 
         if self.order.status in [OrderStatus.PHASE1_PRODUCTION]:
             stage_label = "שלב א'"
@@ -654,17 +1003,20 @@ class ProductionDataService:
             stage_label = "השלמות"
         else:
             stage_label = "קומפלט"
+
         context = {
             'order': self.order,
+            'batch_number': batch_number,
             'order_spec': order_spec_for_report,
+            'spec_items': target_items,
             'order_spec_json': order_spec_for_report.model_dump_json(by_alias=True),
             'svg_patterns': SvgPattern.objects.all(),
             'report_type': report_type,
             'station': station,
             'report_label': label,
             'stage_label': stage_label,
-            'groups_data': self.prepare_grouped_data(order_spec_for_report),
-            'panel_groups': self.prepare_press_groups_data(order_spec_for_report),
+            'groups_data': self.prepare_grouped_data(target_items),
+            'panel_groups': self.prepare_press_groups_data(target_items),
             'now': timezone.now(),
         }
         return render_to_string(template, context)
@@ -718,14 +1070,14 @@ class ProductionDataService:
         return items
 
     @staticmethod
-    def prepare_grouped_data(order_spec):
+    def prepare_grouped_data(items):
         """
-        Converts OrderSpec items into a grouped structure for legacy templates.
+        Converts a list of ProductionSpec items into a grouped structure for legacy templates.
+        Accepts List[ProductionSpec].
         """
         # 1. Grouping logic
         grouped_specs = {}
-        for spec in order_spec.items:
-            # Key for grouping: Product, Series, Front, Colors, and Profiles
+        for spec in items:
             key = (
                 spec.product_family,
                 spec.series,
@@ -743,14 +1095,12 @@ class ProductionDataService:
 
         # 2. Form result structure
         groups_data = []
-        # Sort by product name for consistent output
         sorted_keys = sorted(grouped_specs.keys())
 
         for key in sorted_keys:
             items_specs = grouped_specs[key]
             first = items_specs[0]
 
-            # Common decorative params
             common_front = first.front_name
             common_color_frames = first.color_frames
             common_color_panels = first.color_panel_outside
@@ -786,10 +1136,14 @@ class ProductionDataService:
         return groups_data
 
     @staticmethod
-    def prepare_press_groups_data(order_spec):
+    def prepare_press_groups_data(items):
+        """
+        Groups door panels for press report from a list of ProductionSpec items.
+        Accepts List[ProductionSpec].
+        """
         groups_map = {}
 
-        for item in getattr(order_spec, 'items', []):
+        for item in items:
             if not getattr(item, 'has_door', True):
                 continue
 
@@ -830,7 +1184,8 @@ class ProductionDataService:
                 for lbl in raw_labels:
                     text_val = str(lbl.get('text', '') if isinstance(lbl, dict) else getattr(lbl, 'text', '')).strip()
                     is_custom_val = bool(
-                        lbl.get('is_custom', False) if isinstance(lbl, dict) else getattr(lbl, 'is_custom', False))
+                        lbl.get('is_custom', False) if isinstance(lbl, dict) else getattr(lbl, 'is_custom', False)
+                    )
                     if text_val:
                         labels.append({
                             'text': text_val,
@@ -843,7 +1198,6 @@ class ProductionDataService:
                     'labels': labels,
                 })
 
-                # Подпись для корректного разделения групп при разных значениях параметров
                 lbl_suffix = f"({','.join(sig_labels)})" if sig_labels else ""
                 preset_signature_parts.append(f"{p_name}{lbl_suffix}")
 
@@ -853,7 +1207,6 @@ class ProductionDataService:
             face_blocks = getattr(puzzle, 'face_blocks', []) if puzzle else []
             sandwich_blocks = getattr(puzzle, 'sandwich_blocks', []) if puzzle else []
 
-            # Группировка с учетом состава и параметров пресетов
             group_key = (comp_title, presets_signature)
 
             if group_key not in groups_map:
@@ -865,7 +1218,6 @@ class ProductionDataService:
                     'counter': Counter(),
                 }
 
-            # Direct panel dimensions calculation
             panel_dims = getattr(item, 'panel_dimensions', []) or []
             for p_dim in panel_dims:
                 w = p_dim.get('width') if isinstance(p_dim, dict) else getattr(p_dim, 'width', None)
@@ -887,382 +1239,6 @@ class ProductionDataService:
                 panel_groups.append(grp)
 
         return panel_groups
-
-    @staticmethod
-    def get_wooden_frames_data(spec_obj):
-        """
-        Собирает данные для отчёта по деревянным коробкам из элементов спецификации.
-        Берёт проёмы (ширина, высота, толщина стены).
-        """
-        frames_items = []
-        for item in getattr(spec_obj, 'items', []):
-            # Пропускаем, если позиция не имеет коробки или это скрытый алюминиевый короб
-            is_hidden = getattr(item, 'is_hidden_frame', False)
-            has_frame = getattr(item, 'has_frame', True)
-            if not has_frame or is_hidden:
-                continue
-
-            frames_items.append({
-                'mark': getattr(item, 'mark', ''),
-                'place': getattr(item, 'place', '') or '',
-                'opening_width': getattr(item, 'opening_width', None) or getattr(item, 'width', ''),
-                'opening_height': getattr(item, 'opening_height', None) or getattr(item, 'height', ''),
-                'wall_thickness': getattr(item, 'wall', '') or getattr(item, 'wall_thickness', ''),
-                'direction': getattr(item, 'direction', ''),
-                'opening': getattr(item, 'opening', ''),
-                'color_frames': getattr(item, 'color_frames', '') or getattr(item, 'color', ''),
-                'lock_name': getattr(item, 'lock_name', ''),
-                'hinge_name': getattr(item, 'hinge_name', ''),
-                'comment': getattr(item, 'comment', ''),
-            })
-        return frames_items
-
-    @staticmethod
-    def get_warehouse_hardware_summary(spec_obj):
-        """
-        Агрегирует фурнитуру под заказ для складской комплектации:
-        замки, ручки, петли (с учетом их фактического количества).
-        """
-        from collections import defaultdict
-
-        locks = defaultdict(int)
-        handles = defaultdict(int)
-        hinges = defaultdict(int)
-
-        for item in getattr(spec_obj, 'items', []):
-            # Замки
-            lock = getattr(item, 'lock_name', None) or (item.get('lock_name') if isinstance(item, dict) else None)
-            if lock:
-                locks[lock] += 1
-
-            # Ручки
-            handle = getattr(item, 'handle_name', None) or (item.get('handle_name') if isinstance(item, dict) else None)
-            if handle:
-                handles[handle] += 1
-
-            # Петли (считаем количество высот врезки)
-            hinge = getattr(item, 'hinge_name', None) or (item.get('hinge_name') if isinstance(item, dict) else None)
-            if hinge:
-                raw_hinges = getattr(item, 'hinge_heights', []) or (
-                    item.get('hinge_heights', []) if isinstance(item, dict) else [])
-                count = len([h for h in raw_hinges if h is not None])
-                # Если высоты не заполнены, берем минимум 3 по умолчанию
-                hinges[hinge] += count if count > 0 else 3
-
-        summary_list = []
-        for name, qty in sorted(locks.items()):
-            summary_list.append({'category': 'מנעולים (Замки)', 'name': name, 'quantity': qty})
-        for name, qty in sorted(handles.items()):
-            summary_list.append({'category': 'ידיות (Ручки)', 'name': name, 'quantity': qty})
-        for name, qty in sorted(hinges.items()):
-            summary_list.append({'category': 'צירים (Петли)', 'name': name, 'quantity': qty})
-
-        return summary_list
-
-    @staticmethod
-    def prepare_wood_frames_report_data(order_spec):
-        """
-        Group and aggregate wood frame specifications using external site measurements.
-        """
-        groups_map = {}
-
-        for item in getattr(order_spec, 'items', []):
-            # Пропускаем позиции без коробки или со скрытыми коробами
-            if not getattr(item, 'has_frame', True):
-                continue
-            if getattr(item, 'is_hidden_frame', False):
-                continue
-
-            # Извлечение door_casing из эффективного BOM позиции
-            bom_items = getattr(item, 'bom_items', []) or []
-            casing_names = [
-                getattr(b, 'common_name', None) or getattr(b, 'item_name', '')
-                for b in bom_items
-                if getattr(b, 'tag', '') in ('door_casing', 'casing')
-                or getattr(b, 'section', '') in ('door_casing', 'casing', 'הלבשה', 'הלבשות')
-            ]
-            door_casing = " / ".join(dict.fromkeys(filter(None, casing_names))) or "-"
-
-            # Релевантные кастомизаторы коробки
-            raw_cmz = getattr(item, 'frames_report_customizers', []) or []
-            cmz_signature = []
-            for c in raw_cmz:
-                c_name = c.get('name') if isinstance(c, dict) else getattr(c, 'name', '')
-                c_params = c.get('params', []) if isinstance(c, dict) else getattr(c, 'params', [])
-                p_strs = [f"{p.get('label')}:{p.get('value')}" for p in c_params]
-                cmz_signature.append(f"{c_name}({', '.join(p_strs)})")
-            cmz_key = " + ".join(cmz_signature)
-
-            # Петли
-            raw_hinges = getattr(item, 'hinge_heights', []) or []
-            hinges_tuple = tuple(h for h in raw_hinges if h is not None)
-
-            # Ключ группировки шапки
-            group_key = (
-                getattr(item, 'product_family', '') or getattr(item, 'product_name', ''),
-                getattr(item, 'series', ''),
-                getattr(item, 'frame', ''),
-                door_casing,
-                getattr(item, 'basic_color_frames', ''),
-                getattr(item, 'color_frames', ''),
-                getattr(item, 'lock_name', ''),
-                getattr(item, 'lock_height', None),
-                getattr(item, 'hinge_name', ''),
-                hinges_tuple,
-                cmz_key,
-            )
-
-            if group_key not in groups_map:
-                groups_map[group_key] = {
-                    'product_name': getattr(item, 'product_family', '') or getattr(item, 'product_name', ''),
-                    'series': getattr(item, 'series', ''),
-                    'frame_type': getattr(item, 'frame', ''),
-                    'door_casing': door_casing,
-                    'color_frames': getattr(item, 'color_frames', '') or getattr(item, 'basic_color_frames', ''),
-                    'lock_name': getattr(item, 'lock_name', ''),
-                    'lock_height': getattr(item, 'lock_height', None),
-                    'hinge_name': getattr(item, 'hinge_name', ''),
-                    'hinge_heights': list(hinges_tuple),
-                    'customizers_title': cmz_key,
-                    'items': [],
-                    'size_counter': Counter(),
-                }
-
-            # Внешние замеры замерщика без пересчёта
-            w = getattr(item, 'width', None)
-            h = getattr(item, 'height', None)
-            wall = getattr(item, 'wall', None)
-
-            groups_map[group_key]['items'].append(item)
-            if w and h:
-                groups_map[group_key]['size_counter'][(h, w, wall)] += 1
-
-        result_groups = []
-        for grp in groups_map.values():
-            raw_counter = grp.pop('size_counter')
-            # Сортировка: H по убыванию, W по убыванию, T
-            sorted_sizes = sorted(
-                raw_counter.items(),
-                key=lambda x: (x[0][0], x[0][1], x[0][2] or 0),
-                reverse=True
-            )
-            grp['aggregated_sizes'] = [
-                {'height': h, 'width': w, 'wall': wall, 'qty': count}
-                for (h, w, wall), count in sorted_sizes
-            ]
-
-            def parse_mark(it):
-                try:
-                    return int(getattr(it, 'mark', 0) or 0)
-                except (ValueError, TypeError):
-                    return 999999
-
-            grp['items'].sort(key=parse_mark)
-            result_groups.append(grp)
-
-        return result_groups
-
-    @classmethod
-    def get_order_customizable_hardware(cls, order, spec_obj):
-        """
-        Scans effective BOM items from compiled spec_obj.
-        Finds hardware groups by common_name that have multiple color variants in the catalog.
-        """
-        from apps.catalog.models import Hardware
-
-        # 1. Извлекаем все уникальные common_name из BOM позиций спецификации
-        common_names = set()
-        for item in getattr(spec_obj, 'items', []):
-            for bom_item in getattr(item, 'bom_items', []) or []:
-                c_name = getattr(bom_item, 'common_name', None) or (
-                    bom_item.get('common_name') if isinstance(bom_item, dict) else None
-                )
-                if c_name:
-                    common_names.add(c_name.strip())
-
-        # 2. Текущие сохраненные выборы для заказа
-        saved_selections = {
-            s.common_name: s.selected_hardware_id
-            for s in order.component_selections.all()
-        }
-
-        result = []
-        for c_name in sorted(common_names):
-            # Ищем все активные артикулы с данным common_name, у которых задан цвет
-            items_qs = Hardware.objects.filter(
-                common_name=c_name,
-                active=True,
-                color__isnull=False
-            ).select_related('color')
-
-            # Проверяем, есть ли реальная вариативность по цвету (больше одного уникального цвета)
-            colors_count = items_qs.values('color').distinct().count()
-            if colors_count > 1:
-                options = [
-                    {
-                        'id': h.id,
-                        'name': h.name,
-                        'color_name': h.color.name if h.color else '',
-                        'sku': h.sku,
-                    }
-                    for h in items_qs
-                ]
-                result.append({
-                    'common_name': c_name,
-                    'options': options,
-                    'selected_id': saved_selections.get(c_name),
-                })
-
-        return result
-
-    @classmethod
-    def prepare_warehouse_packing_slip_data(cls, order, spec_obj):
-        """
-        Aggregates hardware and accessories for warehouse picking slip:
-        1. Handles & Escutcheons
-        2. Locks & Accessories
-        3. Hinges (exact piece count based on cutouts) & Covers
-        4. Color-selected or TBD components (from OrderComponentSelection)
-        5. Default BOM & customizer physical hardware (stoppers, drop seals, closers)
-        """
-        from collections import defaultdict
-        from apps.catalog.models import Hardware
-
-        # 1. Считываем сохраненные выборы вариантов для заказа
-        saved_selections = {
-            s.common_name: s.selected_hardware
-            for s in order.component_selections.select_related('selected_hardware__color').all()
-        }
-
-        # 2. Счетчики категорий
-        handles_count = defaultdict(int)
-        locks_count = defaultdict(int)
-        hinges_count = defaultdict(int)
-        bom_hardware_count = defaultdict(lambda: {'qty': 0, 'sku': '', 'obj': None, 'common_name': ''})
-
-        processed_common_names = set()
-
-        # 3. Обход позиций спецификации
-        for item in getattr(spec_obj, 'items', []):
-            # Ручки
-            handle_name = getattr(item, 'handle_name', None) or getattr(order, 'handle_name', None)
-            if not handle_name and getattr(order, 'handle', None):
-                handle_name = order.handle.name
-            if handle_name and getattr(item, 'has_door', True):
-                handles_count[handle_name] += 1
-
-            # Замки
-            lock = getattr(item, 'lock_name', None)
-            if lock and getattr(item, 'has_door', True):
-                locks_count[lock] += 1
-
-            # Петли — считаем строго по числу врезок
-            hinge = getattr(item, 'hinge_name', None)
-            if hinge:
-                raw_hinges = getattr(item, 'hinge_heights', []) or []
-                count = len([h for h in raw_hinges if h is not None])
-                hinges_count[hinge] += count if count > 0 else 3
-
-            # Дополнительная фурнитура из эффективного BOM (стопоры, доводчики, уплотнители и т.д.)
-            for bom_item in getattr(item, 'bom_items', []) or []:
-                tag = getattr(bom_item, 'tag', '')
-                # Исключаем позиции, которые уже посчитаны в отдельных блоках выше
-                if tag in ('lock', 'hinges', 'frame', 'covering', 'base', 'filling', 'door_casing', 'casing'):
-                    continue
-
-                item_name = getattr(bom_item, 'item_name', '')
-                c_name = getattr(bom_item, 'common_name', '') or ''
-                sku = getattr(bom_item, 'sku', '') or ''
-                qty = float(getattr(bom_item, 'quantity', 1) or 1)
-
-                if item_name:
-                    key = c_name or item_name
-                    bom_hardware_count[key]['qty'] += qty
-                    bom_hardware_count[key]['sku'] = sku
-                    bom_hardware_count[key]['common_name'] = c_name
-
-        # 4. Формируем раздел элементов с выбором цвета
-        color_variants_items = []
-        regular_hardware_items = []
-
-        for key, data in bom_hardware_count.items():
-            c_name = data['common_name']
-            if c_name:
-                # Проверяем, есть ли по этому common_name цветовая линейка
-                color_qs = Hardware.objects.filter(common_name=c_name, active=True, color__isnull=False).select_related(
-                    'color')
-                if color_qs.values('color').distinct().count() > 1:
-                    processed_common_names.add(c_name)
-                    chosen_hw = saved_selections.get(c_name)
-
-                    if chosen_hw:
-                        color_variants_items.append({
-                            'common_name': c_name,
-                            'name': chosen_hw.name,
-                            'color_name': chosen_hw.color.name if chosen_hw.color else '',
-                            'sku': chosen_hw.sku,
-                            'qty': int(data['qty']) if data['qty'].is_integer() else data['qty'],
-                            'is_selected': True,
-                        })
-                    else:
-                        # Цвет еще не выбран менеджером
-                        available_options = [
-                            {'name': h.name, 'color': h.color.name if h.color else '', 'sku': h.sku}
-                            for h in color_qs
-                        ]
-                        color_variants_items.append({
-                            'common_name': c_name,
-                            'name': c_name,
-                            'color_name': 'טרם נבחר / לבחירת לקוח',
-                            'sku': '-',
-                            'qty': int(data['qty']) if data['qty'].is_integer() else data['qty'],
-                            'is_selected': False,
-                            'available_options': available_options,
-                        })
-                    continue
-
-            # Обычные фиксированные комплектующие (стопоры, пороги и т.д.)
-            regular_hardware_items.append({
-                'name': key,
-                'sku': data['sku'],
-                'qty': int(data['qty']) if data['qty'].is_integer() else data['qty'],
-            })
-
-        # 5. Итоговые структурированные группы
-        groups = []
-
-        if handles_count:
-            groups.append({
-                'title': 'ידיות ורוזטות (Ручки и розетки)',
-                'items': [{'name': k, 'qty': v, 'sku': ''} for k, v in sorted(handles_count.items())]
-            })
-
-        if locks_count:
-            groups.append({
-                'title': 'מנעולים וצילינדרים (Замки и цилиндры)',
-                'items': [{'name': k, 'qty': v, 'sku': ''} for k, v in sorted(locks_count.items())]
-            })
-
-        if hinges_count:
-            groups.append({
-                'title': 'צירים (Петли - штучный подсчет)',
-                'items': [{'name': k, 'qty': v, 'sku': ''} for k, v in sorted(hinges_count.items())]
-            })
-
-        if color_variants_items:
-            groups.append({
-                'title': 'רכיבים לפי גוון (Комплектующие с выбором цвета)',
-                'is_color_group': True,
-                'items': color_variants_items
-            })
-
-        if regular_hardware_items:
-            groups.append({
-                'title': 'פרזול משלים ומעצורים (Стопоры и доп. фурнитура из BOM)',
-                'items': regular_hardware_items
-            })
-
-        return groups
 
 
 class OrderProductionService:
@@ -1343,10 +1319,14 @@ class OrderProductionService:
 
     @classmethod
     def start_production(cls, order, user=None):
+        order.production_start_date = timezone.now().date()
         # 1. Если заказ в ожидании Фазы 2 — переводим его в PHASE2_PRODUCTION
         if order.status == OrderStatus.PHASE1_READY:
             active_groups = order.groups.exclude(
-                production_state=OrderItemsGroup.ProductionState.CANCELED
+                production_state__in=[
+                    OrderItemsGroup.ProductionState.WAITING,
+                    OrderItemsGroup.ProductionState.CANCELED,
+                ]
             )
             if not active_groups.exists():
                 raise OrderValidationError("Нет активных групп для запуска второй фазы.")
@@ -1354,7 +1334,7 @@ class OrderProductionService:
             order.status = OrderStatus.PHASE2_PRODUCTION
             order.save(update_fields=['status'])
 
-            # Строим спецификацию для фазы 2
+            # Строим спецификацию Фазы 2 (по всем запущенным ранее партиям)
             TechnicalSpecService.get_or_build_spec(
                 order, phase='phase2', force_rebuild=True, user=user
             )
@@ -1370,9 +1350,12 @@ class OrderProductionService:
         # Фиксируем текущий номер батча для запускаемой партии
         released_batch = order.current_batch
 
-        # Всем запускаемым группам проставляем номер и переводим в работу
-        new_groups.filter(batch_number__isnull=True).update(batch_number=released_batch)
-        new_groups.update(production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION)
+        # Всем запускаемым группам проставляем номер партии и переводим в работу
+        new_groups.update(
+            batch_number=released_batch,
+            production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
+            batch_date=date.today(),
+        )
 
         # Переводим статус заказа в зависимости от раздельного монтажа
         if getattr(order, 'has_split_installation', False):
@@ -1380,11 +1363,11 @@ class OrderProductionService:
         else:
             order.status = OrderStatus.IN_PRODUCTION
 
-        # Инкрементируем счетчик: батч закрыт, любые новые двери пойдут в released_batch + 1
+        # Инкрементируем счетчик: батч выдан, следующий дозаказ получит released_batch + 1
         order.current_batch = released_batch + 1
-        order.save(update_fields=['status', 'current_batch'])
+        order.save(update_fields=['status', 'current_batch', 'production_start_date'])
 
-        # Строим спецификацию именно для этого запущенного батча
+        # Строим спецификацию для запущенного батча
         phase = 'phase1' if order.status == OrderStatus.PHASE1_PRODUCTION else 'phase2'
         TechnicalSpecService.get_or_build_spec(
             order, phase=phase, batch_number=released_batch, force_rebuild=True, user=user

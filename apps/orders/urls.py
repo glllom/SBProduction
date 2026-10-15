@@ -29,10 +29,13 @@ urlpatterns = [
     path('<int:order_pk>/groups/create-from-specification/<int:spec_pk>/', views.create_group_from_specification,
          name='group-create-from-specification'),
     path('specifications/<int:pk>/delete/', views.delete_group_specification, name='specification-delete'),
+    path('groups/<int:pk>/cancel/', views.order_group_cancel, name='order-group-cancel'),
 
     # Order Items
     path('items/<int:pk>/edit/', views.OrderItemUpdateView.as_view(), name='order-item-edit'),
     path('items/<int:pk>/update-measurements/', views.update_item_measurements, name='order-item-update-measurements'),
     path('items/<int:pk>/duplicate-measurements/', views.duplicate_item_measurements,
          name='order-item-duplicate-measurements'),
+    path('items/<int:pk>/cancel/', views.order_item_cancel, name='order-item-cancel'),
+
 ]

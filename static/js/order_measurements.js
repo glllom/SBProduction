@@ -161,12 +161,14 @@ $(document).ready(function () {
      * Replaces static cells with input fields.
      */
     $('.clickable-row').on('click', function (e) {
-        if (!config.canEdit) return;
-        if ($(this).hasClass('edit-mode')) return;
-        // Do not enter edit mode if click was on a link, button, or file input
+        const $row = $(this);
+        const canEdit = $row.data('can-edit') === true || $row.data('can-edit') === 'true';
+
+        // Ignore clicks on locked or canceled rows
+        if (!canEdit || $row.hasClass('row-locked')) return;
+        if ($row.hasClass('edit-mode')) return;
         if ($(e.target).closest('a, button, input, select').length) return;
 
-        const $row = $(this);
         const itemId = $row.data('item-id');
         const data = $row.data();
 
@@ -502,6 +504,64 @@ $(document).ready(function () {
     $(document).on('keypress', 'input', function (e) {
         if (e.which === 13) {
             $(this).closest('tr').find('.btn-save').click();
+        }
+    });
+});
+
+/**
+ * Cancel single door item (force-majeure).
+ */
+$(document).on('click', '.btn-item-cancel', function (e) {
+    e.stopPropagation();
+    const $row = $(this).closest('tr');
+    const itemId = $row.data('item-id');
+    const mark = $row.data('mark') || itemId;
+
+    if (!confirm(`האם אתה בטוח שברצונך לבטל את דלת מס' ${mark}? פעולה זו תנעל את הפריט.`)) {
+        return;
+    }
+
+    const $btn = $(this);
+    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
+    $.ajax({
+        url: `/orders/items/${itemId}/cancel/`,
+        method: 'POST',
+        headers: {'X-CSRFToken': config.csrfToken},
+        success: function (response) {
+            if (response.status === 'ok') {
+                // Dispose tooltips
+                $row.find('[data-bs-toggle="tooltip"]').each(function () {
+                    const inst = bootstrap.Tooltip.getInstance(this);
+                    if (inst) inst.dispose();
+                });
+                $(`#custom-row-${itemId}`).remove();
+
+                // Update row attributes to locked state
+                $row.data('can-edit', false);
+                $row.data('state', 'CANCELED');
+                $row.removeClass('clickable-row edit-mode')
+                    .addClass('table-secondary text-muted row-locked');
+
+                // Render static view with lock icon
+                const updatedData = $row.data();
+                let staticHtml = renderStaticRowContent(updatedData);
+                // Replace action icons with lock icon
+                staticHtml = staticHtml.replace(
+                    /<i class="bi bi-pencil-square.*?<\/i>/,
+                    '<i class="bi bi-lock-fill opacity-25 ms-2" data-bs-toggle="tooltip" title="פריט נעול לעריכה"></i>'
+                );
+
+                $row.html(staticHtml);
+                if (window.initTooltips) window.initTooltips($row[0]);
+            } else {
+                alert(response.message || 'שגיאה בביטול הפריט');
+                $btn.prop('disabled', false).html('<i class="bi bi-trash"></i>');
+            }
+        },
+        error: function () {
+            alert('שגיאת תקשורת עם השרת');
+            $btn.prop('disabled', false).html('<i class="bi bi-trash"></i>');
         }
     });
 });

@@ -245,7 +245,7 @@
 <div class="dims-container {% if grp.dimensions|length >= 4 %}dims-col-2{% else %}dims-col-1{% endif %}">
     {% for d in grp.dimensions %}
         <div class="dim-line">
-            <span>{{ d.width|floatformat }} \ {{ d.height|floatformat }}</span>
+            <span>{{ d.height|floatformat }} \ {{ d.width|floatformat }}</span>
             {% if d.qty > 1 %}<span class="dim-qty" dir="rtl">{{ d.qty }}x</span>{% endif %}
         </div>
     {% endfor %}

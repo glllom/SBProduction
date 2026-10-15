@@ -158,48 +158,13 @@ class ProductionSpec(BaseModel):
 
 class OrderSpec(BaseModel):
     """
-    Complete order specification containing order info and all item specs.
+    Complete order specification containing order info and partitioned batches.
+    e.g. {"order": {...}, "batches": {"1": [...], "2": [...]}}
     """
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     order: OrderHeaderSpec
-    items: List[ProductionSpec]
-
-
-class OrderSpecBatchContainer(BaseModel):
-    """
-    Container for partitioned specifications (batches / waves).
-    e.g. {"batch_1": OrderSpec, "batch_2": OrderSpec}
-    """
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-
-    batches: Dict[str, OrderSpec] = Field(default_factory=dict)
-
-    """Returns unified OrderSpec containing all items across all batches."""
-
-    @staticmethod
-    def _fmt(d):
-        return d.strftime("%d/%m/%y") if d else ""
-
-    def get_all_items(self) -> List[ProductionSpec]:
-        """Collects items from all batches in chronological order."""
-        res = []
-        for batch_key in sorted(self.batches.keys()):
-            res.extend(self.batches[batch_key].items)
-        return res
-
-    def get_aggregated_spec(self, order) -> OrderSpec:
-        """Returns unified OrderSpec containing all items across all batches."""
-        return OrderSpec(
-            order=OrderHeaderSpec(
-                number=str(order.order_number or ""),
-                customer=order.customer or "",
-                status=order.status,
-                painting_completion_date=self._fmt(getattr(order, 'painting_completion_date', None)),
-                completion_date=self._fmt(getattr(order, 'completion_date', None)),
-            ),
-            items=self.get_all_items()
-        )
+    batches: Dict[str, List[ProductionSpec]] = Field(default_factory=dict)
 
 
 class SandwichLayerSpec(BaseModel):
