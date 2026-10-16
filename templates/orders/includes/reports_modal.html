@@ -1,0 +1,116 @@
+<!-- Reports & Production Modal -->
+<div class="modal fade" id="reportsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-printer me-2 text-dark"></i>הדפסת דוחות וייצור קבצים
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Шаг 1: Выбор батчей -->
+                <div class="mb-4 p-3 bg-light rounded border">
+                    <h6 class="fw-bold text-secondary mb-3">1. בחירת אצוות (Batches) לביצוע</h6>
+                    <!-- Сюда JS вставит чекбоксы с номерами партий -->
+                    <div class="d-flex flex-wrap gap-2" id="batchSelectionContainer"></div>
+                </div>
+                <!-- Шаг 2: Выбор отчета / Действия -->
+                <h6 class="fw-bold text-secondary mb-3">2. בחירת דוח או פעולה</h6>
+                <div class="row g-3">
+                    <!-- Отчеты -->
+                    <div class="col-md-4">
+                        <div class="card h-100 border shadow-sm">
+                            <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
+                                <h6 class="fw-bold text-primary mb-0"><i class="bi bi-file-earmark-text me-1"></i>דוחות ייצור</h6>
+                            </div>
+                            <div class="card-body d-flex flex-column gap-2">
+                                <button type="button"
+                                        class="btn btn-primary btn-sm text-start btn-generate-action"
+                                        data-url="{% url 'production:station-report' order.pk %}?station=ALL">
+                                    <i class="bi bi-printer-fill me-1"></i><strong>הדפסת הכל (Master)</strong>
+                                </button>
+                                {% for station in order.get_production_stations %}
+                                    {% if station.has_specification %}
+                                        <button type="button"
+                                                class="btn btn-outline-secondary btn-sm text-start btn-generate-action"
+                                                data-url="{% url 'production:station-report' order.pk %}?station={{ station.code }}">
+                                            <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
+                                        </button>
+                                    {% endif %}
+                                {% endfor %}
+                                <button type="button"
+                                        class="btn btn-outline-dark btn-sm text-start btn-generate-action"
+                                        data-url="{% url 'production:order-sketches-report' order.id %}">
+                                    <i class="bi bi-file-earmark-image me-1"></i>סקיצות
+                                </button>
+                                {% if order.has_split_installation %}
+                                    <button type="button"
+                                            class="btn btn-outline-warning btn-sm text-start btn-generate-action"
+                                            data-url="{% url 'production:split-measurer-report' order.pk %}">
+                                        <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- ЧПУ -->
+                    <div class="col-md-4">
+                        <div class="card h-100 border shadow-sm">
+                            <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
+                                <h6 class="fw-bold text-success mb-0"><i class="bi bi-cpu me-1"></i>קבצי מכונות (CNC)</h6>
+                            </div>
+                            <div class="card-body d-flex flex-column gap-2">
+                                <button type="button"
+                                        class="btn btn-success btn-sm text-start btn-generate-action"
+                                        data-url="{% url 'production:order-production-data' order.pk %}">
+                                    <i class="bi bi-file-earmark-zip-fill me-1"></i><strong>הורדת ארכיון (ZIP)</strong>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-outline-success btn-sm text-start btn-generate-action"
+                                        data-url="{% url 'production:sync_usb' %}?order_id={{ order.pk }}">
+                                    <i class="bi bi-usb-drive me-1"></i>סנכרון ל-USB
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Наклейки и склад -->
+                    <div class="col-md-4">
+                        <div class="card h-100 border shadow-sm">
+                            <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
+                                <h6 class="fw-bold text-dark mb-0"><i class="bi bi-tags me-1"></i>מדבקות ומחסן</h6>
+                            </div>
+                            <div class="card-body d-flex flex-column gap-2">
+                                <button type="button"
+                                        class="btn btn-dark btn-sm text-start btn-generate-action"
+                                        data-url="{% url 'production:station-report' order.pk %}?station=ALL">
+                                    <i class="bi bi-tag-fill me-1"></i><strong>כל המדבקות</strong>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-outline-dark btn-sm text-start btn-generate-action"
+                                        data-url="{% url 'production:station-report' order.pk %}?station=FRAMES">
+                                    <i class="bi bi-tag me-1"></i>מדבקות משקופים
+                                </button>
+                                <button type="button"
+                                        class="btn btn-outline-secondary btn-sm text-start btn-generate-action"
+                                        data-url="{% url 'production:export-labels-csv' order.id %}">
+                                    <i class="bi bi-filetype-csv me-1"></i>ייצוא CSV (CNC)
+                                </button>
+                                <!-- Кнопка склада открывает форму в текущем окне -->
+                                <button type="button"
+                                        class="btn btn-outline-dark btn-sm text-start btn-generate-action"
+                                        data-url="{% url 'production:order-warehouse-setup' order.id %}"
+                                        data-target="_self">
+                                    <i class="bi bi-box-seam me-1"></i>הגדרות מחסן וליקוט
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

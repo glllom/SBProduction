@@ -229,18 +229,20 @@ class Order(models.Model):
 
     @property
     def can_start_production(self) -> bool:
-        """True, если есть группы для запуска или перехода в фазу 2."""
-        if self.status == OrderStatus.NEW:
-            return self.groups.filter(
-                production_state=OrderItemsGroup.ProductionState.NEW
-            ).exists()
+        """True, если есть группы для запуска (новые батчи) или заказ ждет перехода в фазу 2."""
+
+        # 1. Отмененный заказ мертв, в нем ничего запускать нельзя
+        if self.status == OrderStatus.CANCELED:
+            return False
+
+        # 2. Если заказ висит между фазами, нам нужна кнопка "Перевести в фазу 2"
         if self.status == OrderStatus.PHASE1_READY:
             return True
-        if self.status in [OrderStatus.IN_PRODUCTION, OrderStatus.PHASE2_PRODUCTION, OrderStatus.COMPLETED]:
-            return self.groups.filter(
-                production_state=OrderItemsGroup.ProductionState.NEW
-            ).exists()
-        return False
+
+        # 3. Во ВСЕХ остальных случаях (NEW, IN_PRODUCTION, PHASE2_PRODUCTION,
+        #    COMPLETED, PARTIALLY_READY, COMPLETION_PRODUCTION)
+        #    мы разрешаем запуск, если внутри есть хоть одна группа со статусом NEW.
+        return self.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW).exists()
 
     @property
     def production_action_label(self) -> str:
@@ -493,7 +495,7 @@ class OrderItemsGroup(models.Model):
         """
 
         # 0. Администраторы имеют полный доступ
-        if user and (user.is_staff or getattr(user, 'is_admin_user', False) or getattr(user, 'role', None) == 'ADMIN'):
+        if user and (getattr(user, 'is_admin_user', False) or getattr(user, 'role', None) == 'ADMIN'):
             return True
 
         # 1. Если производственный статус NEW или WAITING — разрешено

@@ -582,6 +582,59 @@ class ProductionDataService:
                 self._write_xml_files(item_door_dir, spec, "door")
 
     @staticmethod
+    def extract_report_items(spec_obj, requested_batches: list = None):
+        """
+        Универсальная строгая прослойка для отчетов.
+        Ожидает явный список номеров батчей (например: [1], или ['1', '3']).
+        Если список пуст или None — возвращает (None, None).
+        Извлекает данные из сохраненного снимка спецификации, дедуплицирует по item_id.
+        """
+        if not requested_batches:
+            return None, None
+
+        batches_dict = getattr(spec_obj, 'batches', {}) or {}
+        if not isinstance(batches_dict, dict):
+            # Если передали обычный словарь вместо Pydantic модели
+            batches_dict = spec_obj.get('batches', {}) if isinstance(spec_obj, dict) else {}
+
+        # Приводим запрошенные номера к строкам
+        requested_batches = [str(b) for b in requested_batches]
+
+        unique_items = {}
+        applied_batches = []
+
+        # Извлекаем только те, которые явно запрошены в списке
+        for b_num in requested_batches:
+            if b_num in batches_dict:
+                applied_batches.append(b_num)
+                for item in batches_dict[b_num]:
+                    item_id = getattr(item, 'item_id', None) if hasattr(item, 'item_id') else item.get('item_id')
+
+                    if item_id:
+                        unique_items[item_id] = item
+                    else:
+                        unique_items[id(item)] = item
+
+        # Если батчи запросили, но в спецификации их не оказалось
+        if not unique_items:
+            return [], ",".join(applied_batches)
+
+        flat_items = list(unique_items.values())
+
+        # Сортировка по номеру двери для отчета
+        def parse_mark(it):
+            mark = getattr(it, 'mark', None) if hasattr(it, 'mark') else it.get('mark')
+            try:
+                return int(mark)
+            except (ValueError, TypeError):
+                return 999999
+
+        flat_items.sort(key=parse_mark)
+        batches_label = ", ".join(applied_batches)
+
+        return flat_items, batches_label
+
+    @staticmethod
     def _extract_items(spec_or_items):
         """Вспомогательный метод для распаковки позиций из OrderSpec или прямого списка."""
         if isinstance(spec_or_items, list):
@@ -592,24 +645,37 @@ class ProductionDataService:
     @classmethod
     def get_wooden_frames_data(cls, spec_obj):
         frames_items = []
-        for item in cls._extract_items(spec_obj):
-            is_hidden = getattr(item, 'is_hidden_frame', False)
-            has_frame = getattr(item, 'has_frame', True)
+        for item in cls._extract_items(spec_obj):  # ИСПОЛЬЗУЕМ _extract_items
+            is_hidden = getattr(item, 'is_hidden_frame', False) if hasattr(item, 'is_hidden_frame') else item.get(
+                'is_hidden_frame', False)
+            has_frame = getattr(item, 'has_frame', True) if hasattr(item, 'has_frame') else item.get('has_frame', True)
             if not has_frame or is_hidden:
                 continue
 
             frames_items.append({
-                'mark': getattr(item, 'mark', ''),
-                'place': getattr(item, 'place', '') or '',
-                'opening_width': getattr(item, 'opening_width', None) or getattr(item, 'width', ''),
-                'opening_height': getattr(item, 'opening_height', None) or getattr(item, 'height', ''),
-                'wall_thickness': getattr(item, 'wall', '') or getattr(item, 'wall_thickness', ''),
-                'direction': getattr(item, 'direction', ''),
-                'opening': getattr(item, 'opening', ''),
-                'color_frames': getattr(item, 'color_frames', '') or getattr(item, 'color', ''),
-                'lock_name': getattr(item, 'lock_name', ''),
-                'hinge_name': getattr(item, 'hinge_name', ''),
-                'comment': getattr(item, 'comment', ''),
+                'mark': getattr(item, 'mark', '') if hasattr(item, 'mark') else item.get('mark', ''),
+                'place': getattr(item, 'place', '') if hasattr(item, 'place') else item.get('place', '') or '',
+                'opening_width': getattr(item, 'opening_width', None) if hasattr(item, 'opening_width') else item.get(
+                    'opening_width', None) or (getattr(item, 'width', '') if hasattr(item, 'width') else item.get(
+                    'width', '')),
+                'opening_height': getattr(item, 'opening_height', None) if hasattr(item,
+                                                                                   'opening_height') else item.get(
+                    'opening_height', None) or (getattr(item, 'height', '') if hasattr(item, 'height') else item.get(
+                    'height', '')),
+                'wall_thickness': getattr(item, 'wall', '') if hasattr(item, 'wall') else item.get('wall', '') or (
+                    getattr(item, 'wall_thickness', '') if hasattr(item, 'wall_thickness') else item.get(
+                        'wall_thickness', '')),
+                'direction': getattr(item, 'direction', '') if hasattr(item, 'direction') else item.get('direction',
+                                                                                                        ''),
+                'opening': getattr(item, 'opening', '') if hasattr(item, 'opening') else item.get('opening', ''),
+                'color_frames': getattr(item, 'color_frames', '') if hasattr(item, 'color_frames') else item.get(
+                    'color_frames', '') or (getattr(item, 'color', '') if hasattr(item, 'color') else item.get('color',
+                                                                                                               '')),
+                'lock_name': getattr(item, 'lock_name', '') if hasattr(item, 'lock_name') else item.get('lock_name',
+                                                                                                        ''),
+                'hinge_name': getattr(item, 'hinge_name', '') if hasattr(item, 'hinge_name') else item.get('hinge_name',
+                                                                                                           ''),
+                'comment': getattr(item, 'comment', '') if hasattr(item, 'comment') else item.get('comment', ''),
             })
         return frames_items
 
@@ -621,19 +687,19 @@ class ProductionDataService:
         handles = defaultdict(int)
         hinges = defaultdict(int)
 
-        for item in cls._extract_items(spec_obj):
-            lock = getattr(item, 'lock_name', None) or (item.get('lock_name') if isinstance(item, dict) else None)
+        for item in cls._extract_items(spec_obj):  # ИСПОЛЬЗУЕМ _extract_items
+            lock = getattr(item, 'lock_name', None) if hasattr(item, 'lock_name') else item.get('lock_name')
             if lock:
                 locks[lock] += 1
 
-            handle = getattr(item, 'handle_name', None) or (item.get('handle_name') if isinstance(item, dict) else None)
+            handle = getattr(item, 'handle_name', None) if hasattr(item, 'handle_name') else item.get('handle_name')
             if handle:
                 handles[handle] += 1
 
-            hinge = getattr(item, 'hinge_name', None) or (item.get('hinge_name') if isinstance(item, dict) else None)
+            hinge = getattr(item, 'hinge_name', None) if hasattr(item, 'hinge_name') else item.get('hinge_name')
             if hinge:
-                raw_hinges = getattr(item, 'hinge_heights', []) or (
-                    item.get('hinge_heights', []) if isinstance(item, dict) else [])
+                raw_hinges = getattr(item, 'hinge_heights', []) if hasattr(item, 'hinge_heights') else item.get(
+                    'hinge_heights', [])
                 count = len([h for h in raw_hinges if h is not None])
                 hinges[hinge] += count if count > 0 else 3
 
@@ -651,20 +717,30 @@ class ProductionDataService:
     def prepare_wood_frames_report_data(cls, spec_obj):
         groups_map = {}
 
-        for item in cls._extract_items(spec_obj):
-            if not getattr(item, 'has_frame', True) or getattr(item, 'is_hidden_frame', False):
+        for item in cls._extract_items(spec_obj):  # ИСПОЛЬЗУЕМ _extract_items
+            if not (
+                    getattr(item, 'has_frame', True) if hasattr(item, 'has_frame') else item.get('has_frame',
+                                                                                                 True)) or (
+                    getattr(item, 'is_hidden_frame', False) if hasattr(item, 'is_hidden_frame') else item.get(
+                        'is_hidden_frame',
+                        False)):
                 continue
 
-            bom_items = getattr(item, 'bom_items', []) or []
+            bom_items = getattr(item, 'bom_items', []) if hasattr(item, 'bom_items') else item.get('bom_items', [])
             casing_names = [
-                getattr(b, 'common_name', None) or getattr(b, 'item_name', '')
+                (getattr(b, 'common_name', None) if hasattr(b, 'common_name') else b.get('common_name', None)) or (
+                    getattr(b, 'item_name', '') if hasattr(b, 'item_name') else b.get('item_name', ''))
                 for b in bom_items
-                if getattr(b, 'tag', '') in ('door_casing', 'casing')
-                or getattr(b, 'section', '') in ('door_casing', 'casing', 'הלבשה', 'הלבשות')
+                if (getattr(b, 'tag', '') if hasattr(b, 'tag') else b.get('tag', '')) in ('door_casing', 'casing')
+                or (getattr(b, 'section', '') if hasattr(b, 'section') else b.get('section', '')) in ('door_casing',
+                                                                                                      'casing', 'הלבשה',
+                                                                                                      'הלבשות')
             ]
             door_casing = " / ".join(dict.fromkeys(filter(None, casing_names))) or "-"
 
-            raw_cmz = getattr(item, 'frames_report_customizers', []) or []
+            raw_cmz = getattr(item, 'frames_report_customizers', []) if hasattr(item,
+                                                                                'frames_report_customizers') else item.get(
+                'frames_report_customizers', [])
             cmz_signature = []
             for c in raw_cmz:
                 c_name = c.get('name') if isinstance(c, dict) else getattr(c, 'name', '')
@@ -673,42 +749,57 @@ class ProductionDataService:
                 cmz_signature.append(f"{c_name}({', '.join(p_strs)})")
             cmz_key = " + ".join(cmz_signature)
 
-            raw_hinges = getattr(item, 'hinge_heights', []) or []
+            raw_hinges = getattr(item, 'hinge_heights', []) if hasattr(item, 'hinge_heights') else item.get(
+                'hinge_heights', [])
             hinges_tuple = tuple(h for h in raw_hinges if h is not None)
 
             group_key = (
-                getattr(item, 'product_family', '') or getattr(item, 'product_name', ''),
-                getattr(item, 'series', ''),
-                getattr(item, 'frame', ''),
+                (getattr(item, 'product_family', '') if hasattr(item, 'product_family') else item.get('product_family',
+                                                                                                      '')) or (
+                    getattr(item, 'product_name', '') if hasattr(item, 'product_name') else item.get('product_name',
+                                                                                                     '')),
+                getattr(item, 'series', '') if hasattr(item, 'series') else item.get('series', ''),
+                getattr(item, 'frame', '') if hasattr(item, 'frame') else item.get('frame', ''),
                 door_casing,
-                getattr(item, 'basic_color_frames', ''),
-                getattr(item, 'color_frames', ''),
-                getattr(item, 'lock_name', ''),
-                getattr(item, 'lock_height', None),
-                getattr(item, 'hinge_name', ''),
+                getattr(item, 'basic_color_frames', '') if hasattr(item, 'basic_color_frames') else item.get(
+                    'basic_color_frames', ''),
+                getattr(item, 'color_frames', '') if hasattr(item, 'color_frames') else item.get('color_frames', ''),
+                getattr(item, 'lock_name', '') if hasattr(item, 'lock_name') else item.get('lock_name', ''),
+                getattr(item, 'lock_height', None) if hasattr(item, 'lock_height') else item.get('lock_height', None),
+                getattr(item, 'hinge_name', '') if hasattr(item, 'hinge_name') else item.get('hinge_name', ''),
                 hinges_tuple,
                 cmz_key,
             )
 
             if group_key not in groups_map:
                 groups_map[group_key] = {
-                    'product_name': getattr(item, 'product_family', '') or getattr(item, 'product_name', ''),
-                    'series': getattr(item, 'series', ''),
-                    'frame_type': getattr(item, 'frame', ''),
+                    'product_name': (getattr(item, 'product_family', '') if hasattr(item,
+                                                                                    'product_family') else item.get(
+                        'product_family', '')) or (getattr(item, 'product_name', '') if hasattr(item,
+                                                                                                'product_name') else item.get(
+                        'product_name', '')),
+                    'series': getattr(item, 'series', '') if hasattr(item, 'series') else item.get('series', ''),
+                    'frame_type': getattr(item, 'frame', '') if hasattr(item, 'frame') else item.get('frame', ''),
                     'door_casing': door_casing,
-                    'color_frames': getattr(item, 'color_frames', '') or getattr(item, 'basic_color_frames', ''),
-                    'lock_name': getattr(item, 'lock_name', ''),
-                    'lock_height': getattr(item, 'lock_height', None),
-                    'hinge_name': getattr(item, 'hinge_name', ''),
+                    'color_frames': getattr(item, 'color_frames', '') if hasattr(item, 'color_frames') else item.get(
+                        'color_frames', '') or (getattr(item, 'basic_color_frames', '') if hasattr(item,
+                                                                                                   'basic_color_frames') else item.get(
+                        'basic_color_frames', '')),
+                    'lock_name': getattr(item, 'lock_name', '') if hasattr(item, 'lock_name') else item.get('lock_name',
+                                                                                                            ''),
+                    'lock_height': getattr(item, 'lock_height', None) if hasattr(item, 'lock_height') else item.get(
+                        'lock_height', None),
+                    'hinge_name': getattr(item, 'hinge_name', '') if hasattr(item, 'hinge_name') else item.get(
+                        'hinge_name', ''),
                     'hinge_heights': list(hinges_tuple),
                     'customizers_title': cmz_key,
                     'items': [],
                     'size_counter': Counter(),
                 }
 
-            w = getattr(item, 'width', None)
-            h = getattr(item, 'height', None)
-            wall = getattr(item, 'wall', None)
+            w = getattr(item, 'width', None) if hasattr(item, 'width') else item.get('width', None)
+            h = getattr(item, 'height', None) if hasattr(item, 'height') else item.get('height', None)
+            wall = getattr(item, 'wall', None) if hasattr(item, 'wall') else item.get('wall', None)
 
             groups_map[group_key]['items'].append(item)
             if w and h:
@@ -729,7 +820,7 @@ class ProductionDataService:
 
             def parse_mark(it):
                 try:
-                    return int(getattr(it, 'mark', 0) or 0)
+                    return int(getattr(it, 'mark', 0) if hasattr(it, 'mark') else it.get('mark', 0) or 0)
                 except (ValueError, TypeError):
                     return 999999
 
@@ -743,11 +834,10 @@ class ProductionDataService:
         from apps.catalog.models import Hardware
 
         common_names = set()
-        for item in cls._extract_items(spec_obj):
-            for bom_item in getattr(item, 'bom_items', []) or []:
-                c_name = getattr(bom_item, 'common_name', None) or (
-                    bom_item.get('common_name') if isinstance(bom_item, dict) else None
-                )
+        for item in cls._extract_items(spec_obj):  # ИСПОЛЬЗУЕМ _extract_items
+            for bom_item in getattr(item, 'bom_items', []) if hasattr(item, 'bom_items') else item.get('bom_items', []):
+                c_name = getattr(bom_item, 'common_name', None) if hasattr(bom_item, 'common_name') else bom_item.get(
+                    'common_name', None)
                 if c_name:
                     common_names.add(c_name.strip())
 
@@ -800,32 +890,38 @@ class ProductionDataService:
 
         processed_common_names = set()
 
-        for item in cls._extract_items(spec_obj):
-            handle_name = getattr(item, 'handle_name', None) or getattr(order, 'handle_name', None)
+        for item in cls._extract_items(spec_obj):  # ИСПОЛЬЗУЕМ _extract_items
+            handle_name = getattr(item, 'handle_name', None) if hasattr(item, 'handle_name') else item.get(
+                'handle_name', None) or getattr(order, 'handle_name', None)
             if not handle_name and getattr(order, 'handle', None):
                 handle_name = order.handle.name
-            if handle_name and getattr(item, 'has_door', True):
+            if handle_name and (
+                    getattr(item, 'has_door', True) if hasattr(item, 'has_door') else item.get('has_door', True)):
                 handles_count[handle_name] += 1
 
-            lock = getattr(item, 'lock_name', None)
-            if lock and getattr(item, 'has_door', True):
+            lock = getattr(item, 'lock_name', None) if hasattr(item, 'lock_name') else item.get('lock_name', None)
+            if lock and (getattr(item, 'has_door', True) if hasattr(item, 'has_door') else item.get('has_door', True)):
                 locks_count[lock] += 1
 
-            hinge = getattr(item, 'hinge_name', None)
+            hinge = getattr(item, 'hinge_name', None) if hasattr(item, 'hinge_name') else item.get('hinge_name', None)
             if hinge:
-                raw_hinges = getattr(item, 'hinge_heights', []) or []
+                raw_hinges = getattr(item, 'hinge_heights', []) if hasattr(item, 'hinge_heights') else item.get(
+                    'hinge_heights', [])
                 count = len([h for h in raw_hinges if h is not None])
                 hinges_count[hinge] += count if count > 0 else 3
 
-            for bom_item in getattr(item, 'bom_items', []) or []:
-                tag = getattr(bom_item, 'tag', '')
+            for bom_item in getattr(item, 'bom_items', []) if hasattr(item, 'bom_items') else item.get('bom_items', []):
+                tag = getattr(bom_item, 'tag', '') if hasattr(bom_item, 'tag') else bom_item.get('tag', '')
                 if tag in ('lock', 'hinges', 'frame', 'covering', 'base', 'filling', 'door_casing', 'casing'):
                     continue
 
-                item_name = getattr(bom_item, 'item_name', '')
-                c_name = getattr(bom_item, 'common_name', '') or ''
-                sku = getattr(bom_item, 'sku', '') or ''
-                qty = float(getattr(bom_item, 'quantity', 1) or 1)
+                item_name = getattr(bom_item, 'item_name', '') if hasattr(bom_item, 'item_name') else bom_item.get(
+                    'item_name', '')
+                c_name = getattr(bom_item, 'common_name', '') if hasattr(bom_item, 'common_name') else bom_item.get(
+                    'common_name', '')
+                sku = getattr(bom_item, 'sku', '') if hasattr(bom_item, 'sku') else bom_item.get('sku', '')
+                qty = float(
+                    getattr(bom_item, 'quantity', 1) if hasattr(bom_item, 'quantity') else bom_item.get('quantity', 1))
 
                 if item_name:
                     key = c_name or item_name
@@ -1072,22 +1168,25 @@ class ProductionDataService:
     @staticmethod
     def prepare_grouped_data(items):
         """
-        Converts a list of ProductionSpec items into a grouped structure for legacy templates.
-        Accepts List[ProductionSpec].
+        Converts a flat list of ProductionSpec items (or dicts) into a grouped structure.
         """
-        # 1. Grouping logic
+        # 1. Grouping logic (сразу перебираем переданный список items)
         grouped_specs = {}
         for spec in items:
             key = (
-                spec.product_family,
-                spec.series,
-                spec.product_code,
-                spec.front_name,
-                spec.basic_color_frames,
-                spec.frame_paint_option,
-                spec.color_frames,
-                spec.color_panel_outside,
-                tuple(spec.profiles),
+                getattr(spec, 'product_family', '') if hasattr(spec, 'product_family') else spec.get('product_family',
+                                                                                                     ''),
+                getattr(spec, 'series', '') if hasattr(spec, 'series') else spec.get('series', ''),
+                getattr(spec, 'product_code', '') if hasattr(spec, 'product_code') else spec.get('product_code', ''),
+                getattr(spec, 'front_name', '') if hasattr(spec, 'front_name') else spec.get('front_name', ''),
+                getattr(spec, 'basic_color_frames', '') if hasattr(spec, 'basic_color_frames') else spec.get(
+                    'basic_color_frames', ''),
+                getattr(spec, 'frame_paint_option', '') if hasattr(spec, 'frame_paint_option') else spec.get(
+                    'frame_paint_option', ''),
+                getattr(spec, 'color_frames', '') if hasattr(spec, 'color_frames') else spec.get('color_frames', ''),
+                getattr(spec, 'color_panel_outside', '') if hasattr(spec, 'color_panel_outside') else spec.get(
+                    'color_panel_outside', ''),
+                tuple(getattr(spec, 'profiles', []) if hasattr(spec, 'profiles') else spec.get('profiles', [])),
             )
             if key not in grouped_specs:
                 grouped_specs[key] = []
@@ -1101,32 +1200,58 @@ class ProductionDataService:
             items_specs = grouped_specs[key]
             first = items_specs[0]
 
-            common_front = first.front_name
-            common_color_frames = first.color_frames
-            common_color_panels = first.color_panel_outside
+            common_front = getattr(first, 'front_name', '') if hasattr(first, 'front_name') else first.get('front_name',
+                                                                                                           '')
+            common_color_frames = getattr(first, 'color_frames', '') if hasattr(first, 'color_frames') else first.get(
+                'color_frames', '')
+            common_color_panels = getattr(first, 'color_panel_outside', '') if hasattr(first,
+                                                                                       'color_panel_outside') else first.get(
+                'color_panel_outside', '')
 
             for s in items_specs[1:]:
-                if s.front_name != common_front: common_front = "Various"
-                if s.color_frames != common_color_frames: common_color_frames = "Various"
-                if s.color_panel_outside != common_color_panels: common_color_panels = "Various"
+                s_front_name = getattr(s, 'front_name', '') if hasattr(s, 'front_name') else s.get('front_name', '')
+                s_color_frames = getattr(s, 'color_frames', '') if hasattr(s, 'color_frames') else s.get('color_frames',
+                                                                                                         '')
+                s_color_panel_outside = getattr(s, 'color_panel_outside', '') if hasattr(s,
+                                                                                         'color_panel_outside') else s.get(
+                    'color_panel_outside', '')
+
+                if s_front_name != common_front: common_front = "Various"
+                if s_color_frames != common_color_frames: common_color_frames = "Various"
+                if s_color_panel_outside != common_color_panels: common_color_panels = "Various"
 
             group_spec = {
-                'product_name': first.product_name,
-                'code': first.product_code,
+                'product_name': getattr(first, 'product_name', '') if hasattr(first, 'product_name') else first.get(
+                    'product_name', ''),
+                'code': getattr(first, 'product_code', '') if hasattr(first, 'product_code') else first.get(
+                    'product_code', ''),
                 'front_name': common_front,
                 'color_frames': common_color_frames,
-                'basic_color_frames': first.basic_color_frames,
+                'basic_color_frames': getattr(first, 'basic_color_frames', '') if hasattr(first,
+                                                                                          'basic_color_frames') else first.get(
+                    'basic_color_frames', ''),
                 'color_panels': common_color_panels,
-                'lock_name': first.lock_name,
-                'hinge_name': first.hinge_name,
-                'common_lock_height': first.lock_height,
-                'common_hinge_heights': first.hinge_heights,
-                'profiles': first.profiles,
-                'frame_paint_option': first.frame_paint_option,
-                'frame': first.frame,
-                'series': first.series,
-                'product_family': first.product_family,
-                'frames_report_customizers': first.frames_report_customizers,
+                'lock_name': getattr(first, 'lock_name', '') if hasattr(first, 'lock_name') else first.get('lock_name',
+                                                                                                           ''),
+                'hinge_name': getattr(first, 'hinge_name', '') if hasattr(first, 'hinge_name') else first.get(
+                    'hinge_name', ''),
+                'common_lock_height': getattr(first, 'lock_height', '') if hasattr(first, 'lock_height') else first.get(
+                    'lock_height', ''),
+                'common_hinge_heights': getattr(first, 'hinge_heights', []) if hasattr(first,
+                                                                                       'hinge_heights') else first.get(
+                    'hinge_heights', []),
+                'profiles': getattr(first, 'profiles', []) if hasattr(first, 'profiles') else first.get('profiles', []),
+                'frame_paint_option': getattr(first, 'frame_paint_option', '') if hasattr(first,
+                                                                                          'frame_paint_option') else first.get(
+                    'frame_paint_option', ''),
+                'frame': getattr(first, 'frame', '') if hasattr(first, 'frame') else first.get('frame', ''),
+                'series': getattr(first, 'series', '') if hasattr(first, 'series') else first.get('series', ''),
+                'product_family': getattr(first, 'product_family', '') if hasattr(first,
+                                                                                  'product_family') else first.get(
+                    'product_family', ''),
+                'frames_report_customizers': getattr(first, 'frames_report_customizers', []) if hasattr(first,
+                                                                                                        'frames_report_customizers') else first.get(
+                    'frames_report_customizers', []),
             }
 
             groups_data.append({
@@ -1319,7 +1444,12 @@ class OrderProductionService:
 
     @classmethod
     def start_production(cls, order, user=None):
-        order.production_start_date = timezone.now().date()
+        # Устанавливаем дату старта ТОЛЬКО если она еще пустая (это первый батч в заказе)
+        if not order.production_start_date:
+            order.production_start_date = timezone.now()
+
+        # order.save(update_fields=['current_batch'])
+
         # 1. Если заказ в ожидании Фазы 2 — переводим его в PHASE2_PRODUCTION
         if order.status == OrderStatus.PHASE1_READY:
             active_groups = order.groups.exclude(

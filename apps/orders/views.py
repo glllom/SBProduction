@@ -39,8 +39,18 @@ def user_is_admin(user) -> bool:
     return bool(user.is_superuser or getattr(user, 'role', None) == 'ADMIN')
 
 
-def check_order_editable(order: Order, user):
-    """Ensure an order can be edited by a current user."""
+def check_order_editable(order: Order, user, action='edit'):
+    """
+    Ensure an order can be edited by a current user.
+    action='edit': Строгая проверка (grace period/admin) через order.is_editable_by.
+    action='add_group': Разрешает добавление групп всегда, кроме отмененных заказов.
+    """
+    if action == 'add_group':
+        if order.status == OrderStatus.CANCELED:
+            raise PermissionDenied("לא ניתן להוסיף קבוצות להזמנה מבוטלת.")
+        return  # Добавление разрешено для любых других статусов (NEW, IN_PRODUCTION, COMPLETED и т.д.)
+
+    # Для всех остальных действий (изменение шапки, удаление) работает старая строгая проверка
     if not order.is_editable_by(user):
         raise PermissionDenied("שינוי הזמנה בייצור מותר למנהל מערכת בלבד.")
 
@@ -113,10 +123,11 @@ class OrderEditPermissionMixin(View):
                 order = get_object_or_404(Order, pk=self.kwargs.get('pk'))
 
         if order:
-            check_order_editable(order, request.user)
+            # Если это создание новой группы (CreateView), передаем action='add_group'
+            action = 'add_group' if isinstance(self, CreateView) else 'edit'
+            check_order_editable(order, request.user, action=action)
 
         return super().dispatch(request, *args, **kwargs)
-
 
 class OrderItemUpdateView(LoginRequiredMixin, UpdateView):
     model = OrderItem

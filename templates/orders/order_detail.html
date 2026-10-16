@@ -16,19 +16,17 @@
                     <i class="bi bi-pencil"></i>
                 </a>
             {% endif %}
-            {% if can_edit_order %}
-                <button class="btn btn-sm btn-outline-primary ms-3"
-                        data-bs-toggle="modal"
-                        data-bs-target="#groupModal"
-                        title="הוספת קבוצת דלתות חדשה להזמנה">
-                    <i class="bi bi-plus-lg me-2"></i>הוספת דלתות
-                </button>
-                <button class="btn btn-sm btn-outline-warning ms-2 btn-open-load-spec"
-                        data-group-id=""
-                        title="הוספת קבוצה ממפרט שמור">
-                    <i class="bi bi-box-arrow-in-down me-2"></i>טעינת מפרט שמור
-                </button>
-            {% endif %}
+            <button class="btn btn-sm btn-outline-primary ms-3"
+                    data-bs-toggle="modal"
+                    data-bs-target="#groupModal"
+                    title="הוספת קבוצת דלתות חדשה להזמנה">
+                <i class="bi bi-plus-lg me-2"></i>הוספת דלתות
+            </button>
+            <button class="btn btn-sm btn-outline-warning ms-2 btn-open-load-spec"
+                    data-group-id=""
+                    title="הוספת קבוצה ממפרט שמור">
+                <i class="bi bi-box-arrow-in-down me-2"></i>טעינת מפרט שמור
+            </button>
         </div>
         <div class="row">
             <div class="mb-3 col-1"
@@ -87,213 +85,98 @@
         </div>
     </div>
     <!-- Action Toolbar & Primary Process CTAs -->
-    <div class="mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2 p-2 bg-light rounded border">
+    <div class="mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2 p-2 bg-light rounded border shadow-sm">
         <div class="d-flex flex-wrap align-items-center gap-2">
+            <!-- 1. ЗАПУСК В ПРОИЗВОДСТВО И ВАЛИДАЦИЯ -->
             {% if order.can_start_production %}
                 {% if order.status == 'PHASE1_READY' %}
                     <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-                       class="btn btn-warning">
-                        <i class="bi bi-arrow-right-circle"></i> העבר לשלב ב' (הזנת מידות)
+                       class="btn btn-warning fw-bold shadow-sm">
+                        <i class="bi bi-arrow-right-circle me-1"></i> העבר לשלב ב' (הזנת מידות)
                     </a>
                 {% else %}
                     <button type="button"
-                            class="btn btn-primary"
+                            class="btn btn-primary fw-bold shadow-sm"
                             onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
-                        <i class="bi bi-play-circle me-1"></i>העבר לייצור
+                        <i class="bi bi-play-circle me-1"></i> העבר לייצור (אצווה חדשה)
                     </button>
                 {% endif %}
-            {% endif %}
-            {% if order.status == 'PHASE1_PRODUCTION' %}
-                <a href="{% url 'production:order-complete-phase1' order.pk %}"
-                   class="btn btn-success fw-bold"
+                <a href="{% url 'production:order-check-validation' order.pk %}"
+                   class="btn btn-outline-info"
                    data-bs-toggle="tooltip"
-                   title="סיום שלב א' של ההזמנה">
-                    <i class="bi bi-check-circle me-1"></i>סיום שלב א
-                </a>
-            {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' %}
-                <a href="{% url 'production:order-complete-production' order.pk %}"
-                   class="btn btn-success fw-bold"
-                   data-bs-toggle="tooltip"
-                   title="סיום תהליך הייצור והעברה למוכן למשלוח">
-                    <i class="bi bi-check-all me-1"></i>סיום ייצור
+                   title="בדיקת תקינות הנתונים של ההזמנה">
+                    <i class="bi bi-list-task me-1"></i> בדיקת תקינות
                 </a>
             {% endif %}
-            {% if order.has_split_installation and order.status == 'PHASE1_READY' %}
-                <a href="{% url 'production:split-measurer-report' order.pk %}"
-                   target="_blank"
-                   class="btn btn-outline-warning"
-                   data-bs-toggle="tooltip"
-                   title="דו''ח מדידה למודד לפני שלב ב'">
-                    <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
-                </a>
+            <!-- ========================================== -->
+            <!-- 2. ЗАВЕРШЕНИЕ ЭТАПОВ                      -->
+            <!-- Скрываем, если есть группы в статусе NEW   -->
+            <!-- ========================================== -->
+            {% if not order.can_start_production %}
+                {% if order.status == 'PHASE1_PRODUCTION' %}
+                    <a href="{% url 'production:order-complete-phase1' order.pk %}"
+                       class="btn btn-success fw-bold shadow-sm"
+                       data-bs-toggle="tooltip"
+                       title="סיום שלב א' של ההזמנה">
+                        <i class="bi bi-check-circle me-1"></i> סיום שלב א'
+                    </a>
+                {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' or order.status == 'PARTIALLY_READY' %}
+                    <a href="{% url 'production:order-complete-production' order.pk %}"
+                       class="btn btn-success fw-bold shadow-sm"
+                       data-bs-toggle="tooltip"
+                       title="סיום תהליך הייצור והעברה למוכן למשלוח">
+                        <i class="bi bi-check-all me-1"></i> סיום ייצור
+                    </a>
+                {% endif %}
             {% endif %}
-            <a href="{% url 'production:order-check-validation' order.pk %}"
-               class="btn btn-outline-info"
-               data-bs-toggle="tooltip"
-               title="בדיקת תקינות הנתונים של ההזמנה">
-                <i class="bi bi-list-task me-1"></i>בדיקת ההזמנה
-            </a>
+            <!-- 3. ФОРМА РАЗМЕРОВ (טופס מידות) -->
             <a href="{% url 'order-measurements' order.pk %}"
-               class="btn btn-outline-primary"
+               class="btn btn-outline-primary shadow-sm"
                data-bs-toggle="tooltip"
                title="צפייה ועריכת מידות הפריטים">
-                <i class="bi bi-rulers me-1"></i>טופס מידות
+                <i class="bi bi-rulers me-1"></i> טופס מידות
             </a>
-            <button class="btn btn-outline-secondary"
-                    type="button"
-                    data-bs-toggle="collapse"
-                    data-bs-target="#productionActionsPanel"
-                    aria-expanded="false"
-                    aria-controls="productionActionsPanel">
-                <i class="bi bi-gear-wide-connected me-1"></i>פעולות ייצור ומסמכים
-                <i class="bi bi-chevron-down ms-1"></i>
-            </button>
+            <!-- 4. ОТЧЕТЫ И ЧПУ (Модальное окно) -->
+            {% if order.status != 'NEW' and order.status != 'CANCELED' %}
+                <button type="button"
+                        class="btn btn-dark fw-bold shadow-sm ms-2"
+                        data-bs-toggle="modal"
+                        data-bs-target="#reportsModal"
+                        title="הדפסת דוחות, מדבקות והורדת קבצי מכונה">
+                    <i class="bi bi-printer me-1"></i> דוחות וייצור קבצים
+                </button>
+            {% endif %}
         </div>
+        <!-- Dev Tools -->
         {% if is_admin_user %}
             <div class="dropdown">
                 <button class="btn btn-outline-warning btn-sm dropdown-toggle"
                         type="button"
-                        data-bs-toggle="dropdown"
-                        aria-expanded="false"
-                        title="כלי פיתוח ובקרה">
+                        data-bs-toggle="dropdown">
                     <i class="bi bi-tools me-1"></i>Dev Tools
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-                    <li>
-                        <h6 class="dropdown-header text-warning fw-bold">כלי פיתוח ובקרה</h6>
-                    </li>
-                    <li>
-                        <a class="dropdown-item"
-                           href="{% url 'production:order-rebuild-batch-spec' order.pk %}">
-                            <i class="bi bi-cpu me-2 text-warning"></i>Rebuild Spec
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item"
-                           href="{% url 'production:spec-json-preview' order.pk %}"
-                           target="_blank">
-                            <i class="bi bi-filetype-json me-2 text-info"></i>צפייה ב-JSON Spec
-                        </a>
-                    </li>
-                    {% if order.status == 'PHASE2_PRODUCTION' or order.status == 'IN_PRODUCTION' or order.status == 'COMPLETED' %}
-                        <li>
-                            <a class="dropdown-item"
-                               href="{% url 'production:order-compare-snapshots' order.pk %}">
-                                <i class="bi bi-arrow-left-right me-2 text-primary"></i>השוואת שלב א/ב (Snapshot Diffs)
-                            </a>
-                        </li>
-                    {% endif %}
+                    <li><a class="dropdown-item"
+   href="{% url 'production:order-rebuild-batch-spec' order.pk %}"><i class="bi bi-cpu me-2 text-warning"></i>Rebuild Spec</a></li>
+                    <li><a class="dropdown-item"
+   href="{% url 'production:spec-json-preview' order.pk %}"
+   target="_blank"><i class="bi bi-filetype-json me-2 text-info"></i>צפייה ב-JSON Spec</a></li>
                     {% if order.status != 'NEW' %}
                         <li>
                             <hr class="dropdown-divider">
                         </li>
-                        <li>
-                            <a class="dropdown-item text-warning"
-                               href="{% url 'order-reset-to-new' order.pk %}"
-                               onclick="return confirm('האם אתה בטוח שברצונך להחזיר את ההזמנה לסטטוס חדש? פעולה זו תאפשר עריכת נתונים.')">
-                                <i class="bi bi-arrow-counterclockwise me-2"></i>שינוי הזמנה (Reset to NEW)
-                            </a>
+                        <li><a class="dropdown-item text-warning"
+   href="{% url 'order-reset-to-new' order.pk %}"
+   onclick="return confirm('בטוח?')"><i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                            to NEW</a>
                         </li>
-                        <li>
-                            <a class="dropdown-item text-danger"
-                               href="{% url 'order-cancel' order.pk %}"
-                               onclick="return confirm('האם אתה בטוח שברצונך לבטל את ההזמנה?')">
-                                <i class="bi bi-x-circle me-2"></i>ביטול הזמנה
-                            </a>
-                        </li>
+                        <li><a class="dropdown-item text-danger"
+   href="{% url 'order-cancel' order.pk %}"
+   onclick="return confirm('בטוח?')"><i class="bi bi-x-circle me-2"></i>ביטול הזמנה</a></li>
                     {% endif %}
                 </ul>
             </div>
         {% endif %}
-    </div>
-    <!-- Collapsible Production Actions & Documents Block -->
-    <div class="collapse mb-3" id="productionActionsPanel">
-        <div class="card card-body bg-light border shadow-sm">
-            <div class="row g-3">
-                <div class="col-md-4 border-end">
-                    <h6 class="fw-bold text-primary mb-2">
-                        <i class="bi bi-file-earmark-text me-1"></i>דוחות ייצור
-                    </h6>
-                    <div class="d-flex flex-column gap-2">
-                        <a href="{% url 'production:station-report' order.pk %}?station=ALL"
-                           target="_blank"
-                           class="btn btn-primary btn-sm text-start">
-                            <i class="bi bi-printer-fill me-1"></i><strong>הדפסת כל הדו&quot;חות (Master Print)</strong>
-                        </a>
-                        <div class="d-flex flex-wrap gap-1 mt-1">
-                            {% for station in order.get_production_stations %}
-                                {% if station.has_specification %}
-                                    <a href="{% url 'production:station-report' order.pk %}?station={{ station.code }}"
-                                       target="_blank"
-                                       class="btn btn-outline-secondary btn-sm"
-                                       data-bs-toggle="tooltip"
-                                       title="{{ station.hint|default:station.name }}">
-                                        <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
-                                    </a>
-                                {% endif %}
-                            {% endfor %}
-                            <a href="{% url 'production:order-sketches-report' order.id %}"
-                               target="_blank"
-                               class="btn btn-outline-dark btn-sm">
-                                <i class="bi bi-file-earmark-image"></i> הדפסת סקיצות
-                            </a>
-                            {% if order.has_split_installation %}
-                                <a href="{% url 'production:split-measurer-report' order.pk %}"
-                                   target="_blank"
-                                   class="btn btn-outline-warning btn-sm"
-                                   data-bs-toggle="tooltip"
-                                   title="דו''ח מדידה למודד לפני שלב ב'">
-                                    <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
-                                </a>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4 border-end">
-                    <h6 class="fw-bold text-success mb-2">
-                        <i class="bi bi-cpu me-1"></i>קבצי מכונות (CNC)
-                    </h6>
-                    <div class="d-flex flex-column gap-2">
-                        <a href="{% url 'production:order-production-data' order.pk %}"
-                           class="btn btn-success btn-sm text-start">
-                            <i class="bi bi-file-earmark-zip-fill me-1"></i><strong>הורדת ארכיון ייצור מלא
-                            (ZIP)</strong>
-                        </a>
-                        <a href="{% url 'production:sync_usb' %}?order_id={{ order.pk }}"
-                           class="btn btn-outline-success btn-sm text-start">
-                            <i class="bi bi-usb-drive me-1"></i>סנכרון תוכניות CNC ל-USB
-                        </a>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <h6 class="fw-bold text-dark mb-2">
-                        <i class="bi bi-tags me-1"></i>מדבקות
-                    </h6>
-                    <div class="d-flex flex-column gap-2">
-                        <a href="javascript:void(0)"
-                           onclick="window.open('{% url 'production:station-report' order.pk %}?station=ALL', '_blank');"
-                           class="btn btn-dark btn-sm text-start">
-                            <i class="bi bi-tag-fill me-1"></i><strong>הדפסת כל המדבקות</strong>
-                        </a>
-                        <div class="d-flex flex-wrap gap-1 mt-1">
-                            <a href="javascript:void(0)"
-                               onclick="window.open('{% url 'production:station-report' order.pk %}?station=FRAMES', '_blank');"
-                               class="btn btn-outline-dark btn-sm">
-                                <i class="bi bi-tag me-1"></i>מדבקות משקופים
-                            </a>
-                            <a href="{% url 'production:export-labels-csv' order.id %}"
-                               class="btn btn-outline-secondary">
-                                <i class="bi bi-filetype-csv"></i> הדפסת מדבקות CNC (CSV)
-                            </a>
-                            <a href="{% url 'production:order-warehouse-setup' order.id %}"
-                               class="btn btn-outline-dark me-2">
-                                <i class="bi bi-box-seam"></i> הגדרות מחסן וליקוט
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
     <div class="row">
         <div class="col-lg-10 mb-4">
@@ -328,6 +211,7 @@
     {% include "orders/includes/edit_item_modal.html" %}
     {% include "orders/includes/save_spec_modal.html" %}
     {% include "orders/includes/load_spec_modal.html" %}
+    {% include "orders/includes/reports_modal.html" %}
 {% endblock %}
 {% block extra_js %}
     <script>
@@ -1088,7 +972,6 @@
                 const $modalEl = $container.closest('#groupModal');
                 const isGroupLocked = $modalEl.length > 0 && $modalEl.find('input[name="quantity"]').is(':disabled');
 
-
                 if (!seriesId || !familyId || isGroupLocked) {
                     // Если группа заблокирована, не даем функции включать поле обратно
                     if (isGroupLocked) {
@@ -1103,6 +986,15 @@
                     $basicColorFramesSelect.html('<option value="">---------</option>').val('').trigger('change');
                     return;
                 }
+
+                // ЗДЕСЬ ИСПРАВЛЕНИЕ: объявляем url перед отправкой запроса
+                let url = '/catalog/api/frame-colors/?series=' + seriesId;
+                if (familyId) url += '&family=' + familyId;
+
+                const currentVal = $basicColorFramesSelect.val();
+                const initialVal = $basicColorFramesSelect.attr('data-initial-value');
+                const isNew = $modalEl.length > 0 && $modalEl.data('mode') === 'add';
+
                 fetch(url)
                     .then(function (response) {
                         return response.json();
@@ -1186,51 +1078,95 @@
                     });
             });
 
-            $(document).on('change', 'select[name="series"], select[name="product_family"]', function () {
-                const $container = $(this).closest('.modal-body, form');
-                const seriesId = $container.find('select[name="series"]').val();
-                const familyId = $container.find('select[name="product_family"]').val();
+            // Выделенная функция для обновления модели двери
+            function updateProductModel($container) {
+                const $seriesSelect = $container.find('select[name="series"]');
+                const $familySelect = $container.find('select[name="product_family"]');
                 const $productSelect = $container.find('select[name="product"]');
                 const $display = $container.find('.product-info-display');
+                const $submitBtn = $container.closest('form').find('button[type="submit"]');
 
+                if (!$seriesSelect.length || !$familySelect.length || !$productSelect.length) return;
+
+                const seriesId = $seriesSelect.val();
+                const familyId = $familySelect.val();
+
+                // Если хотя бы одно поле не выбрано — сбрасываем модель
                 if (!seriesId || !familyId) {
                     if ($display.length) {
                         $display.html('<small class="text-muted">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
                     }
-                    $productSelect.val('').trigger('change');
+                    if ($productSelect.val() !== '') {
+                        $productSelect.val('');
+                        if ($productSelect.hasClass('select2-hidden-accessible')) {
+                            $productSelect.trigger('change.select2'); // Безопасное обновление Select2
+                        }
+                    }
                     return;
                 }
 
+                // Запускаем поиск модели
                 fetch('/catalog/api/models/?series=' + seriesId + '&family=' + familyId)
                     .then(function (response) {
+                        if (!response.ok) throw new Error('Network response was not ok');
                         return response.json();
                     })
                     .then(function (data) {
                         const models = (Array.isArray(data) ? data : data['results']) || [];
+
                         if (models.length > 0) {
                             const model = models[0];
                             const desc = model['description'] || '';
+
+                            // Обновляем визуальную плашку
                             if ($display.length) {
                                 $display.html('<strong class="text-success-emphasis" data-bs-toggle="tooltip" title="' + (desc || model['name']) + '"><i class="bi bi-check-circle-fill me-1"></i> ' + model['name'] + ' (' + model['code'] + ')</strong>');
                                 if (window['initTooltips']) window['initTooltips']($display[0]);
                             }
+
+                            // Добавляем опцию в скрытый селект, если ее там нет
                             if ($productSelect.find('option[value="' + model['id'] + '"]').length === 0) {
-                                $productSelect.append('<option value="' + model['id'] + '" data-description="' + desc + '" title="' + desc + '">' + model['name'] + '</option>');
+                                $productSelect.append('<option value="' + model['id'] + '" data-description="' + desc + '">' + model['name'] + '</option>');
                             }
-                            $productSelect.val(model['id']).trigger('change');
-                            $container.closest('form').find('button[type="submit"]').prop('disabled', false);
+
+                            // Устанавливаем значение только если оно изменилось
+                            if ($productSelect.val() != model['id']) {
+                                $productSelect.val(model['id']);
+                                if ($productSelect.hasClass('select2-hidden-accessible')) {
+                                    $productSelect.trigger('change.select2'); // Безопасное обновление
+                                }
+                            }
+                            $submitBtn.prop('disabled', false);
+
                         } else {
+                            // Модель не найдена
                             if ($display.length) {
                                 $display.html('<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> מוצר לא נמצא לשילוב זה</span>');
                             }
-                            $productSelect.val('').trigger('change');
-                            $container.closest('form').find('button[type="submit"]').prop('disabled', true);
+                            if ($productSelect.val() !== '') {
+                                $productSelect.val('');
+                                if ($productSelect.hasClass('select2-hidden-accessible')) {
+                                    $productSelect.trigger('change.select2');
+                                }
+                            }
+                            $submitBtn.prop('disabled', true);
                         }
                     })
                     .catch(function (error) {
                         console.error('Error fetching product model:', error);
-                        $container.closest('form').find('button[type="submit"]').prop('disabled', false);
+                        $submitBtn.prop('disabled', false); // Не блокируем намертво при ошибке сети
                     });
+            }
+
+            // Оптимизированный обработчик изменения
+            $(document).on('change', 'select[name="series"], select[name="product_family"]', function (e) {
+                // Если событие вызвано программно самим Select2, ИГНОРИРУЕМ (это решает проблему "замерзания")
+                if (e.namespace === 'select2') return;
+
+                const $container = $(this).closest('.modal-body, form');
+                if (!$container.length) return;
+
+                updateProductModel($container);
             });
 
             $('.modal:not(#groupModal)').on('shown.bs.modal', function () {
@@ -1693,6 +1629,70 @@
                     }, 3500);
                 }
             }
+
+            // 1. Отрисовка чекбоксов батчей при открытии окна
+            $('#reportsModal').on('show.bs.modal', function () {
+                // order.current_batch - это счетчик, который увеличивается на 1 при каждом запуске.
+                // Если current_batch = 3, значит есть батчи 1 и 2.
+                const currentBatchCounter = parseInt("{{ order.current_batch|default:1 }}", 10);
+                const $batchContainer = $('#batchSelectionContainer');
+
+                if (currentBatchCounter > 1) {
+                    let html = '';
+                    for (let i = 1; i < currentBatchCounter; i++) {
+                        // По умолчанию ставим галочку только на последний запущенный батч
+                        const isChecked = (i === currentBatchCounter - 1) ? 'checked' : '';
+                        html += `
+                            <input type="checkbox" class="btn-check batch-checkbox" name="selected_batches" id="batch_${i}" value="${i}" ${isChecked}>
+                            <label class="btn btn-outline-primary rounded-pill px-3 py-1 fw-bold" for="batch_${i}">
+                                אצווה ${i}
+                            </label>
+                        `;
+                    }
+                    $batchContainer.html(html);
+                    $('.btn-generate-action').prop('disabled', false);
+                } else {
+                    $batchContainer.html('<span class="text-muted small">אין עדיין אצוות בייצור</span>');
+                    // Блокируем кнопки, если технически печатать нечего
+                    $('.btn-generate-action').prop('disabled', true);
+                }
+            });
+
+            // 2. Обработка клика по любой кнопке отчета/файла
+            $(document).on('click', '.btn-generate-action', function (e) {
+                e.preventDefault();
+                const baseUrl = $(this).data('url');
+                const target = $(this).data('target') || '_blank'; // По умолчанию открываем в новой вкладке
+
+                // Собираем все выбранные батчи
+                let selectedBatches = [];
+                $('.batch-checkbox:checked').each(function () {
+                    selectedBatches.push($(this).val());
+                });
+
+                if (selectedBatches.length === 0) {
+                    alert('נא לבחור לפחות אצווה אחת להדפסה.');
+                    return;
+                }
+
+                // Формируем финальный URL, приклеивая каждый чекбокс (например ?batch=1&batch=2)
+                const urlObj = new URL(baseUrl, window.location.origin);
+                selectedBatches.forEach(function (batchNum) {
+                    urlObj.searchParams.append('batch', batchNum);
+                });
+
+                // Переходим
+                if (target === '_self') {
+                    window.location.href = urlObj.toString();
+                } else {
+                    window.open(urlObj.toString(), target);
+                }
+
+                // Скрываем окно после клика
+                $('#reportsModal').modal('hide');
+            });
+
+
         });
 
         function transferOrderToProduction(btn, url) {

@@ -130,7 +130,6 @@
                         <td class="no-print text-nowrap">
                             {% if order.sketch or item.sketch %}
                                 <a href="
-
 												{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
                                    target="_blank"
                                    class="btn btn-sm btn-primary py-0"
@@ -296,15 +295,11 @@
 {% endblock %}
 {% block extra_js %}
     <script>
-        /**
-         * Configuration for Order Measurements script.
-         * Passed from Django context to an external JS file.
-         */
         window.OrderMeasurementsConfig = {
             orderNumber: "{{ order.order_number|escapejs }}",
             customer: "{{ order.customer|escapejs }}",
             csrfToken: "{{ csrf_token }}",
-            canEdit: {% if order.status == 'NEW' or user.is_admin_user %}true{% else %}false{% endif %}
+            canEdit: true // Разрешаем скрипту работать, а за блокировку конкретных строк отвечает data-can-edit самой строки
         };
     </script>
     <script src="/static/js/order_measurements.js"></script>

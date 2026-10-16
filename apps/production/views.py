@@ -333,7 +333,8 @@ def order_transfer_to_production(request, pk):
                 'application/json' in request.headers.get('Accept', '')
         )
         if is_ajax:
-            master_url = f"{reverse('production:station-report', kwargs={'pk': pk})}?station=ALL"
+            released_batch = order.current_batch - 1
+            master_url = f"{reverse('production:station-report', kwargs={'pk': pk})}?station=ALL&batch={released_batch}"
             return JsonResponse({
                 'status': 'ok',
                 'message': 'The order was successfully transferred to production.',
@@ -541,12 +542,14 @@ def order_production_data(request, pk, **kwargs):
 def station_report(request, pk):
     """
     Single entry point for all station HTML reports.
-    Supports individual station reports (e.g. ?station=FRAMES) and master print (?station=ALL),
-    with optional batch filtering (?batch=1).
+    Supports individual station reports (e.g. ?station=FRAMES) and master print (?station=ALL).
+    Uses 'batch' URL parameters to filter by production batch.
     """
     order = get_object_or_404(Order, pk=pk)
     station_code = request.GET.get('station') or request.GET.get('type')
-    batch_filter = request.GET.get('batch')
+
+    # Получаем запрошенные батчи как список: ?batch=1&batch=2 -> ['1', '2']
+    requested_batches = request.GET.getlist('batch')
 
     if station_code and station_code.upper() in ['PRESS', 'CUTTING_PRESS']:
         return report_cutting_press(request, pk)
@@ -564,7 +567,9 @@ def station_report(request, pk):
     service = ProductionDataService(order)
     barcode_data = f"{order.order_number};{order.status}"
 
+    # ==========================================
     # Master Print Mode (ALL stations)
+    # ==========================================
     if station_code.upper() in ['ALL', 'IN_PRODUCTION', 'FULL', 'FULL_PRODUCTION']:
         stations = order.get_production_stations()
         if not stations:
@@ -591,23 +596,18 @@ def station_report(request, pk):
             filtered_items = service.get_filtered_items(station=station)
             filtered_item_ids = {item.id for item in filtered_items}
 
-            station_spec = spec_obj.model_copy()
+            # ПРОСЛОЙКА
+            res = ProductionDataService.extract_report_items(spec_obj, requested_batches)
+            if res[0] is None:
+                report_items = []
+                batches_label = "לא נבחרה אצווה"
+            else:
+                report_items, batches_label = res
 
-            # Фильтрация батчей и позиций под станцию и запрошенный батч
-            station_batches = {}
-            for b_num, b_items in spec_obj.batches.items():
-                if batch_filter and str(b_num) != str(batch_filter):
-                    continue
-                matched = [
-                    item for item in b_items
-                    if (getattr(item, 'item_id', None) or (
-                        item.get('item_id') if isinstance(item, dict) else None)) in filtered_item_ids
-                ]
-                if matched:
-                    station_batches[str(b_num)] = matched
-
-            station_spec.batches = station_batches
-            station_items = [it for b in station_batches.values() for it in b]
+            station_items = [
+                it for it in report_items
+                if (getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')) in filtered_item_ids
+            ]
 
             if station_items or not order.groups.exists():
                 include_template = None
@@ -632,9 +632,9 @@ def station_report(request, pk):
                     'station': station,
                     'station_code': station.code,
                     'report_label': station.label or station.name,
-                    'order_spec': station_spec,
-                    'batches': station_batches,
-                    'groups_data': service.prepare_grouped_data(station_spec),
+                    'batches_label': batches_label,
+                    'order_spec': spec_obj,
+                    'groups_data': service.prepare_grouped_data(station_items),
                     'enriched_frames_items': enriched_frames,
                     'enriched_doors_items': enriched_doors,
                     'include_template': include_template,
@@ -647,7 +647,9 @@ def station_report(request, pk):
             'now': timezone.now(),
         })
 
+    # ==========================================
     # Individual Station Report Mode
+    # ==========================================
     station = ProductionStation.objects.filter(code=station_code).first()
     if not station:
         if station_code == 'PHASE1_FRAMES':
@@ -672,13 +674,21 @@ def station_report(request, pk):
             'report_label': (station.label if station else (station.name if station else station_code)) or "דוח ייצור"
         })
 
+    # ПРОСЛОЙКА
+    res = ProductionDataService.extract_report_items(spec_obj, requested_batches)
+    if res[0] is None:
+        report_items = []
+        batches_label = "לא נבחרה אצווה"
+    else:
+        report_items, batches_label = res
+
     is_wood_frames_station = (
             (station_code and station_code.upper() in ['FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES']) or
             (station and 'report_wood_frames.html' in (station.template_name or ''))
     )
 
     if is_wood_frames_station:
-        frame_groups = service.prepare_wood_frames_report_data(spec_obj)
+        frame_groups = service.prepare_wood_frames_report_data(report_items)
         template_name = station.template_name if (
                 station and station.template_name) else 'production/reports/report_wood_frames.html'
         report_label = (station.label if station else None) or 'דו"ח משקופי עץ'
@@ -686,7 +696,7 @@ def station_report(request, pk):
         return render(request, template_name, {
             'order': order,
             'order_spec': spec_obj,
-            'batches': spec_obj.batches,
+            'batches_label': batches_label,
             'frame_groups': frame_groups,
             'station': station,
             'report_label': report_label,
@@ -696,11 +706,11 @@ def station_report(request, pk):
         })
 
     if station_code and station_code.upper() in ['WAREHOUSE', 'HARDWARE', 'PICK_LIST']:
-        hardware_summary = service.get_warehouse_hardware_summary(spec_obj)
+        hardware_summary = service.get_warehouse_hardware_summary(report_items)
         return render(request, 'production/reports/report_warehouse_hardware.html', {
             'order': order,
             'order_spec': spec_obj,
-            'batches': spec_obj.batches,
+            'batches_label': batches_label,
             'hardware_summary': hardware_summary,
             'report_label': 'דוח ליקוט פירזול',
             'now': timezone.now(),
@@ -718,21 +728,10 @@ def station_report(request, pk):
 
     filtered_item_ids = {item.id for item in filtered_items}
 
-    # Прямая фильтрация словаря batches
-    filtered_batches = {}
-    for b_num, b_items in spec_obj.batches.items():
-        if batch_filter and str(b_num) != str(batch_filter):
-            continue
-        matched = [
-            it for it in b_items
-            if
-            (getattr(it, 'item_id', None) or (it.get('item_id') if isinstance(it, dict) else None)) in filtered_item_ids
-        ]
-        if matched:
-            filtered_batches[str(b_num)] = matched
-
-    spec_obj.batches = filtered_batches
-    station_items = [it for b in filtered_batches.values() for it in b]
+    station_items = [
+        it for it in report_items
+        if (getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')) in filtered_item_ids
+    ]
 
     enriched_doors_items = enrich_report_doors_spec(station_items)
     enriched_frames_items = enrich_report_frames_spec(station_items)
@@ -740,11 +739,11 @@ def station_report(request, pk):
     return render(request, template_name, {
         'order': order,
         'order_spec': spec_obj,
-        'batches': spec_obj.batches,
         'spec_json': spec_obj.model_dump(by_alias=True) if hasattr(spec_obj, 'model_dump') else spec_obj,
         'station': station,
         'report_label': report_label,
-        'groups_data': service.prepare_grouped_data(spec_obj),
+        'batches_label': batches_label,
+        'groups_data': service.prepare_grouped_data(station_items),
         'stage_label': stage_label,
         'now': timezone.now(),
         'enriched_doors_items': enriched_doors_items,
@@ -752,6 +751,131 @@ def station_report(request, pk):
         'order_qr': get_qr_base64(barcode_data),
         'barcode_text': barcode_data
     })
+
+
+@login_required
+def report_cutting_press(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+    order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
+
+    # ПРОСЛОЙКА ДЛЯ ПРЕССА
+    requested_batches = request.GET.getlist('batch')
+    res = ProductionDataService.extract_report_items(order_spec, requested_batches)
+    if res[0] is None:
+        report_items = []
+        batches_label = "לא נבחרה אצווה"
+    else:
+        report_items, batches_label = res
+
+    service = ProductionDataService(order)
+    panel_groups = service.prepare_press_groups_data(report_items)
+
+    return render(request, 'production/reports/report_press.html', {
+        'order': order,
+        'order_spec': order_spec,
+        'batches_label': batches_label,
+        'panel_groups': panel_groups,
+        'svg_patterns': SvgPattern.objects.all(),
+        'now': timezone.now(),
+    })
+
+
+@login_required
+def export_door_labels_csv(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+
+    phase = 'phase2' if (order.phase2_spec_cache or order.status != OrderStatus.PHASE1_PRODUCTION) else 'phase1'
+    spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
+
+    # ПРОСЛОЙКА ДЛЯ НАКЛЕЕК CSV
+    requested_batches = request.GET.getlist('batch')
+    res = ProductionDataService.extract_report_items(spec_obj, requested_batches)
+    if res[0] is None:
+        items_raw = []
+    else:
+        items_raw, _ = res
+
+    # Возвращаем элементы в стандартные словари для CSV логики
+    items = [
+        it.model_dump() if hasattr(it, 'model_dump') else (it if isinstance(it, dict) else it.dict())
+        for it in items_raw
+    ]
+
+    door_items = [it for it in items if it.get('has_door', True)]
+    total_doors = len(door_items)
+
+    hardware_ids = set()
+    for it in door_items:
+        if it.get('lock_id'):
+            hardware_ids.add(it['lock_id'])
+        for b in it.get('bom_items', []) or []:
+            if str(b.get('tag', '')).lower() == 'hinge' and b.get('item_id'):
+                hardware_ids.add(b['item_id'])
+
+    hw_map = Hardware.objects.in_bulk(hardware_ids) if hardware_ids else {}
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="labels_{order.order_number}.csv"'
+
+    writer = csv.writer(response)
+    customer = getattr(order, 'customer', '') or ''
+
+    for it in door_items:
+        door_mark = it.get('number') or it.get('mark') or str(it.get('item_id', ''))
+        direction = it.get('direction') or it.get('direction_code') or ''
+
+        family_name = it.get('product_family') or ''
+        series_name = it.get('series') or ''
+        model_code = it.get('model') or ''
+
+        panel_dims = it.get('panel_dimensions') or []
+        first_panel = panel_dims[0] if panel_dims else {}
+        panel_w = first_panel.get('width', '')
+        panel_h = first_panel.get('height', '')
+
+        lock_name = it.get('lock') or ''
+        lock_id = it.get('lock_id')
+        lock_sku = hw_map[lock_id].sku if lock_id in hw_map else ''
+        lock_h = it.get("lock's height", '')
+
+        hinge_name = it.get('hinges') or ''
+        hinge_id = None
+        for b in it.get('bom_items', []) or []:
+            if str(b.get('tag', '')).lower() == 'hinge' and b.get('item_id'):
+                hinge_id = b['item_id']
+                break
+        hinge_sku = hw_map[hinge_id].sku if hinge_id in hw_map else ''
+
+        raw_hinges = it.get('hinges height') or []
+        hinges = [(h if h is not None else '') for h in (list(raw_hinges) + [''] * 5)[:5]]
+
+        base_data = [
+            order.order_number,
+            customer,
+            door_mark,
+            total_doors,
+            family_name,
+            series_name,
+            model_code,
+            direction,
+            panel_w,
+            panel_h,
+            lock_name,
+            lock_sku,
+            lock_h,
+            hinge_name,
+            hinge_sku,
+            hinges[0],
+            hinges[1],
+            hinges[2],
+            hinges[3],
+            hinges[4],
+        ]
+
+        writer.writerow(base_data + [1])
+        writer.writerow(base_data + [2])
+
+    return response
 
 
 @login_required
@@ -1002,24 +1126,6 @@ def order_sketches_report(request, pk):
     })
 
 
-@login_required
-def report_cutting_press(request, pk):
-    order = get_object_or_404(Order, pk=pk)
-    order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
-
-    service = ProductionDataService(order)
-    panel_groups = service.prepare_press_groups_data(order_spec)
-
-    return render(request, 'production/reports/report_press.html', {
-        'order': order,
-        'order_spec': order_spec,
-        'batches': order_spec.batches,
-        'panel_groups': panel_groups,
-        'svg_patterns': SvgPattern.objects.all(),
-        'now': timezone.now(),
-    })
-
-
 @csrf_exempt
 @require_POST
 def bartender_confirm_print(request):
@@ -1122,95 +1228,3 @@ def order_warehouse_setup(request, pk):
         'order': order,
         'customizable_hardware': customizable_hardware,
     })
-
-
-@login_required
-def export_door_labels_csv(request, pk):
-    order = get_object_or_404(Order, pk=pk)
-
-    phase = 'phase2' if (order.phase2_spec_cache or order.status != OrderStatus.PHASE1_PRODUCTION) else 'phase1'
-    spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
-
-    # Извлекаем все позиции из структуры batches
-    batches = getattr(spec_obj, 'batches', {}) or {}
-    items_raw = [it for b in batches.values() for it in b]
-    items = [
-        it.model_dump() if hasattr(it, 'model_dump') else (it if isinstance(it, dict) else it.dict())
-        for it in items_raw
-    ]
-
-    door_items = [it for it in items if it.get('has_door', True)]
-    total_doors = len(door_items)
-
-    hardware_ids = set()
-    for it in door_items:
-        if it.get('lock_id'):
-            hardware_ids.add(it['lock_id'])
-        for b in it.get('bom_items', []) or []:
-            if str(b.get('tag', '')).lower() == 'hinge' and b.get('item_id'):
-                hardware_ids.add(b['item_id'])
-
-    hw_map = Hardware.objects.in_bulk(hardware_ids) if hardware_ids else {}
-
-    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-    response['Content-Disposition'] = f'attachment; filename="labels_{order.order_number}.csv"'
-
-    writer = csv.writer(response)
-    customer = getattr(order, 'customer', '') or ''
-
-    for it in door_items:
-        door_mark = it.get('number') or it.get('mark') or str(it.get('item_id', ''))
-        direction = it.get('direction') or it.get('direction_code') or ''
-
-        family_name = it.get('product_family') or ''
-        series_name = it.get('series') or ''
-        model_code = it.get('model') or ''
-
-        panel_dims = it.get('panel_dimensions') or []
-        first_panel = panel_dims[0] if panel_dims else {}
-        panel_w = first_panel.get('width', '')
-        panel_h = first_panel.get('height', '')
-
-        lock_name = it.get('lock') or ''
-        lock_id = it.get('lock_id')
-        lock_sku = hw_map[lock_id].sku if lock_id in hw_map else ''
-        lock_h = it.get("lock's height", '')
-
-        hinge_name = it.get('hinges') or ''
-        hinge_id = None
-        for b in it.get('bom_items', []) or []:
-            if str(b.get('tag', '')).lower() == 'hinge' and b.get('item_id'):
-                hinge_id = b['item_id']
-                break
-        hinge_sku = hw_map[hinge_id].sku if hinge_id in hw_map else ''
-
-        raw_hinges = it.get('hinges height') or []
-        hinges = [(h if h is not None else '') for h in (list(raw_hinges) + [''] * 5)[:5]]
-
-        base_data = [
-            order.order_number,
-            customer,
-            door_mark,
-            total_doors,
-            family_name,
-            series_name,
-            model_code,
-            direction,
-            panel_w,
-            panel_h,
-            lock_name,
-            lock_sku,
-            lock_h,
-            hinge_name,
-            hinge_sku,
-            hinges[0],
-            hinges[1],
-            hinges[2],
-            hinges[3],
-            hinges[4],
-        ]
-
-        writer.writerow(base_data + [1])
-        writer.writerow(base_data + [2])
-
-    return response
