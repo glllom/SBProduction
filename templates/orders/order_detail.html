@@ -1083,6 +1083,7 @@
                 const $seriesSelect = $container.find('select[name="series"]');
                 const $familySelect = $container.find('select[name="product_family"]');
                 const $productSelect = $container.find('select[name="product"]');
+                const $splitCheckbox = $container.find('input[name="is_split_installation"]');
                 const $display = $container.find('.product-info-display');
                 const $submitBtn = $container.closest('form').find('button[type="submit"]');
 
@@ -1102,6 +1103,9 @@
                             $productSelect.trigger('change.select2'); // Безопасное обновление Select2
                         }
                     }
+                    if ($splitCheckbox.length) {
+                        $splitCheckbox.prop('disabled', true).prop('checked', false);
+                    }
                     return;
                 }
 
@@ -1117,6 +1121,7 @@
                         if (models.length > 0) {
                             const model = models[0];
                             const desc = model['description'] || '';
+                            const supportsSplit = Boolean(model['supports_split_installation']);
 
                             // Обновляем визуальную плашку
                             if ($display.length) {
@@ -1130,10 +1135,22 @@
                             }
 
                             // Устанавливаем значение только если оно изменилось
-                            if ($productSelect.val() != model['id']) {
+                            if ($productSelect.val() !== model['id']) {
                                 $productSelect.val(model['id']);
                                 if ($productSelect.hasClass('select2-hidden-accessible')) {
                                     $productSelect.trigger('change.select2'); // Безопасное обновление
+                                }
+                            }
+                            // --- Управление тумблером на основе флага модели ---
+                            if ($splitCheckbox.length) {
+                                // Проверяем статус заказа (передаем из шаблона, например, order.status)
+                                const orderStatus = "{{ order.status }}";
+                                const canUseSplit = ['NEW', 'PHASE1_PRODUCTION'].includes(orderStatus);
+
+                                if (canUseSplit && supportsSplit) {
+                                    $splitCheckbox.prop('disabled', false).prop('checked', true);
+                                } else {
+                                    $splitCheckbox.prop('disabled', true).prop('checked', false);
                                 }
                             }
                             $submitBtn.prop('disabled', false);

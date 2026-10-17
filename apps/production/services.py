@@ -642,6 +642,54 @@ class ProductionDataService:
         batches = getattr(spec_or_items, 'batches', {})
         return [it for b in batches.values() for it in b]
 
+    def generate_measurement_report_html(self, validate=True):
+        """
+        Генерация отчета замеров (דוח מדידה) для всех активных батчей первой фазы.
+        Строго отсекает группы без номера батча и со статусом CANCELED.
+        """
+        if validate:
+            val_res = OrderValidationService.validate_for_report(self.order, report_type='PHASE1_FRAMES')
+            val_res.raise_if_invalid()
+
+        # 1. Берем спецификацию первой фазы
+        order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase='phase1')
+
+        # 2. Находим все батчи, которые реально принадлежат запущенным группам
+        # (исключая новые, ожидающие и отмененные)
+        valid_groups = self.order.groups.filter(
+            is_split_installation=True,
+            batch_number__isnull=False
+        ).exclude(
+            production_state=OrderItemsGroup.ProductionState.CANCELED
+        )
+
+        active_batch_numbers = list(valid_groups.values_list('batch_number', flat=True).distinct())
+
+        if not active_batch_numbers:
+            return ""  # Нет запущенных батчей с раздельным монтажом
+
+        # 3. Извлекаем позиции только по этим валидным батчам через ваш метод-прослойку
+        flat_items, batches_label = self.extract_report_items(
+            order_spec,
+            requested_batches=active_batch_numbers
+        )
+
+        if not flat_items:
+            flat_items = []
+
+        # 4. Рендерим шаблон отчета
+        template = 'production/alum_frames_report.html'  # Или ваш шаблон замеров
+
+        context = {
+            'order': self.order,
+            'order_spec': order_spec,
+            'spec_items': flat_items,
+            'batches_label': batches_label,
+            'groups_data': self.prepare_grouped_data(flat_items),
+            'now': timezone.now(),
+        }
+        return render_to_string(template, context)
+
     @classmethod
     def get_wooden_frames_data(cls, spec_obj):
         frames_items = []
@@ -1448,8 +1496,6 @@ class OrderProductionService:
         if not order.production_start_date:
             order.production_start_date = timezone.now()
 
-        # order.save(update_fields=['current_batch'])
-
         # 1. Если заказ в ожидании Фазы 2 — переводим его в PHASE2_PRODUCTION
         if order.status == OrderStatus.PHASE1_READY:
             active_groups = order.groups.exclude(
@@ -1476,6 +1522,21 @@ class OrderProductionService:
         )
         if not new_groups.exists():
             raise OrderValidationError("Нет новых групп для запуска в производство.")
+
+        # --- ЗАЩИТА ОТ ДУРАКА (Шаг 2) ---
+        # Если в заказе есть раздельный монтаж (has_split_installation),
+        # то в первый запуск (Фазу 1) идут ТОЛЬКО группы с is_split_installation=True.
+        # Остальные группы принудительно уводятся в статус WAITING.
+        if getattr(order, 'has_split_installation', False):
+            # Группы без раздельного монтажа переводятся в WAITING
+            new_groups.filter(is_split_installation=False).update(
+                production_state=OrderItemsGroup.ProductionState.WAITING
+            )
+            # Оставляем для запуска только те группы, у которых is_split_installation=True
+            new_groups = new_groups.filter(is_split_installation=True)
+
+            if not new_groups.exists():
+                raise OrderValidationError("Нет подходящих групп с раздельным монтажом для запуска первой фазы.")
 
         # Фиксируем текущий номер батча для запускаемой партии
         released_batch = order.current_batch

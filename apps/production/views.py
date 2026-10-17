@@ -1,11 +1,13 @@
 import base64
 import csv
 import json
+from datetime import date
 from io import BytesIO
 
 import qrcode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -191,131 +193,181 @@ def order_transfer_to_production(request, pk):
     order = get_object_or_404(Order, pk=pk)
 
     if order.status == OrderStatus.PHASE1_READY:
-        if request.method == 'POST':
-            items_by_id = {
-                item.id: item for item in OrderItem.objects.filter(
-                    group__order=order
-                ).select_related('group__product__product_family').exclude(
-                    group__production_state__in=[
-                        OrderItemsGroup.ProductionState.WAITING,
-                        OrderItemsGroup.ProductionState.CANCELED,
-                    ]
-                )
-            }
-            change_logs = []
+        if order.status == OrderStatus.PHASE1_READY:
+            if request.method == 'POST':
+                with transaction.atomic():
+                    # 1. Сохраняем правки по существующим позициям из формы
+                    items_by_id = {
+                        item.id: item for item in OrderItem.objects.filter(
+                            group__order=order
+                        ).select_related('group__product__product_family').exclude(
+                            group__production_state__in=[
+                                OrderItemsGroup.ProductionState.WAITING,
+                                OrderItemsGroup.ProductionState.CANCELED,
+                            ]
+                        )
+                    }
+                    change_logs = []
 
-            for item_id, order_item in items_by_id.items():
-                modified = False
-                mark = order_item.mark or str(item_id)
+                    for item_id, order_item in items_by_id.items():
+                        modified = False
+                        mark = order_item.mark or str(item_id)
 
-                top_clearance = 0.3
-                if order_item.group and order_item.group.product and order_item.group.product.product_family:
-                    raw_cl = order_item.group.product.product_family.leaf_top_clearance
-                    if raw_cl is not None:
-                        top_clearance = abs(float(raw_cl))
+                        top_clearance = 0.3
+                        if order_item.group and order_item.group.product and order_item.group.product.product_family:
+                            raw_cl = order_item.group.product.product_family.leaf_top_clearance
+                            if raw_cl is not None:
+                                top_clearance = abs(float(raw_cl))
 
-                for field in ['height', 'width', 'wall']:
-                    key = f"item_{item_id}_{field}"
-                    if key in request.POST:
-                        try:
-                            val = request.POST.get(key)
-                            new_val = float(val) if val else None
-                            old_val = float(getattr(order_item, field)) if getattr(order_item, field) else None
-                            if new_val != old_val:
-                                setattr(order_item, field, new_val)
-                                modified = True
-                                change_logs.append(OrderChangeLog(
-                                    order=order,
-                                    user=request.user,
-                                    field_name=f"Item {mark} {field.capitalize()}",
-                                    old_value=str(old_val) if old_val is not None else "None",
-                                    new_value=str(new_val) if new_val is not None else "None"
-                                ))
-                        except (ValueError, TypeError):
-                            pass
+                        for field in ['height', 'width', 'wall']:
+                            key = f"item_{item_id}_{field}"
+                            if key in request.POST:
+                                try:
+                                    val = request.POST.get(key)
+                                    new_val = float(val) if val else None
+                                    old_val = float(getattr(order_item, field)) if getattr(order_item, field) else None
+                                    if new_val != old_val:
+                                        setattr(order_item, field, new_val)
+                                        modified = True
+                                        change_logs.append(OrderChangeLog(
+                                            order=order,
+                                            user=request.user,
+                                            field_name=f"Item {mark} {field.capitalize()}",
+                                            old_value=str(old_val) if old_val is not None else "None",
+                                            new_value=str(new_val) if new_val is not None else "None"
+                                        ))
+                                except (ValueError, TypeError):
+                                    pass
 
-                lh_key = f"item_{item_id}_lock_height"
-                if lh_key in request.POST:
-                    try:
-                        val = request.POST.get(lh_key)
-                        gross_lh = float(val) if val else None
-                        new_lh = round(gross_lh - top_clearance, 2) if gross_lh is not None else None
-                        old_lh = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
-                        if new_lh != old_lh:
-                            order_item.custom_lock_height = new_lh
-                            modified = True
-                            change_logs.append(OrderChangeLog(
-                                order=order,
-                                user=request.user,
-                                field_name=f"Item {mark} Lock Height",
-                                old_value=str(old_lh) if old_lh is not None else "None",
-                                new_value=str(new_lh) if new_lh is not None else "None"
-                            ))
-                    except (ValueError, TypeError):
-                        pass
+                        lh_key = f"item_{item_id}_lock_height"
+                        if lh_key in request.POST:
+                            try:
+                                val = request.POST.get(lh_key)
+                                gross_lh = float(val) if val else None
+                                new_lh = round(gross_lh - top_clearance, 2) if gross_lh is not None else None
+                                old_lh = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
+                                if new_lh != old_lh:
+                                    order_item.custom_lock_height = new_lh
+                                    modified = True
+                                    change_logs.append(OrderChangeLog(
+                                        order=order,
+                                        user=request.user,
+                                        field_name=f"Item {mark} Lock Height",
+                                        old_value=str(old_lh) if old_lh is not None else "None",
+                                        new_value=str(new_lh) if new_lh is not None else "None"
+                                    ))
+                            except (ValueError, TypeError):
+                                pass
 
-                for i in range(1, 6):
-                    hh_key = f"item_{item_id}_hinge_height_{i - 1}"
-                    field_name = f"custom_hinge{i}"
-                    if hh_key in request.POST:
-                        try:
-                            val = request.POST.get(hh_key)
-                            gross_hh = float(val) if val else None
-                            new_hh = round(gross_hh - top_clearance, 2) if gross_hh is not None else None
-                            old_hh = float(getattr(order_item, field_name)) if getattr(order_item, field_name) else None
-                            if new_hh != old_hh:
-                                setattr(order_item, field_name, new_hh)
-                                modified = True
-                                change_logs.append(OrderChangeLog(
-                                    order=order,
-                                    user=request.user,
-                                    field_name=f"Item {mark} Hinge {i}",
-                                    old_value=str(old_hh) if old_hh is not None else "None",
-                                    new_value=str(new_hh) if new_hh is not None else "None"
-                                ))
-                        except (ValueError, TypeError):
-                            pass
+                        for i in range(1, 6):
+                            hh_key = f"item_{item_id}_hinge_height_{i - 1}"
+                            field_name = f"custom_hinge{i}"
+                            if hh_key in request.POST:
+                                try:
+                                    val = request.POST.get(hh_key)
+                                    gross_hh = float(val) if val else None
+                                    new_hh = round(gross_hh - top_clearance, 2) if gross_hh is not None else None
+                                    old_hh = float(getattr(order_item, field_name)) if getattr(order_item,
+                                                                                               field_name) else None
+                                    if new_hh != old_hh:
+                                        setattr(order_item, field_name, new_hh)
+                                        modified = True
+                                        change_logs.append(OrderChangeLog(
+                                            order=order,
+                                            user=request.user,
+                                            field_name=f"Item {mark} Hinge {i}",
+                                            old_value=str(old_hh) if old_hh is not None else "None",
+                                            new_value=str(new_hh) if new_hh is not None else "None"
+                                        ))
+                                except (ValueError, TypeError):
+                                    pass
 
-                if modified:
-                    order_item.save()
+                        if modified:
+                            order_item.save()
 
-            if change_logs:
-                OrderChangeLog.objects.bulk_create(change_logs)
+                    if change_logs:
+                        OrderChangeLog.objects.bulk_create(change_logs)
 
-            try:
-                OrderProductionService.start_production(order, user=request.user)
+                    # 2. Обрабатываем новые группы (если менеджер добавил их в статус NEW перед переходом)
+                    new_groups = order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW)
+                    if new_groups.exists():
+                        released_batch = order.current_batch
+                        new_groups.update(
+                            batch_number=released_batch,
+                            production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
+                            batch_date=date.today(),
+                        )
+                        order.current_batch = released_batch + 1
+                        order.save(update_fields=['current_batch'])
+
+                    # 3. Переводим заказ в статус PHASE2_PRODUCTION и перестраиваем кэш спецификации Фазы 2
+                    order.status = OrderStatus.PHASE2_PRODUCTION
+                    order.save(update_fields=['status'])
+
+                    TechnicalSpecService.get_or_build_spec(
+                        order, phase='phase2', force_rebuild=True, user=request.user
+                    )
+
                 messages.success(request, "ההזמנה הועברה לשלב ב' בהצלחה.")
                 return redirect('order-detail', pk=pk)
-            except (ValueError, OrderValidationError) as e:
-                errors = getattr(e, 'errors', [str(e)])
-                for err in errors:
-                    messages.error(request, err)
-                return redirect('order-detail', pk=pk)
 
-        raw_items = TechnicalSpecService.get_batch_items(order, phase='phase1')
+        # --- GET-запрос: формируем список позиций для формы перевода во вторую фазу ---
+        try:
+            order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
+
+            # Собираем все активные батчи первой фазы (точно так же, как в דוח מדידה)
+            valid_groups = order.groups.filter(
+                is_split_installation=True,
+                batch_number__isnull=False
+            ).exclude(
+                production_state=OrderItemsGroup.ProductionState.CANCELED
+            )
+            requested_batches = list(valid_groups.values_list('batch_number', flat=True).distinct())
+
+            # Извлекаем плоский отсортированный список позиций
+            raw_items, _ = ProductionDataService.extract_report_items(
+                order_spec,
+                requested_batches=requested_batches
+            )
+            raw_items = raw_items if raw_items is not None else []
+
+        except Exception:
+            raw_items = []
+
         items_data = []
 
         for item in raw_items:
-            item_copy = dict(item)
-            top_clearance = abs(float(item.get('leaf_top_clearance') or 0.3))
+            # Превращаем объект/словарь в словарь для удобства шаблона
+            item_copy = dict(item) if isinstance(item, dict) else {
+                'item_id': getattr(item, 'item_id', None),
+                'mark': getattr(item, 'mark', ''),
+                'leaf_top_clearance': getattr(item, 'leaf_top_clearance', 0.3),
+                'inner_width': getattr(item, 'inner_width', None) or getattr(item, 'width', 0.0),
+                'inner_height': getattr(item, 'inner_height', None) or getattr(item, 'height', 0.0),
+                'lock_name': getattr(item, 'lock_name', ''),
+                'lock_height_on_frame': getattr(item, 'lock_height_on_frame', None),
+                'lock_height': getattr(item, 'lock_height', None),
+                'hinge_name': getattr(item, 'hinge_name', ''),
+                'hinge_heights_on_frame': getattr(item, 'hinge_heights_on_frame', []),
+                'hinge_heights': getattr(item, 'hinge_heights', []),
+            }
 
-            item_copy['inner_width'] = item.get('inner_width') or item.get('width') or 0.0
-            item_copy['inner_height'] = item.get('inner_height') or item.get('height') or 0.0
+            top_clearance = abs(float(item_copy.get('leaf_top_clearance') or 0.3))
 
-            if 'lock_height_on_frame' in item and item['lock_height_on_frame'] is not None:
-                item_copy['lock_height'] = item['lock_height_on_frame']
-            elif item.get('lock_height') is not None:
-                item_copy['lock_height'] = round(float(item['lock_height']) + top_clearance, 2)
-            elif item.get("lock's height") is not None:
-                item_copy['lock_height'] = round(float(item["lock's height"]) + top_clearance, 2)
+            item_copy['inner_width'] = item_copy.get('inner_width') or 0.0
+            item_copy['inner_height'] = item_copy.get('inner_height') or 0.0
+
+            if 'lock_height_on_frame' in item_copy and item_copy['lock_height_on_frame'] is not None:
+                item_copy['lock_height'] = item_copy['lock_height_on_frame']
+            elif item_copy.get('lock_height') is not None:
+                item_copy['lock_height'] = round(float(item_copy['lock_height']) + top_clearance, 2)
 
             gross_hinges = []
-            if item.get('hinge_heights_on_frame'):
-                gross_hinges = [h for h in item['hinge_heights_on_frame'] if h is not None]
-            elif item.get('hinge_heights'):
-                gross_hinges = [round(float(h) + top_clearance, 2) for h in item['hinge_heights'] if h is not None]
-            elif item.get('hinges height'):
-                gross_hinges = [round(float(h) + top_clearance, 2) for h in item['hinges height'] if h is not None]
+            if item_copy.get('hinge_heights_on_frame'):
+                gross_hinges = [h for h in item_copy['hinge_heights_on_frame'] if h is not None]
+            elif item_copy.get('hinge_heights'):
+                gross_hinges = [round(float(h) + top_clearance, 2) for h in item_copy['hinge_heights'] if
+                                h is not None]
 
             item_copy['padded_hinges'] = (list(gross_hinges) + [None] * 5)[:5]
             items_data.append(item_copy)
@@ -933,7 +985,7 @@ def order_dev_force_rebuild_spec(request, pk):
 def split_measurer_report(request, pk):
     """
     Report for the measurer before phase 2, specifically for split installations.
-    Uses Phase 1 specification data.
+    Uses Phase 1 specification data across active batches.
     """
     order = get_object_or_404(Order, pk=pk)
 
@@ -941,8 +993,32 @@ def split_measurer_report(request, pk):
         messages.error(request, "This report is only available for split installations.")
         return redirect('order-detail', pk=pk)
 
+    # Подхватываем список батчей (поддерживает ?batch=1&batch=2&batch=3)
+    batch_params = request.GET.getlist('batch')
+    requested_batches = [int(b) for b in batch_params if b.isdigit()] if batch_params else None
+
     try:
-        spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
+        # 1. Берем спецификацию первой фазы
+        order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
+
+        # 2. Если батчи явно не переданы в GET, собираем все активные батчи первой фазы
+        if not requested_batches:
+            valid_groups = order.groups.filter(
+                is_split_installation=True,
+                batch_number__isnull=False
+            ).exclude(
+                production_state=OrderItemsGroup.ProductionState.CANCELED
+            )
+            requested_batches = list(valid_groups.values_list('batch_number', flat=True).distinct())
+
+        # 3. Извлекаем позиции через нашу проверенную прослойку
+        flat_items, batches_label = ProductionDataService.extract_report_items(
+            order_spec,
+            requested_batches=requested_batches
+        )
+
+        spec_items = flat_items if flat_items is not None else []
+
     except Exception as e:
         errors = getattr(e, 'errors', [str(e)])
         return render(request, 'production/report_validation_error.html', {
@@ -953,8 +1029,9 @@ def split_measurer_report(request, pk):
 
     return render(request, 'production/reports/split_measurer_report.html', {
         'order': order,
-        'order_spec': spec_obj,
-        'batches': spec_obj.batches,
+        'order_spec': order_spec,
+        'spec_items': spec_items,
+        'batches_label': batches_label,
         'report_label': "דו''ח מדידה לאחר שלב א'",
         'now': timezone.now(),
     })

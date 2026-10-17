@@ -4,7 +4,7 @@ from typing import Dict
 from django import forms
 
 from apps.catalog.models import Front, ProductType, ProductFamily, Series, ProductModel, Material
-from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer, OrderItem
+from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer, OrderItem, OrderStatus
 
 
 class TooltipSelect(forms.Select):
@@ -477,7 +477,6 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
         if self.instance.pk:
             can_edit = self.instance.is_editable_by(self.user)
             if not can_edit:
-                # Lock structural parameters
                 locked_fields = [
                     'product_type', 'product_family', 'series', 'front',
                     'basic_color_frames', 'quantity', 'product', 'is_split_installation'
@@ -487,7 +486,6 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
                     if field is not None:
                         field.disabled = True
 
-                # Lock panel paint if already set and not pending customer choice
                 if not getattr(self.instance, 'is_panel_color_tbd', False):
                     for f in [
                         'panel_paint_option', 'is_door_inside_different_color',
@@ -497,12 +495,33 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
                         if field is not None:
                             field.disabled = True
 
-                # Lock frame paint if already set and not pending customer choice
                 if not getattr(self.instance, 'is_frame_color_tbd', False):
                     for f in ['frame_paint_option', 'color_frames']:
                         field = self.fields.get(f)
                         if field is not None:
                             field.disabled = True
+
+        # --- Логика состояния тумблера is_split_installation ---
+        split_field = self.fields.get('is_split_installation')
+        if split_field:
+            order_status = self.order.status if self.order else OrderStatus.NEW
+            # Разрешено менять только в статусах NEW, PHASE1_PRODUCTION, PHASE1_READY
+            can_use_split_phase = order_status in [
+                OrderStatus.NEW,
+                OrderStatus.PHASE1_PRODUCTION,
+                OrderStatus.PHASE1_READY
+            ]
+
+            # Если статус заказа запрещает раздельный монтаж (заказ дальше по циклу) — жестко блокируем на сервере
+            if not can_use_split_phase:
+                split_field.disabled = True
+                self.initial['is_split_installation'] = False
+            else:
+                # В остальных случаях разрешаем JS управлять состоянием
+                split_field.disabled = False
+                # Для новой пустой формы по умолчанию выключаем, пока не выбрана поддерживаемая модель
+                if not self.instance.pk and not product:
+                    self.initial['is_split_installation'] = False
 
         self.apply_tooltips()
 

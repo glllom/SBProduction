@@ -47,9 +47,10 @@ class ProductTypeAdmin(admin.ModelAdmin):
 
 @admin.register(ProductFamily)
 class ProductFamilyAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'product_type', 'thickness', 'frame_inner_height_reduction',
+    list_display = ('id', 'name', 'product_type', 'thickness', 'supports_split_installation',
+                    'frame_inner_height_reduction',
                     'frame_inner_width_reduction')
-    list_filter = ('product_type',)
+    list_filter = ('product_type', 'supports_split_installation',)
     search_fields = ('name',)
     inlines = [ProductionRouteFamilyInline]
 
@@ -157,7 +158,8 @@ class ProductTechnicalDataInline(admin.StackedInline):
 
 @admin.register(ProductModel)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id', 'code', 'name', 'product_family', 'series', 'parent_model', 'has_door', 'has_frame')
+    list_display = ('id', 'code', 'name', 'product_family', 'series', 'parent_model',
+                    'has_door', 'has_frame')
     list_filter = ('product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name')
     raw_id_fields = ('parent_model',)

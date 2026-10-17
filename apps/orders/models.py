@@ -512,14 +512,16 @@ class OrderItemsGroup(models.Model):
         return self.batch_date == date.today()
 
     def save(self, *args, **kwargs):
-        # 2. Наследование серии и фронта по умолчанию из заказа
+        is_new = not self.pk
+
+        # 1. Наследование серии и фронта по умолчанию из заказа
         if self.order_id:
             if not self.series and getattr(self.order, "series", None):
                 self.series = self.order.series
             if not self.front and getattr(self.order, "front", None):
                 self.front = self.order.front
 
-        # 3. Новая логика цветов: очищаем поля, если выбран не SPECIAL_COLOR
+        # 2. Новая логика цветов: очищаем поля, если выбран не SPECIAL_COLOR
         if self.panel_paint_option != self.PaintOption.SPECIAL_COLOR:
             self.color_panel_outside = None
             self.color_panel_inside = None
@@ -530,7 +532,18 @@ class OrderItemsGroup(models.Model):
         if self.frame_paint_option != self.PaintOption.SPECIAL_COLOR:
             self.color_frames = None
 
-        # 4. Сохранение группы, синхронизация дверей и пересчет позиций
+        # --- ШАГ 3: Защита при добавлении групп во время первой фазы ---
+        if is_new and self.order_id and self.order.status == OrderStatus.PHASE1_PRODUCTION:
+            if not self.is_split_installation:
+                self.production_state = self.ProductionState.WAITING
+
+        # --- ШАГ 4: Интеллектуальный возврат статуса в PHASE1_PRODUCTION из PHASE1_READY ---
+        if self.order_id and self.order.status == OrderStatus.PHASE1_READY:
+            if self.is_split_installation and self.production_state == self.ProductionState.NEW:
+                self.order.status = OrderStatus.PHASE1_PRODUCTION
+                self.order.save(update_fields=['status'])
+
+        # 3. Сохранение группы, синхронизация дверей и пересчет позиций
         with transaction.atomic():
             super().save(*args, **kwargs)
 
@@ -560,27 +573,49 @@ class OrderItemsGroup(models.Model):
                             except (ValueError, TypeError):
                                 continue
 
-                        # 2. Создаем недостающие двери со сквозными номерами
-                        wall_default = (
+                        # 2. Безопасное определение дефолтного значения толщины стены
+                        raw_wall = (
                             self.product.product_family.default_value_for_frame
                             if self.product and getattr(self.product, 'product_family', None)
                             else None
                         )
 
-                        items_to_create = [
-                            OrderItem(
-                                group=self,
-                                mark=str(max_mark + i),
-                                wall=wall_default,
-                            )
-                            for i in range(1, (self.quantity - current_count) + 1)
-                        ]
+                        wall_default = None
+                        if raw_wall is not None and str(raw_wall).strip() != '':
+                            try:
+                                wall_default = float(str(raw_wall).strip())
+                            except (ValueError, TypeError):
+                                wall_default = None
+
+                        # Определяем флаги наличия коробки и двери у продукта
+                        product_type = (
+                            self.product.product_family.product_type
+                            if self.product and self.product.product_family
+                            else None
+                        )
+                        has_door = product_type.has_door if product_type else True
+                        has_frame = product_type.has_frame if product_type else True
+
+                        # 3. Создаем недостающие позиции с учетом особенностей типа продукта
+                        items_to_create = []
+                        for i in range(1, (self.quantity - current_count) + 1):
+                            item_kwargs = {
+                                'group': self,
+                                'mark': str(max_mark + i),
+                                'wall': wall_default if has_frame else None,
+                            }
+                            if not has_door:
+                                item_kwargs['direction'] = None
+                                item_kwargs['opening'] = None
+
+                            items_to_create.append(OrderItem(**item_kwargs))
+
                         OrderItem.objects.bulk_create(items_to_create)
 
                     elif current_count > self.quantity:
                         items_to_delete = existing_items[self.quantity:]
                         OrderItem.objects.filter(id__in=[item.id for item in items_to_delete]).delete()
-
+                        
     def delete(self, *args, **kwargs):
         order = self.order
         super().delete(*args, **kwargs)

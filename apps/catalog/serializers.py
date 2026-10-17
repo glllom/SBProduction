@@ -35,14 +35,18 @@ class ProductFamilySerializer(serializers.ModelSerializer):
 
 class ProductModelSerializer(serializers.ModelSerializer):
     available_frames = serializers.SerializerMethodField()
+    supports_split_installation = serializers.BooleanField(source='product_family.supports_split_installation', read_only=True)
 
     class Meta:
         model = ProductModel
-        fields = ['id', 'code', 'name', 'product_family', 'series', 'description', 'available_frames']
+        fields = [
+            'id', 'code', 'name', 'product_family', 'series',
+            'description', 'available_frames', 'supports_split_installation'
+        ]
 
-    def get_available_frames(self, obj):
+    @staticmethod
+    def get_available_frames(obj):
         return MaterialSerializer(obj.available_frames, many=True).data
-
 
 class HardwareSerializer(serializers.ModelSerializer):
     class Meta:

@@ -34,6 +34,7 @@ class ProductFamily(models.Model):
     code = models.CharField('קוד', max_length=32, unique=True)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
+    supports_split_installation = models.BooleanField('ניתן להתקין בשני שלבים', default=False)
     default_value_for_frame = models.CharField('עובי משקוף ברירת מחדל', max_length=255, blank=True, default='')
 
     thickness = models.FloatField('עובי (Толщина)', default=0.0)
@@ -233,7 +234,6 @@ class Hardware(models.Model):
         related_name='hardware_items',
         verbose_name='גוון / צבע'
     )
-
 
     class Meta:
         verbose_name = 'פרזול'
