@@ -123,18 +123,16 @@ class ProductionRouteStepInline(admin.TabularInline):
 
 @admin.register(ProductionRoute)
 class ProductionRouteAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'product_type', 'product_family', 'series', 'product_model', 'active')
-    list_filter = ('active', 'product_type', 'product_family', 'series', 'product_model')
+    list_display = ('name', 'active', 'display_products',)
+    list_filter = ('active',)
+    filter_horizontal = ('products',)
     inlines = [ProductionRouteStepInline]
 
-    fieldsets = (
-        (None, {
-            'fields': ('name', 'active')
-        }),
-        ('Catalog Binding (fill only one level)', {
-            'fields': ('product_type', 'product_family', 'series', 'product_model')
-        }),
-    )
+    def display_products(self, obj):
+        products = obj.products.all()[:5]
+        return ", ".join([p.name for p in products]) + ("..." if obj.products.count() > 5 else "")
+
+    display_products.short_description = 'מוצרים (Продукты)'
 
 
 @admin.register(SvgPattern)

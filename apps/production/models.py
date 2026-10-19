@@ -310,37 +310,11 @@ class ProductionRoute(models.Model):
     """
     name = models.CharField('שם המסלול', max_length=255, blank=True)
 
-    product_type = models.ForeignKey(
-        'catalog.ProductType',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+    products = models.ManyToManyField(
+        'catalog.ProductModel',  # Замените на 'catalog.Product', если модель называется так
         related_name='production_routes',
-        verbose_name='סוג מוצר'
-    )
-    product_family = models.ForeignKey(
-        'catalog.ProductFamily',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='production_routes',
-        verbose_name='משפחת מוצרים'
-    )
-    series = models.ForeignKey(
-        'catalog.Series',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='production_routes',
-        verbose_name='סדרה'
-    )
-    product_model = models.ForeignKey(
-        'catalog.ProductModel',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='production_routes',
-        verbose_name='דגם מוצר'
+        verbose_name='מוצרים',
+        blank=True
     )
 
     active = models.BooleanField('פעיל', default=True)
@@ -350,68 +324,66 @@ class ProductionRoute(models.Model):
         verbose_name_plural = 'מסלולי ייצור'
 
     def __str__(self):
-        if self.name:
-            return self.name
-        levels = []
-        if self.product_type: levels.append(f"סוג: {self.product_type.name}")
-        if self.product_family: levels.append(f"משפחה: {self.product_family.name}")
-        if self.series: levels.append(f"סדרה: {self.series.name}")
-        if self.product_model: levels.append(f"דגם: {self.product_model.name}")
-        return " -> ".join(levels) if levels else f"מסלול #{self.pk}"
+        return self.name
 
     @classmethod
     def get_stations_for_product(cls, product):
         """
-        Returns a list of ProductionStation for a given product model, considering inheritance.
+        Возвращает список станций для конкретного продукта по прямой связи ManyToMany.
         """
-        # 1. Check Model override
-        model_route = cls.objects.filter(product_model=product, active=True).first()
-        if model_route:
-            return list(ProductionStation.objects.filter(
-                id__in=model_route.steps.values_list('station_id', flat=True)
-            ).order_by('route_steps__order'))
+        print(f"\n[DEBUG] --- Запуск get_stations_for_product для продукта: '{product}' (ID: {product.id}) ---")
 
-        # 2. Collect inherited chain: Type -> Family -> Series
-        stations_ids = []
+        route = cls.objects.filter(products=product, active=True).first()
 
-        # Type
-        type_route = cls.objects.filter(product_type=product.product_family.product_type, active=True).first()
-        if type_route:
-            stations_ids.extend(type_route.steps.values_list('station_id', flat=True))
+        if route:
+            print(f"[DEBUG] Нашли маршрут: '{route}' (ID: {route.id})")
 
-        # Family
-        family_route = cls.objects.filter(product_family=product.product_family, active=True).first()
-        if family_route:
-            stations_ids.extend(family_route.steps.values_list('station_id', flat=True))
+            # Чистый способ достать станции с сохранением сортировки и без дублей
+            route_steps = route.steps.select_related('station').order_by('order')
+            stations = []
+            for step in route_steps:
+                if step.station not in stations:  # Защита от дублей
+                    stations.append(step.station)
 
-        # Series
-        if product.series:
-            series_route = cls.objects.filter(series=product.series, active=True).first()
-            if series_route:
-                stations_ids.extend(series_route.steps.values_list('station_id', flat=True))
+            print(f"[DEBUG] Станции маршрута: {[s.code for s in stations]}")
+            return stations
 
-        # Return unique stations while preserving order would be nice, 
-        # but let's just return unique ones for now.
-        return list(ProductionStation.objects.filter(id__in=stations_ids, active=True).distinct())
+        print(f"[DEBUG] ВНИМАНИЕ: Для продукта '{product}' не найден активный маршрут!")
+        return []
 
     @classmethod
     def get_stations_for_group(cls, group):
         """
-        Returns a list of ProductionStation for an OrderItemsGroup,
-        including stations from product hierarchy and from customizers.
+        Возвращает итоговый список станций для группы.
         """
-        # 1. Base stations from product hierarchy
+        print(f"\n[DEBUG] === Запуск get_stations_for_group для Группы ID: {group.id} ===")
+        if not group.product:
+            print("[DEBUG] ОШИБКА: У группы нет продукта.")
+            return []
+
+        # 1. Получаем базовые станции
         stations = cls.get_stations_for_product(group.product)
+        station_ids = [s.id for s in stations]
 
-        # 2. Add stations from customizers
-        for group_cust in group.customizers.all().select_related('customizer'):
-            added_links = CustomizerProductionStation.objects.filter(
-                customizer=group_cust.customizer
-            ).select_related('station')
-            for link in added_links:
-                if link.station.active and link.station not in stations:
-                    stations.append(link.station)
+        # 2. Перебираем кастомизаторы группы
+        print(f"[DEBUG] Проверка кастомизаторов для группы {group.id}...")
+        for gc in group.customizers.all():
+            customizer = gc.customizer
 
+            # В зависимости от того, как у вас кастомизатор связан со станцией, получаем её:
+            # (Если у вас есть поле production_station в модели Customizer, то код ниже сработает)
+            c_station = getattr(customizer, 'production_station', None)
+
+            if c_station:
+                if c_station.id not in station_ids:
+                    stations.append(c_station)
+                    station_ids.append(c_station.id)
+                    print(f"[DEBUG] + Добавлена станция '{c_station.code}' от кастомизатора '{customizer.name}'")
+                else:
+                    print(
+                        f"[DEBUG] Станция '{c_station.code}' от кастомизатора '{customizer.name}' уже есть в маршруте.")
+
+        print(f"[DEBUG] === ИТОГОВЫЕ станции для Группы {group.id}: {[s.code for s in stations]} ===\n")
         return stations
 
 

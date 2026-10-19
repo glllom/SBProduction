@@ -599,16 +599,20 @@ def station_report(request, pk):
     """
     order = get_object_or_404(Order, pk=pk)
     station_code = request.GET.get('station') or request.GET.get('type')
-
-    # Получаем запрошенные батчи как список: ?batch=1&batch=2 -> ['1', '2']
     requested_batches = request.GET.getlist('batch')
 
+    # 1. Спец-отчет по прессу (нарезка панелей)
     if station_code and station_code.upper() in ['PRESS', 'CUTTING_PRESS']:
         return report_cutting_press(request, pk)
+
+    # 2. Спец-отчет по облицовке (חיפוי)
+    if station_code and station_code.upper() in ['FACING', 'CLADDING', 'FACING_REPORT']:
+        return report_facing(request, pk)
 
     if not station_code:
         station_code = 'ALL'
 
+    # Определение метки этапа заказа
     if order.status in [OrderStatus.PHASE1_PRODUCTION]:
         stage_label = "שלב א'"
     elif order.status in [OrderStatus.PHASE2_PRODUCTION, OrderStatus.PHASE1_READY]:
@@ -645,10 +649,10 @@ def station_report(request, pk):
                     'report_label': station.label or station.name or "דוחות ייצור"
                 })
 
+            # СИСТЕМНАЯ ФИЛЬТРАЦИЯ ПО СТАНЦИЯМ
             filtered_items = service.get_filtered_items(station=station)
             filtered_item_ids = {item.id for item in filtered_items}
 
-            # ПРОСЛОЙКА
             res = ProductionDataService.extract_report_items(spec_obj, requested_batches)
             if res[0] is None:
                 report_items = []
@@ -664,12 +668,43 @@ def station_report(request, pk):
             if station_items or not order.groups.exists():
                 include_template = None
                 code_lower = station.code.lower() if station.code else ''
+
+                # Подбор шаблона секции для Мастер-отчета
                 if code_lower in ['frames', 'alum_frames']:
                     include_template = 'production/includes/report_alum_frames.html'
                 elif code_lower in ['doors', 'alum_doors']:
                     include_template = 'production/includes/report_alum_doors.html'
                 elif code_lower in ['cut_sheets', 'sheets']:
                     include_template = 'production/includes/report_cut_sheets.html'
+
+                # --- ПОДДЕРЖКА ОБЛИЦОВКИ В МАСТЕР-ОТЧЕТЕ ---
+                elif code_lower in ['facing', 'cladding', 'facing_report']:
+                    include_template = 'production/includes/report_facing.html'
+
+                    # Подтягиваем URL картинок из БД для словарей снапшота
+                    item_ids = [it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id') for it in
+                                station_items]
+                    db_items = OrderItem.objects.filter(id__in=item_ids)
+                    img_map = {}
+                    for db_it in db_items:
+                        url = None
+                        if getattr(db_it, 'sketch', None):
+                            try:
+                                url = db_it.sketch.url
+                            except ValueError:
+                                pass
+                        elif getattr(db_it, 'sketch_url', None):
+                            url = db_it.sketch_url
+                        img_map[db_it.id] = url
+
+                    for it in station_items:
+                        it_id = it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id')
+                        if isinstance(it, dict):
+                            it['image_url'] = img_map.get(it_id)
+                        else:
+                            it.image_url = img_map.get(it_id)
+                # -------------------------------------------
+
                 elif station.template_name:
                     base_name = station.template_name.split('/')[-1].replace('_report.html', '')
                     include_template = f'production/includes/report_{base_name}.html'
@@ -726,7 +761,7 @@ def station_report(request, pk):
             'report_label': (station.label if station else (station.name if station else station_code)) or "דוח ייצור"
         })
 
-    # ПРОСЛОЙКА
+    # ПРОСЛОЙКА ОТЧЕТОВ
     res = ProductionDataService.extract_report_items(spec_obj, requested_batches)
     if res[0] is None:
         report_items = []
@@ -769,6 +804,7 @@ def station_report(request, pk):
             'order_qr': get_qr_base64(barcode_data),
         })
 
+    # СИСТЕМНАЯ ФИЛЬТРАЦИЯ ПО СТАНЦИЯМ ДЛЯ ОБЫЧНЫХ ОТЧЕТОВ
     if station:
         filtered_items = service.get_filtered_items(station=station)
         template_name = station.template_name
@@ -801,7 +837,9 @@ def station_report(request, pk):
         'enriched_doors_items': enriched_doors_items,
         'enriched_frames_items': enriched_frames_items,
         'order_qr': get_qr_base64(barcode_data),
-        'barcode_text': barcode_data
+        'barcode_text': barcode_data,
+        'spec_items': station_items,
+        'panel_groups': service.prepare_press_groups_data(station_items),
     })
 
 
@@ -810,7 +848,6 @@ def report_cutting_press(request, pk):
     order = get_object_or_404(Order, pk=pk)
     order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
 
-    # ПРОСЛОЙКА ДЛЯ ПРЕССА
     requested_batches = request.GET.getlist('batch')
     res = ProductionDataService.extract_report_items(order_spec, requested_batches)
     if res[0] is None:
@@ -820,6 +857,18 @@ def report_cutting_press(request, pk):
         report_items, batches_label = res
 
     service = ProductionDataService(order)
+
+    # ==== СИСТЕМНАЯ ФИЛЬТРАЦИЯ: Исключаем облицовки из пресса ====
+    station = ProductionStation.objects.filter(code__in=['PRESS', 'CUTTING_PRESS']).first()
+    if station:
+        filtered_items = service.get_filtered_items(station=station)
+        valid_ids = {item.id for item in filtered_items}
+        # Оставляем только те позиции, чей маршрут включает станцию Пресс
+        report_items = [
+            it for it in report_items
+            if (it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id')) in valid_ids
+        ]
+
     panel_groups = service.prepare_press_groups_data(report_items)
 
     return render(request, 'production/reports/report_press.html', {
@@ -1304,4 +1353,59 @@ def order_warehouse_setup(request, pk):
     return render(request, 'production/order_warehouse_setup.html', {
         'order': order,
         'customizable_hardware': customizable_hardware,
+    })
+
+
+# --- ДОБАВЛЯЕМ ВЕРХУ НОВУЮ ФУНКЦИЮ ДЛЯ ОТЧЕТА ОБЛИЦОВКИ ---
+@login_required
+def report_facing(request, pk):
+    """Специализированный отчет для облицовок (חיפויים) с выводом эскиза на всю страницу."""
+    order = get_object_or_404(Order, pk=pk)
+    station = ProductionStation.objects.filter(code__in=['FACING', 'CLADDING', 'FACING_REPORT']).first()
+
+    order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
+    requested_batches = request.GET.getlist('batch')
+    res = ProductionDataService.extract_report_items(order_spec, requested_batches)
+    report_items, batches_label = res if res[0] is not None else ([], "לא נבחרה אצווה")
+
+    report_item_ids = {(it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id')) for it in report_items}
+
+    service = ProductionDataService(order)
+    # 1. СИСТЕМНАЯ ФИЛЬТРАЦИЯ: Получаем только позиции, в маршруте которых ЕСТЬ станция облицовки
+    if station:
+        filtered_items = service.get_filtered_items(station=station)
+    else:
+        filtered_items = []
+
+    valid_items = [item for item in filtered_items if
+                   item.id in report_item_ids] if requested_batches else filtered_items
+
+    # 2. Формируем данные для рендера (позиция + картинка из БД)
+    facings_data = []
+    for item in valid_items:
+        url = None
+        if hasattr(item, 'sketch') and item.sketch:
+            try:
+                url = item.sketch.url
+            except ValueError:
+                pass
+        elif hasattr(item, 'sketch_url') and item.sketch_url:
+            url = item.sketch_url
+
+        facings_data.append({
+            'item': item,
+            'group': item.group,
+            'image_url': url,
+        })
+
+    barcode_data = f"{order.order_number};FACING"
+
+    return render(request, 'production/reports/report_facing.html', {
+        'order': order,
+        'facings_data': facings_data,
+        'station': station,
+        'report_label': (station.label if station else "דוח חיפויים"),
+        'batches_label': batches_label,
+        'order_qr': get_qr_base64(barcode_data),
+        'now': timezone.now(),
     })

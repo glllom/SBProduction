@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.production.models import ProductTechnicalData, BOM, ProductionRoute
+from apps.production.models import ProductTechnicalData, BOM
 from .models import (
     ProductType,
     ProductFamily,
@@ -14,35 +14,10 @@ from .models import (
 )
 
 
-class ProductionRouteTypeInline(admin.TabularInline):
-    model = ProductionRoute
-    fk_name = 'product_type'
-    extra = 1
-
-
-class ProductionRouteFamilyInline(admin.TabularInline):
-    model = ProductionRoute
-    fk_name = 'product_family'
-    extra = 1
-
-
-class ProductionRouteSeriesInline(admin.TabularInline):
-    model = ProductionRoute
-    fk_name = 'series'
-    extra = 1
-
-
-class ProductionRouteModelInline(admin.TabularInline):
-    model = ProductionRoute
-    fk_name = 'product_model'
-    extra = 1
-
-
 @admin.register(ProductType)
 class ProductTypeAdmin(admin.ModelAdmin):
     list_display = ('id', 'name')
     search_fields = ('name',)
-    inlines = [ProductionRouteTypeInline]
 
 
 @admin.register(ProductFamily)
@@ -52,7 +27,6 @@ class ProductFamilyAdmin(admin.ModelAdmin):
                     'frame_inner_width_reduction')
     list_filter = ('product_type', 'supports_split_installation',)
     search_fields = ('name',)
-    inlines = [ProductionRouteFamilyInline]
 
 
 class FrontInline(admin.TabularInline):
@@ -71,7 +45,6 @@ class FrameColorInline(admin.TabularInline):
 class SeriesAdmin(admin.ModelAdmin):
     list_display = ('id', 'name')
     search_fields = ('name',)
-    inlines = [FrontInline, ProductionRouteSeriesInline]
 
 
 @admin.register(Front)
@@ -164,7 +137,7 @@ class ProductAdmin(admin.ModelAdmin):
     search_fields = ('code', 'name')
     raw_id_fields = ('parent_model',)
     filter_horizontal = ('required_customizers',)
-    inlines = [BOMInline, ProductTechnicalDataInline, ProductionRouteModelInline]
+    inlines = [BOMInline, ProductTechnicalDataInline]
 
 
 from django.contrib import admin

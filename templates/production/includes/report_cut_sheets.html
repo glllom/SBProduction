@@ -24,7 +24,7 @@
             </div>
         {% endif %}
     </div>
-    {% regroup order_spec.items by product_family as family_list %}
+    {% regroup spec_items by product_family as family_list %}
     {% for family in family_list %}
         {% regroup family.list by series as series_list %}
         {% for series in series_list %}

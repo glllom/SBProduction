@@ -1169,13 +1169,71 @@ class ProductionDataService:
         }
         return render_to_string(template, context)
 
+    # def get_filtered_items(self, report_type=None, station=None):
+    #     """
+    #     Returns a list of items that belong to the specified report or station.
+    #     If the order is in COMPLETION_PRODUCTION, excludes items from COMPLETED groups.
+    #     """
+    #     items = []
+    #     is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
+    #
+    #     from .models import ProductionRoute
+    #
+    #     for group in self.order.groups.all():
+    #         if group.production_state in [
+    #             OrderItemsGroup.ProductionState.WAITING,
+    #             OrderItemsGroup.ProductionState.CANCELED,
+    #         ]:
+    #             continue
+    #
+    #         if is_completion and group.production_state == OrderItemsGroup.ProductionState.COMPLETED:
+    #             continue
+    #
+    #         # Получаем динамический список станций для группы
+    #         group_stations = ProductionRoute.get_stations_for_group(group)
+    #         group_station_codes = {s.code.upper() for s in group_stations if s.code}
+    #
+    #         # СИСТЕМНАЯ ФИЛЬТРАЦИЯ
+    #         is_valid = False
+    #
+    #         if station:
+    #             # Если передана конкретная станция (из модального окна)
+    #             is_valid = station in group_stations
+    #         else:
+    #             # Фолбэки для стандартных типов отчетов, когда station_code не передан
+    #             rt = str(report_type).upper()
+    #             if rt in ['PHASE1_FRAMES', 'PHASE1_PRODUCTION', 'PHASE2_FRAMES', 'FRAMES', 'ALUM_FRAMES',
+    #                       'WOOD_FRAMES']:
+    #                 # Группа должна проходить через станцию с кодом FRAMES или ALUM_FRAMES
+    #                 is_valid = bool(group_station_codes & {'FRAMES', 'ALUM_FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES'})
+    #             elif rt in ['PHASE2_DOORS', 'DOORS', 'ALUM_DOORS']:
+    #                 # Группа должна проходить через станцию с кодом DOORS или ALUM_DOORS
+    #                 is_valid = bool(group_station_codes & {'DOORS', 'ALUM_DOORS'})
+    #             elif rt in ['PHASE2_PRESS', 'PRESS', 'CUTTING_PRESS']:
+    #                 # Группа должна проходить через станцию пресса
+    #                 is_valid = bool(group_station_codes & {'PRESS', 'CUTTING_PRESS'})
+    #             elif rt in ['FACING', 'CLADDING', 'FACING_REPORT']:
+    #                 is_valid = bool(group_station_codes & {'FACING', 'CLADDING', 'FACING_REPORT'})
+    #             else:
+    #                 # Для FULL_PRODUCTION и неизвестных отчетов пропускаем всё
+    #                 is_valid = True
+    #
+    #         if is_valid:
+    #             for item in group.items.all():
+    #                 items.append(item)
+    #
+    #     return items
     def get_filtered_items(self, report_type=None, station=None):
         """
         Returns a list of items that belong to the specified report or station.
-        If the order is in COMPLETION_PRODUCTION, excludes items from COMPLETED groups.
         """
         items = []
         is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
+
+        from .models import ProductionRoute
+
+        print(f"\n[DEBUG FILTER] === Запуск фильтрации ===")
+        print(f"[DEBUG FILTER] Запрошена станция: '{station.code if station else 'None'}', Тип отчета: '{report_type}'")
 
         for group in self.order.groups.all():
             if group.production_state in [
@@ -1187,34 +1245,46 @@ class ProductionDataService:
             if is_completion and group.production_state == OrderItemsGroup.ProductionState.COMPLETED:
                 continue
 
-            is_split = group.is_split_installation
-            product_type = None
-            if group.product and group.product.product_family and group.product.product_family.product_type:
-                product_type = group.product.product_family.product_type
-            has_frame = product_type.has_frame if product_type else True
-            has_door = product_type.has_door if product_type else True
+            # Получаем динамический список станций для группы
+            group_stations = ProductionRoute.get_stations_for_group(group)
+            group_station_codes = [s.code for s in group_stations if s.code]
 
-            # Filter logic
+            print(f"[DEBUG FILTER] Группа {group.id} (Продукт: {group.product.name if group.product else 'None'})")
+            print(f"[DEBUG FILTER] Станции в маршруте группы: {group_station_codes}")
+
+            # СИСТЕМНАЯ ФИЛЬТРАЦИЯ
+            is_valid = False
+
             if station:
-                from .models import ProductionRoute
-                group_stations = ProductionRoute.get_stations_for_group(group)
-                if station not in group_stations:
-                    continue
-            elif report_type in [self.ReportType.PHASE1_FRAMES, 'PHASE1_FRAMES', 'PHASE1_PRODUCTION']:
-                if not is_split or not has_frame:
-                    continue
-            elif report_type in [self.ReportType.PHASE2_DOORS, 'PHASE2_DOORS']:
-                if not has_door:
-                    continue
-            elif report_type in [self.ReportType.PHASE2_PRESS, 'PHASE2_PRESS']:
-                if not has_door:
-                    continue
-            elif report_type in [self.ReportType.PHASE2_FRAMES, 'PHASE2_FRAMES']:
-                if not has_frame:
-                    continue
+                # Надежная проверка по ID (защита от сравнения разных объектов памяти)
+                is_valid = any(s.id == station.id for s in group_stations)
+                print(f"[DEBUG FILTER] Станция '{station.code}' (ID {station.id}) найдена в маршруте? -> {is_valid}")
+            else:
+                # Фолбэки для стандартных типов отчетов, когда station_code не передан
+                rt = str(report_type).upper()
+                group_codes_upper = {c.upper() for c in group_station_codes}
 
-            for item in group.items.all():
-                items.append(item)
+                if rt in ['PHASE1_FRAMES', 'PHASE1_PRODUCTION', 'PHASE2_FRAMES', 'FRAMES', 'ALUM_FRAMES', 'WOOD_FRAMES',
+                          '100']:
+                    is_valid = bool(
+                        group_codes_upper & {'FRAMES', 'ALUM_FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES', '100'})
+                elif rt in ['PHASE2_DOORS', 'DOORS', 'ALUM_DOORS']:
+                    is_valid = bool(group_codes_upper & {'DOORS', 'ALUM_DOORS'})
+                elif rt in ['PHASE2_PRESS', 'PRESS', 'CUTTING_PRESS', 'CUT_SHEETS']:
+                    is_valid = bool(group_codes_upper & {'PRESS', 'CUTTING_PRESS', 'CUT_SHEETS'})
+                elif rt in ['FACING', 'CLADDING', 'FACING_REPORT']:
+                    is_valid = bool(group_codes_upper & {'FACING', 'CLADDING', 'FACING_REPORT'})
+                else:
+                    is_valid = True
+
+            if is_valid:
+                print(f"[DEBUG FILTER] >> Группа {group.id} ПРОШЛА фильтр!")
+                for item in group.items.all():
+                    items.append(item)
+            else:
+                print(f"[DEBUG FILTER] -- Группа {group.id} ОТКЛОНЕНА фильтром.")
+
+        print(f"[DEBUG FILTER] Итого позиций пропущено: {len(items)}\n")
         return items
 
     @staticmethod
