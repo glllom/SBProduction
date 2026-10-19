@@ -279,13 +279,13 @@ class OrderValidationService:
                 # Opening side and direction check for door
                 if has_door:
                     if not item.opening:
-                        errors.append(f"{item_label}: Opening side not selected (L/R)")
+                        errors.append(f"{item_label}: Opening side not selected (In/Out)")
                     if not item.direction:
-                        errors.append(f"{item_label}: Opening direction not selected (In/Out)")
+                        errors.append(f"{item_label}: Opening direction not selected (L/R)")
                     elif group.product:
                         # Validate direction against product restrictions
                         allowed = getattr(group.product, 'allowed_direction', 'BOTH')
-                        dir_val = str(item.direction).strip().upper()
+                        dir_val = str(item.opening).strip().upper()
 
                         # Handles both English ('IN', 'OUT') and Hebrew ('פנימה', 'החוצה') if used
                         is_in = dir_val in ('IN', 'INWARD', 'פנימה')
@@ -630,7 +630,11 @@ class ProductionDataService:
                 return 999999
 
         flat_items.sort(key=parse_mark)
-        batches_label = ", ".join(applied_batches)
+
+        if len(getattr(spec_obj, 'batches', {}) or {}) == 1:
+            batches_label = ""
+        else:
+            batches_label = ", ".join(applied_batches)
 
         return flat_items, batches_label
 

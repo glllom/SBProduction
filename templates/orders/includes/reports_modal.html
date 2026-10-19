@@ -1,4 +1,4 @@
-<!-- Reports & Production Modal -->
+{% load static %}<!-- Reports & Production Modal -->
 <div class="modal fade" id="reportsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content border-0 shadow">
@@ -25,34 +25,89 @@
                     <div class="col-md-4">
                         <div class="card h-100 border shadow-sm">
                             <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
-                                <h6 class="fw-bold text-primary mb-0"><i class="bi bi-file-earmark-text me-1"></i>דוחות ייצור</h6>
+                                <h6 class="fw-bold text-primary mb-0">
+                                    <i class="bi bi-file-earmark-text me-1"></i>דוחות
+                                    ייצור
+                                </h6>
                             </div>
                             <div class="card-body d-flex flex-column gap-2">
-                                <button type="button"
-                                        class="btn btn-primary btn-sm text-start btn-generate-action"
-                                        data-url="{% url 'production:station-report' order.pk %}?station=ALL">
-                                    <i class="bi bi-printer-fill me-1"></i><strong>הדפסת הכל (Master)</strong>
-                                </button>
-                                {% for station in order.get_production_stations %}
-                                    {% if station.has_specification %}
+                                <!-- Мастер отчет -->
+                                {% if order.has_split_installation %}
+                                    {% if order.status == 'PHASE1_PRODUCTION' %}
                                         <button type="button"
-                                                class="btn btn-outline-secondary btn-sm text-start btn-generate-action"
-                                                data-url="{% url 'production:station-report' order.pk %}?station={{ station.code }}">
-                                            <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
+                                                class="btn btn-primary btn-sm text-start btn-generate-action disabled opacity-50"
+                                                disabled
+                                                title="לא זמין בשלב א'"
+                                                data-url="{% url 'production:station-report' order.pk %}?station=ALL">
+                                            <i class="bi bi-printer-fill me-1"></i><strong>הדפסת הכל (Master)</strong>
+                                        </button>
+                                    {% else %}
+                                        <button type="button"
+                                                class="btn btn-primary btn-sm text-start btn-generate-action"
+                                                data-url="{% url 'production:station-report' order.pk %}?station=ALL">
+                                            <i class="bi bi-printer-fill me-1"></i><strong>הדפסת הכל (Master)</strong>
                                         </button>
                                     {% endif %}
-                                {% endfor %}
-                                <button type="button"
-                                        class="btn btn-outline-dark btn-sm text-start btn-generate-action"
-                                        data-url="{% url 'production:order-sketches-report' order.id %}">
-                                    <i class="bi bi-file-earmark-image me-1"></i>סקיצות
-                                </button>
-                                {% if order.has_split_installation %}
+                                {% else %}
                                     <button type="button"
-                                            class="btn btn-outline-warning btn-sm text-start btn-generate-action"
-                                            data-url="{% url 'production:split-measurer-report' order.pk %}">
-                                        <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
+                                            class="btn btn-primary btn-sm text-start btn-generate-action"
+                                            data-url="{% url 'production:station-report' order.pk %}?station=ALL">
+                                        <i class="bi bi-printer-fill me-1"></i><strong>הדפסת הכל (Master)</strong>
                                     </button>
+                                {% endif %}
+                                <!-- Участки -->
+                                {% for station in order.get_production_stations %}
+                                    {% if station.has_specification %}
+                                        {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' and not station.is_phase1 %}
+                                            <button type="button"
+                                                    class="btn btn-outline-secondary btn-sm text-start btn-generate-action disabled opacity-50"
+                                                    disabled
+                                                    title="זמין בשלב ב' בלבד"
+                                                    data-url="{% url 'production:station-report' order.pk %}?station={{ station.code }}">
+                                                <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
+                                            </button>
+                                        {% else %}
+                                            <button type="button"
+                                                    class="btn btn-outline-secondary btn-sm text-start btn-generate-action"
+                                                    data-url="{% url 'production:station-report' order.pk %}?station={{ station.code }}">
+                                                <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
+                                            </button>
+                                        {% endif %}
+                                    {% endif %}
+                                {% endfor %}
+                                <!-- Скетчи -->
+                                {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' %}
+                                    <button type="button"
+                                            class="btn btn-outline-dark btn-sm text-start btn-generate-action disabled opacity-50"
+                                            disabled
+                                            title="לא זמין בשלב א'"
+                                            data-url="{% url 'production:order-sketches-report' order.id %}">
+                                        <i class="bi bi-file-earmark-image me-1"></i>סקיצות
+                                    </button>
+                                {% else %}
+                                    <button type="button"
+                                            class="btn btn-outline-dark btn-sm text-start btn-generate-action"
+                                            data-url="{% url 'production:order-sketches-report' order.id %}">
+                                        <i class="bi bi-file-earmark-image me-1"></i>סקיצות
+                                    </button>
+                                {% endif %}
+                                <!-- דו''ח מדידה -->
+                                {% if order.has_split_installation %}
+                                    {% if order.status == 'COMPLETED' or order.status == 'NEW' %}
+                                        <button type="button"
+                                                class="btn btn-outline-warning btn-sm text-start btn-generate-action disabled opacity-50"
+                                                disabled
+                                                title="לא זמין בהזמנת קומפלט"
+                                                data-url="{% url 'production:split-measurer-report' order.pk %}">
+                                            <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
+                                        </button>
+                                    {% else %}
+                                        <button type="button"
+                                                class="btn btn-outline-warning btn-sm text-start btn-generate-action"
+                                                data-url="{% url 'production:split-measurer-report' order.pk %}">
+                                            <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
+                                        </button>
+                                    {% endif %}
                                 {% endif %}
                             </div>
                         </div>
@@ -61,7 +116,9 @@
                     <div class="col-md-4">
                         <div class="card h-100 border shadow-sm">
                             <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
-                                <h6 class="fw-bold text-success mb-0"><i class="bi bi-cpu me-1"></i>קבצי מכונות (CNC)</h6>
+                                <h6 class="fw-bold text-success mb-0">
+                                    <i class="bi bi-cpu me-1"></i>קבצי מכונות (CNC)
+                                </h6>
                             </div>
                             <div class="card-body d-flex flex-column gap-2">
                                 <button type="button"
@@ -84,22 +141,41 @@
                                 <h6 class="fw-bold text-dark mb-0"><i class="bi bi-tags me-1"></i>מדבקות ומחסן</h6>
                             </div>
                             <div class="card-body d-flex flex-column gap-2">
-                                <button type="button"
-                                        class="btn btn-dark btn-sm text-start btn-generate-action"
-                                        data-url="{% url 'production:station-report' order.pk %}?station=ALL">
-                                    <i class="bi bi-tag-fill me-1"></i><strong>כל המדבקות</strong>
-                                </button>
+                                {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' %}
+                                    <button type="button"
+                                            class="btn btn-dark btn-sm text-start btn-generate-action disabled opacity-50"
+                                            disabled
+                                            title="לא זמין בשלב א'"
+                                            data-url="{% url 'production:station-report' order.pk %}?station=ALL">
+                                        <i class="bi bi-tag-fill me-1"></i><strong>כל המדבקות</strong>
+                                    </button>
+                                {% else %}
+                                    <button type="button"
+                                            class="btn btn-dark btn-sm text-start btn-generate-action"
+                                            data-url="{% url 'production:station-report' order.pk %}?station=ALL">
+                                        <i class="bi bi-tag-fill me-1"></i><strong>כל המדבקות</strong>
+                                    </button>
+                                {% endif %}
                                 <button type="button"
                                         class="btn btn-outline-dark btn-sm text-start btn-generate-action"
                                         data-url="{% url 'production:station-report' order.pk %}?station=FRAMES">
                                     <i class="bi bi-tag me-1"></i>מדבקות משקופים
                                 </button>
-                                <button type="button"
-                                        class="btn btn-outline-secondary btn-sm text-start btn-generate-action"
-                                        data-url="{% url 'production:export-labels-csv' order.id %}">
-                                    <i class="bi bi-filetype-csv me-1"></i>ייצוא CSV (CNC)
-                                </button>
-                                <!-- Кнопка склада открывает форму в текущем окне -->
+                                {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' %}
+                                    <button type="button"
+                                            class="btn btn-outline-secondary btn-sm text-start btn-generate-action disabled opacity-50"
+                                            disabled
+                                            title="לא זמין בשלב א'"
+                                            data-url="{% url 'production:export-labels-csv' order.id %}">
+                                        <i class="bi bi-filetype-csv me-1"></i>ייצוא CSV (CNC)
+                                    </button>
+                                {% else %}
+                                    <button type="button"
+                                            class="btn btn-outline-secondary btn-sm text-start btn-generate-action"
+                                            data-url="{% url 'production:export-labels-csv' order.id %}">
+                                        <i class="bi bi-filetype-csv me-1"></i>ייצוא CSV (CNC)
+                                    </button>
+                                {% endif %}
                                 <button type="button"
                                         class="btn btn-outline-dark btn-sm text-start btn-generate-action"
                                         data-url="{% url 'production:order-warehouse-setup' order.id %}"

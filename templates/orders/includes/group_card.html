@@ -387,13 +387,18 @@
                         </div>
                         <div data-bs-toggle="tooltip" title="קוד או שם הגוון לכנפיים">
                             <span class="text-muted small">גוון:</span>
-                            <span class="fw-bold">{{ group.color_panels|default:"ללא / ירושה" }}</span>
+                            <span class="fw-bold">
+                                {{ group.color_panel_outside|default:"ללא / ירושה" }}
+                                {% if group.color_panel_inside and group.color_panel_inside != group.color_panel_outside %}
+                                    / פנים: {{ group.color_panel_inside }}
+                                {% endif %}
+                            </span>
                         </div>
                     </div>
                     <div class="col-md-6 ps-md-4">
                         <h6 class="fw-bold text-primary mb-3">צביעת משקוף</h6>
                         <div class="mb-2" data-bs-toggle="tooltip" title="צבע משקוף בסיסי (חומר)">
-                            <span class="text-muted `small">צבע בסיס:</span>
+                            <span class="text-muted small">צבע בסיס:</span>
                             <span class="fw-bold text-success">{{ group.basic_color_frames.name|default:"סטנדרט" }}</span>
                         </div>
                         <div class="mb-2" data-bs-toggle="tooltip" title="אופציית צביעת המשקוף">
@@ -420,7 +425,8 @@
                             data-basic-color-frames="{{ group.basic_color_frames_id|default:'' }}"
                             data-quantity="{{ group.quantity }}"
                             data-panel-paint-option="{{ group.panel_paint_option }}"
-                            data-color-panels="{{ group.color_panels|default:'' }}"
+                            data-color-panel-outside="{{ group.color_panel_outside|default:'' }}"
+                            data-color-panel-inside="{{ group.color_panel_inside|default:'' }}"
                             data-frame-paint-option="{{ group.frame_paint_option }}"
                             data-color-frames="{{ group.color_frames|default:'' }}"
                             data-product-id="{{ group.product_id }}"
@@ -428,7 +434,6 @@
                             data-product-code="{{ group.product.code }}"
                             data-is-split="{{ group.is_split_installation|yesno:'true,false' }}"
                             data-comments="{{ group.comments|default:'' }}"
-                            data-is-editable="{{ group.is_editable_by|yesno:'true,false' }}"
                             title="ניהול והגדרות צביעה ופרטי קבוצה">
                         <i class="bi bi-gear me-1"></i> ניהול צביעה
                     </button>
