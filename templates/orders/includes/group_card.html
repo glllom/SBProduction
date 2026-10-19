@@ -328,34 +328,13 @@
                                 </div>
                                 <div class="ps-5">
                                     <div class="row g-1">
-                                        {% if cust.customizer.par1_label %}
+                                        {% for p in cust.formatted_parameters %}
                                             <div class="col-6 extra-small"
-                                                 {% if cust.customizer.par1_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par1_hint }}"{% endif %}>
-                                                <span class="text-muted">{{ cust.customizer.par1_label }}:</span>
-                                                <span class="fw-medium">{{ cust.par1|default:"-" }}</span>
+                                                 {% if p.hint %}data-bs-toggle="tooltip" title="{{ p.hint }}"{% endif %}>
+                                                <span class="text-muted">{{ p.label }}:</span>
+                                                <span class="fw-medium">{{ p.value }}</span>
                                             </div>
-                                        {% endif %}
-                                        {% if cust.customizer.par2_label %}
-                                            <div class="col-6 extra-small"
-                                                 {% if cust.customizer.par2_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par2_hint }}"{% endif %}>
-                                                <span class="text-muted">{{ cust.customizer.par2_label }}:</span>
-                                                <span class="fw-medium">{{ cust.par2|default:"-" }}</span>
-                                            </div>
-                                        {% endif %}
-                                        {% if cust.customizer.par3_label %}
-                                            <div class="col-6 extra-small"
-                                                 {% if cust.customizer.par3_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par3_hint }}"{% endif %}>
-                                                <span class="text-muted">{{ cust.customizer.par3_label }}:</span>
-                                                <span class="fw-medium">{{ cust.par3|default:"-" }}</span>
-                                            </div>
-                                        {% endif %}
-                                        {% if cust.customizer.par4_label %}
-                                            <div class="col-6 extra-small"
-                                                 {% if cust.customizer.par4_hint %}data-bs-toggle="tooltip" title="{{ cust.customizer.par4_hint }}"{% endif %}>
-                                                <span class="text-muted">{{ cust.customizer.par4_label }}:</span>
-                                                <span class="fw-medium">{{ cust.par4|default:"-" }}</span>
-                                            </div>
-                                        {% endif %}
+                                        {% endfor %}
                                     </div>
                                 </div>
                             </div>

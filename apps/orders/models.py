@@ -615,7 +615,7 @@ class OrderItemsGroup(models.Model):
                     elif current_count > self.quantity:
                         items_to_delete = existing_items[self.quantity:]
                         OrderItem.objects.filter(id__in=[item.id for item in items_to_delete]).delete()
-                        
+
     def delete(self, *args, **kwargs):
         order = self.order
         super().delete(*args, **kwargs)
@@ -684,6 +684,21 @@ class OrderItemsGroupCustomizer(models.Model):
         verbose_name = 'קסטומייזר לקבוצה'
         verbose_name_plural = 'קסטומייזרים לקבוצה'
 
+    @property
+    def formatted_parameters(self):
+        result = []
+        for i in range(1, 6):
+            label = getattr(self.customizer, f'par{i}_label', None)
+            if label:
+                val = self.get_parameter_display_value(i)
+                if val:
+                    result.append({
+                        'label': label,
+                        'hint': getattr(self.customizer, f'par{i}_hint', ''),
+                        'value': val
+                    })
+        return result
+    
     def __str__(self):
         return f"{self.group} - {self.customizer.name}"
 
@@ -736,6 +751,25 @@ class OrderItemsGroupCustomizer(models.Model):
 
     def delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
+
+    def get_parameter_display_value(self, par_number):
+        """
+        Возвращает красивый лейбл (на иврите) для сохраненного значения параметра,
+        если оно задано через опции (key:label или SKU=key:label).
+        Иначе возвращает исходное значение (текст/число).
+        """
+        val = getattr(self, f'par{par_number}', None)
+        if not val:
+            return ""
+
+        val_str = str(val).strip()
+        options = self.customizer.get_parameter_options(par_number)
+
+        for key, label in options:
+            if key == val_str:
+                return label
+
+        return val_str
 
 
 # ==========================================

@@ -77,7 +77,13 @@ class SpecContext:
 
             if item_tags & tags_set:
                 found.append(gc)
-                self.processed_customizers.append(gc)
+                # ЕСЛИ у кастомизатора есть тег отчета, НЕ удаляем его из unprocessed,
+                # чтобы он дошел до SingleCustomizerStep!
+                report_tags = {'DOORS_REPORT', 'FRAMES_REPORT', 'FRAME_MODIFICATION'}
+                if not (item_tags & report_tags):
+                    self.processed_customizers.append(gc)
+                else:
+                    remaining.append(gc)  # оставляем для дальнейшей обработки в отчетах
             else:
                 remaining.append(gc)
 
@@ -1026,6 +1032,7 @@ class SingleCustomizerStep(SpecStep):
             spec.doors_report_customizers.append(formatted)
 
     @staticmethod
+    @staticmethod
     def _format_customizer(group_customizer) -> SpecCustomizerReport:
         c = group_customizer.customizer
         params = []
@@ -1040,10 +1047,14 @@ class SingleCustomizerStep(SpecStep):
                     val = val_default
                 elif val_default and val != val_default:
                     is_custom = True
+
                 if val:
+                    # Автоматически получаем красивый текст вместо ключа
+                    display_val = group_customizer.get_parameter_display_value(i)
+
                     params.append(SpecCustomizerParam(
                         label=label,
-                        value=val,
+                        value=display_val,
                         is_custom=is_custom
                     ))
         return SpecCustomizerReport(name=c.name, tag=c.tag, params=params)
