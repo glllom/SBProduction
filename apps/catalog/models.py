@@ -12,8 +12,8 @@ class ProductType(models.Model):
     name = models.CharField('שם', max_length=100, unique=True)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
-    has_door = models.BooleanField('יש דלת (Есть дверь)', default=True)
-    has_frame = models.BooleanField('יש משקוף (Есть косяк)', default=True)
+    has_door = models.BooleanField('יש דלת', default=True)
+    has_frame = models.BooleanField('יש משקוף', default=True)
 
     class Meta:
         verbose_name = 'סוג מוצר'
@@ -24,6 +24,12 @@ class ProductType(models.Model):
 
 
 class ProductFamily(models.Model):
+
+    class AllowedDirection(models.TextChoices):
+        BOTH = 'BOTH', 'Both directions (In / Out)'
+        IN_ONLY = 'IN_ONLY', 'Inward only (In)'
+        OUT_ONLY = 'OUT_ONLY', 'Outward only (Out)'
+
     product_type = models.ForeignKey(
         ProductType,
         on_delete=models.PROTECT,
@@ -75,6 +81,14 @@ class ProductFamily(models.Model):
         'תנקון מידה לדלת כפולה',
         default=0.7,
         validators=[MaxValueValidator(2)]
+    )
+
+    allowed_direction = models.CharField(
+        "Allowed opening direction",
+        max_length=10,
+        choices=AllowedDirection.choices,
+        default=AllowedDirection.BOTH,
+        help_text="Limits allowed door opening direction for this model"
     )
 
     class Meta:
@@ -319,11 +333,6 @@ class ProductModel(models.Model):
     Core catalog identity. Technological details are stored in apps.production.ProductTechnicalData.
     """
 
-    class AllowedDirection(models.TextChoices):
-        BOTH = 'BOTH', 'Both directions (In / Out)'
-        IN_ONLY = 'IN_ONLY', 'Inward only (In)'
-        OUT_ONLY = 'OUT_ONLY', 'Outward only (Out)'
-
     code = models.CharField('מק""ט', max_length=100, unique=True)
     name = models.CharField('שם', max_length=255)
     description = models.TextField('תיאור', blank=True)
@@ -357,13 +366,6 @@ class ProductModel(models.Model):
         verbose_name='קסטומייזרים חובה'
     )
 
-    allowed_direction = models.CharField(
-        "Allowed opening direction",
-        max_length=10,
-        choices=AllowedDirection.choices,
-        default=AllowedDirection.BOTH,
-        help_text="Limits allowed door opening direction for this model"
-    )
 
     class Meta:
         verbose_name = 'מוצר'

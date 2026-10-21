@@ -1,10 +1,7 @@
-import base64
 import csv
 import json
 from datetime import date
-from io import BytesIO
 
-import qrcode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -14,7 +11,6 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from qrcode.image.svg import SvgPathImage
 
 from apps.catalog.models import Hardware
 from apps.orders.models import (
@@ -27,7 +23,7 @@ from .services import (
     OrderValidationService,
     ProductionDataService,
     OrderValidationError,
-    TechnicalSpecService,
+    TechnicalSpecService, get_qr_base64,
 )
 from .usb_sync import run_usb_sync
 
@@ -160,24 +156,6 @@ def enrich_report_frames_spec(items):
         i += run_len
 
     return items_data
-
-
-def get_qr_base64(data: str) -> str:
-    """Генерирует QR-код в формате Base64 SVG."""
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=10,
-        border=1,
-    )
-    qr.add_data(data)
-    qr.make(fit=True)
-
-    buffer = BytesIO()
-    img = qr.make_image(image_factory=SvgPathImage)
-    img.save(buffer)
-
-    return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 
 # === 1. Production Lifecycle & Status Actions ===
@@ -977,6 +955,22 @@ def export_door_labels_csv(request, pk):
         writer.writerow(base_data + [2])
 
     return response
+
+
+@login_required
+def export_door_labels_html(request, pk):
+    order = get_object_or_404(Order, pk=pk)
+
+    phase = 'phase2' if (order.phase2_spec_cache or order.status != OrderStatus.PHASE1_PRODUCTION) else 'phase1'
+    spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
+
+    requested_batches = request.GET.getlist('batch')
+    labels_data = ProductionDataService.get_door_labels_data(order, spec_obj, requested_batches)
+
+    return render(request, 'production/reports/door_label.html', {
+        'order': order,
+        'labels': labels_data
+    })
 
 
 @login_required

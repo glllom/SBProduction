@@ -253,6 +253,9 @@ class Order(models.Model):
             return "העברה לשלב ב"
         return "העבר לייצור השלמות"
 
+    def get_quantity(self):
+        return sum([gr.quantity for gr in self.groups.all()])
+
 
 class OrderChangeLog(models.Model):
     order = models.ForeignKey(

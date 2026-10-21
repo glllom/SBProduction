@@ -331,12 +331,10 @@ class ProductionRoute(models.Model):
         """
         Возвращает список станций для конкретного продукта по прямой связи ManyToMany.
         """
-        print(f"\n[DEBUG] --- Запуск get_stations_for_product для продукта: '{product}' (ID: {product.id}) ---")
 
         route = cls.objects.filter(products=product, active=True).first()
 
         if route:
-            print(f"[DEBUG] Нашли маршрут: '{route}' (ID: {route.id})")
 
             # Чистый способ достать станции с сохранением сортировки и без дублей
             route_steps = route.steps.select_related('station').order_by('order')
@@ -345,10 +343,8 @@ class ProductionRoute(models.Model):
                 if step.station not in stations:  # Защита от дублей
                     stations.append(step.station)
 
-            print(f"[DEBUG] Станции маршрута: {[s.code for s in stations]}")
             return stations
 
-        print(f"[DEBUG] ВНИМАНИЕ: Для продукта '{product}' не найден активный маршрут!")
         return []
 
     @classmethod
@@ -378,12 +374,6 @@ class ProductionRoute(models.Model):
                 if c_station.id not in station_ids:
                     stations.append(c_station)
                     station_ids.append(c_station.id)
-                    print(f"[DEBUG] + Добавлена станция '{c_station.code}' от кастомизатора '{customizer.name}'")
-                else:
-                    print(
-                        f"[DEBUG] Станция '{c_station.code}' от кастомизатора '{customizer.name}' уже есть в маршруте.")
-
-        print(f"[DEBUG] === ИТОГОВЫЕ станции для Группы {group.id}: {[s.code for s in stations]} ===\n")
         return stations
 
 

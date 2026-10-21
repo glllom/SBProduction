@@ -1,3 +1,4 @@
+import base64
 import io
 import math
 import os
@@ -6,13 +7,16 @@ import zipfile
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
+from io import BytesIO
 from typing import List, Optional
 
+import qrcode
 from django.conf import settings
 from django.db import models
 from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
+from qrcode.image.svg import SvgPathImage
 
 from apps.orders.models import OrderItemsGroup, OrderItem, OrderChangeLog
 from apps.orders.models import OrderStatus
@@ -21,6 +25,24 @@ from .models import (
 )
 from .pipeline import OrderSpecPipeline
 from .schemas import OrderSpec
+
+
+def get_qr_base64(data: str) -> str:
+    """Генерирует QR-код в формате Base64 SVG."""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=1,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+
+    buffer = BytesIO()
+    img = qr.make_image(image_factory=SvgPathImage)
+    img.save(buffer)
+
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 
 def round_press_dimension(val: float | int) -> float:
@@ -1169,60 +1191,6 @@ class ProductionDataService:
         }
         return render_to_string(template, context)
 
-    # def get_filtered_items(self, report_type=None, station=None):
-    #     """
-    #     Returns a list of items that belong to the specified report or station.
-    #     If the order is in COMPLETION_PRODUCTION, excludes items from COMPLETED groups.
-    #     """
-    #     items = []
-    #     is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
-    #
-    #     from .models import ProductionRoute
-    #
-    #     for group in self.order.groups.all():
-    #         if group.production_state in [
-    #             OrderItemsGroup.ProductionState.WAITING,
-    #             OrderItemsGroup.ProductionState.CANCELED,
-    #         ]:
-    #             continue
-    #
-    #         if is_completion and group.production_state == OrderItemsGroup.ProductionState.COMPLETED:
-    #             continue
-    #
-    #         # Получаем динамический список станций для группы
-    #         group_stations = ProductionRoute.get_stations_for_group(group)
-    #         group_station_codes = {s.code.upper() for s in group_stations if s.code}
-    #
-    #         # СИСТЕМНАЯ ФИЛЬТРАЦИЯ
-    #         is_valid = False
-    #
-    #         if station:
-    #             # Если передана конкретная станция (из модального окна)
-    #             is_valid = station in group_stations
-    #         else:
-    #             # Фолбэки для стандартных типов отчетов, когда station_code не передан
-    #             rt = str(report_type).upper()
-    #             if rt in ['PHASE1_FRAMES', 'PHASE1_PRODUCTION', 'PHASE2_FRAMES', 'FRAMES', 'ALUM_FRAMES',
-    #                       'WOOD_FRAMES']:
-    #                 # Группа должна проходить через станцию с кодом FRAMES или ALUM_FRAMES
-    #                 is_valid = bool(group_station_codes & {'FRAMES', 'ALUM_FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES'})
-    #             elif rt in ['PHASE2_DOORS', 'DOORS', 'ALUM_DOORS']:
-    #                 # Группа должна проходить через станцию с кодом DOORS или ALUM_DOORS
-    #                 is_valid = bool(group_station_codes & {'DOORS', 'ALUM_DOORS'})
-    #             elif rt in ['PHASE2_PRESS', 'PRESS', 'CUTTING_PRESS']:
-    #                 # Группа должна проходить через станцию пресса
-    #                 is_valid = bool(group_station_codes & {'PRESS', 'CUTTING_PRESS'})
-    #             elif rt in ['FACING', 'CLADDING', 'FACING_REPORT']:
-    #                 is_valid = bool(group_station_codes & {'FACING', 'CLADDING', 'FACING_REPORT'})
-    #             else:
-    #                 # Для FULL_PRODUCTION и неизвестных отчетов пропускаем всё
-    #                 is_valid = True
-    #
-    #         if is_valid:
-    #             for item in group.items.all():
-    #                 items.append(item)
-    #
-    #     return items
     def get_filtered_items(self, report_type=None, station=None):
         """
         Returns a list of items that belong to the specified report or station.
@@ -1231,9 +1199,6 @@ class ProductionDataService:
         is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
 
         from .models import ProductionRoute
-
-        print(f"\n[DEBUG FILTER] === Запуск фильтрации ===")
-        print(f"[DEBUG FILTER] Запрошена станция: '{station.code if station else 'None'}', Тип отчета: '{report_type}'")
 
         for group in self.order.groups.all():
             if group.production_state in [
@@ -1249,16 +1214,9 @@ class ProductionDataService:
             group_stations = ProductionRoute.get_stations_for_group(group)
             group_station_codes = [s.code for s in group_stations if s.code]
 
-            print(f"[DEBUG FILTER] Группа {group.id} (Продукт: {group.product.name if group.product else 'None'})")
-            print(f"[DEBUG FILTER] Станции в маршруте группы: {group_station_codes}")
-
-            # СИСТЕМНАЯ ФИЛЬТРАЦИЯ
-            is_valid = False
-
             if station:
                 # Надежная проверка по ID (защита от сравнения разных объектов памяти)
                 is_valid = any(s.id == station.id for s in group_stations)
-                print(f"[DEBUG FILTER] Станция '{station.code}' (ID {station.id}) найдена в маршруте? -> {is_valid}")
             else:
                 # Фолбэки для стандартных типов отчетов, когда station_code не передан
                 rt = str(report_type).upper()
@@ -1278,13 +1236,9 @@ class ProductionDataService:
                     is_valid = True
 
             if is_valid:
-                print(f"[DEBUG FILTER] >> Группа {group.id} ПРОШЛА фильтр!")
                 for item in group.items.all():
                     items.append(item)
-            else:
-                print(f"[DEBUG FILTER] -- Группа {group.id} ОТКЛОНЕНА фильтром.")
 
-        print(f"[DEBUG FILTER] Итого позиций пропущено: {len(items)}\n")
         return items
 
     @staticmethod
@@ -1486,6 +1440,43 @@ class ProductionDataService:
                 panel_groups.append(grp)
 
         return panel_groups
+
+    @classmethod
+    def get_door_labels_data(cls, order, spec_obj, requested_batches: list = None):
+        flat_items, _ = cls.extract_report_items(spec_obj, requested_batches)
+        if not flat_items:
+            return []
+
+        labels_data = []
+        for it in flat_items:
+            if not (getattr(it, 'has_door', True) if hasattr(it, 'has_door') else it.get('has_door', True)):
+                continue
+
+            mark = getattr(it, 'mark', '') if hasattr(it, 'mark') else it.get('mark', '')
+            direction = getattr(it, 'direction', '') if hasattr(it, 'direction') else it.get('direction', '')
+
+            panel_dims = getattr(it, 'panel_dimensions', []) if hasattr(it, 'panel_dimensions') else it.get(
+                'panel_dimensions', [])
+            first_panel = panel_dims[0] if panel_dims else {}
+            width = first_panel.get('width', '') or (
+                getattr(it, 'width', '') if hasattr(it, 'width') else it.get('width', ''))
+            height = first_panel.get('height', '') or (
+                getattr(it, 'height', '') if hasattr(it, 'height') else it.get('height', ''))
+
+            text_data = f"Order: {order.order_number}, Door: {mark}, W: {width}, H: {height}, Dir: {direction}"
+            qr_base64 = get_qr_base64(text_data)
+
+            labels_data.append({
+                'order_number': order.order_number,
+                'mark': mark,
+                'width': width,
+                'height': height,
+                'direction': direction,
+                'qr_code': qr_base64,
+                'quantity': order.get_quantity(),
+                'product_name': it.product_name,
+            })
+        return labels_data
 
 
 class OrderProductionService:

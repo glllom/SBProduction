@@ -10,21 +10,19 @@ from .models import (
     Material,
     ProductModel,
     Handle,
-    Hardware,
+    Hardware
 )
 
 
 @admin.register(ProductType)
 class ProductTypeAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name')
+    list_display = ('id', 'name', 'code')
     search_fields = ('name',)
 
 
 @admin.register(ProductFamily)
 class ProductFamilyAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'product_type', 'thickness', 'supports_split_installation',
-                    'frame_inner_height_reduction',
-                    'frame_inner_width_reduction')
+    list_display = ('id', 'name', 'product_type', 'code',)
     list_filter = ('product_type', 'supports_split_installation',)
     search_fields = ('name',)
 
