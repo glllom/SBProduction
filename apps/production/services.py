@@ -155,18 +155,18 @@ class OrderValidationService:
             validation_type=ValidationType.COMPLETION
         )
 
-    @classmethod
-    def validate_for_production(cls, order, phase: Optional[str] = None) -> ValidationResult:
+    @staticmethod
+    def validate_for_production(order, validation_type: Optional[str] = None):
         """
-        Appropriate validation before transferring order to production.
+        Validates order readiness for production.
+        Returns ValidationResult object.
         """
-        if order.status == OrderStatus.COMPLETION_PRODUCTION or phase == 'phase2_completion':
-            return cls.validate_completion(order)
-        has_split = getattr(order, 'has_split_installation', False)
-        if phase == str(order.status).upper() == 'PHASE1_PRODUCTION' or (
-                has_split and getattr(order, 'status', None) == OrderStatus.NEW):
-            return cls.validate_partial(order)
-        return cls.validate_full(order)
+        if validation_type:
+            return OrderValidationService.validate(order, validation_type)
+        elif order.has_split_installation and order.status == OrderStatus.NEW:
+            return OrderValidationService.validate_partial(order)
+        else:
+            return OrderValidationService.validate_full(order)
 
     @classmethod
     def validate_for_report(cls, order,
@@ -454,9 +454,10 @@ class TechnicalSpecService:
                 if it.errors:
                     mark_label = f"Item {it.mark}" if it.mark else f"Item #{it.item_id}"
                     errors.extend([f"{mark_label}: {err}" for err in it.errors])
+        # if errors:
+        #     raise OrderValidationError("Ошибки при расчете спецификации:", errors=errors)
         if errors:
-            raise OrderValidationError("Ошибки при расчете спецификации:", errors=errors)
-
+            raise OrderValidationError(f"Ошибки при расчете спецификации: {'; '.join(errors)}", errors=errors)
         # 4. Обновление кэша (слияние батчей, сохранение шапки)
         spec_dict = spec_obj.model_dump()
         existing_cache['order'] = spec_dict.get('order', {})
@@ -1557,7 +1558,18 @@ class OrderProductionService:
 
     @classmethod
     def start_production(cls, order, user=None):
-        # Устанавливаем дату старта ТОЛЬКО если она еще пустая (это первый батч в заказе)
+        # 1. Получаем объект ValidationResult
+        val_res = cls.validate_for_production(order)
+
+        # 2. Если это по какой-то причине всё еще кортеж, подстрахуемся:
+        if isinstance(val_res, tuple):
+            is_valid, errors = val_res
+            if not is_valid:
+                raise OrderValidationError("Data validation error", errors=errors)
+        else:
+            # Штатный вызов для ValidationResult
+            val_res.raise_if_invalid()
+
         if not order.production_start_date:
             order.production_start_date = timezone.now()
 

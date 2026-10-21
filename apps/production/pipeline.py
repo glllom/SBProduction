@@ -686,16 +686,28 @@ class HingePositionStep(SpecStep):
             return []
 
         door_h = float(item.height or 0)
+        print(f"hinge_id: {hinge_id}, product_family.id: {product.product_family.id}, door_h={door_h}")
+
+        # Безопасный поиск по M2M связям с использованием ID
         std = HingeStandardHeight.objects.filter(
-            product_families=product.product_family,
+            product_families__id=product.product_family.id,
             hinges__id=hinge_id,
             min_height__lte=door_h,
             max_height__gte=door_h
         ).first()
 
+        # Фолбэк: если по конкретной петле не нашлось, попробуем поискать просто по семейству и высоте двери (на случай рассинхрона ID)
+        if not std:
+            std = HingeStandardHeight.objects.filter(
+                product_families__id=product.product_family.id,
+                min_height__lte=door_h,
+                max_height__gte=door_h
+            ).first()
+
         if not std:
             return []
-
+        print(
+            f"[DEBUG HINGES] Успех! Найден стандарт ID={std.id}, значения: {[std.value1, std.value2, std.value3, std.value4, std.value5]}")
         res = []
         for i in range(1, 6):
             val = getattr(std, f'value{i}')

@@ -247,7 +247,7 @@ class HingeStandardHeight(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f'{self.hinge_count} צירים  בגובה {self.min_height}-{self.max_height}'
+        return f'{self.hinge_count} צירים {', '.join(str(hinge.name) for hinge in self.hinges.all())} בגובה {self.min_height}-{self.max_height} לדלתות:{", ".join(str(product_families.code) for product_families in self.product_families.all())}'
 
 
 class ProductionStation(models.Model):

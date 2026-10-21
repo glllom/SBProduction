@@ -100,3 +100,39 @@ class Command(BaseCommand):
                 standard_base.hinges.add(hardware_obj)
                 created_records += 1
             self.stdout.write(self.style.SUCCESS(f"Успешно создано записей стандартов высот петель: {created_records}"))
+
+        wood_doors_ids = [37]
+
+        hinges_data = [
+            # --- 196-200 ---
+            (REGULAR_HINGE_ID, 196, 200, [Decimal('15'), Decimal('75'), Decimal('160')]),
+            # --- 201-215 ---
+            (REGULAR_HINGE_ID, 201, 215, [Decimal('15'), Decimal('75'), Decimal('170')]),
+            # --- 216-236 ---
+            (REGULAR_HINGE_ID, 216, 236, [Decimal('15'), Decimal('75'), Decimal('190')]),
+        ]
+
+        with transaction.atomic():
+            families = list(ProductFamily.objects.filter(id__in=wood_doors_ids))
+            if not families:
+                self.stdout.write(self.style.ERROR(f"Ошибка: Семейства продуктов с ID {wood_doors_ids} не найдены!"))
+                return
+
+            created_records = 0
+
+            for hardware_id, min_h, max_h, vals_base in hinges_data:
+                hardware_obj = Hardware.objects.filter(id=hardware_id).first()
+                if not hardware_obj:
+                    self.stdout.write(self.style.WARNING(f"Предупреждение: Фурнитура с ID {hardware_id} не найдена."))
+                    continue
+
+                base_values = {f"value{i + 1}": vals_base[i] for i in range(len(vals_base))}
+                standard_base = HingeStandardHeight.objects.create(
+                    min_height=Decimal(str(min_h)),
+                    max_height=Decimal(str(max_h)),
+                    **base_values
+                )
+                standard_base.product_families.set(families)
+                standard_base.hinges.add(hardware_obj)
+                created_records += 1
+            self.stdout.write(self.style.SUCCESS(f"Успешно создано записей стандартов высот петель: {created_records}"))
