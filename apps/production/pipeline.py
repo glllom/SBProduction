@@ -93,6 +93,7 @@ class SpecContext:
 
 class SpecStep(ABC):
     priority: int = 0
+    important_for_phase1: bool = True  # По умолчанию участвует и в Фазе 1, и в Фазе 2
 
     @abstractmethod
     def process(self, context: SpecContext):
@@ -105,12 +106,49 @@ class BaseItemStep(SpecStep):
     def process(self, context: SpecContext):
         item = context.item
         spec = context.spec
+        product = context.product
+
         spec.place = item.place or ""
         spec.comment = item.comment or ""
-        spec.height = float(item.height or 0)
-        spec.width = float(item.width or 0)
-        spec.wall = float(item.wall or 0)
         spec.addition_cut = float(item.bottom_correction) if item.bottom_correction else None
+
+        # 1. Проверка габаритов
+        h = float(item.height or 0)
+        w = float(item.width or 0)
+        wall = float(item.wall or 0)
+
+        if h <= 0:
+            context.add_error("לא הוזן גובה תקין")
+        if w <= 0:
+            context.add_error("לא הוזן רוחב תקין")
+
+        spec.height = h
+        spec.width = w
+        spec.wall = wall
+
+        # 2. Проверка коробки
+        has_frame = product.has_frame if product else True
+        if has_frame and wall <= 0:
+            context.add_error("לא הוזן עובי קיר למשקוף")
+
+        # 3. Проверка параметров открывания
+        has_door = product.has_door if product else True
+        if has_door:
+            if not item.opening:
+                context.add_error("לא נבחר כיוון פתיחה (פנימה/החוצה)")
+            if not item.direction:
+                context.add_error("לא נבחרה יד פתיחה (L/R)")
+
+            if product and item.opening:
+                allowed = getattr(product, 'allowed_direction', 'BOTH')
+                op = str(item.opening).strip().upper()
+                is_in = op in ('IN', 'INWARD', 'פנימה')
+                is_out = op in ('OUT', 'OUTWARD', 'החוצה')
+
+                if allowed == 'IN_ONLY' and not is_in:
+                    context.add_error(f"הדגם תומך בפתיחה פנימה בלבד (IN)")
+                elif allowed == 'OUT_ONLY' and not is_out:
+                    context.add_error(f"הדגם תומך בפתיחה החוצה בלבד (OUT)")
 
         spec.direction_code = item.direction or ""
         spec.opening_code = item.opening or ""
@@ -124,16 +162,351 @@ class ProductDataStep(SpecStep):
     def process(self, context: SpecContext):
         product = context.product
         spec = context.spec
-        if product:
-            spec.product_name = product.name
-            spec.product_code = product.code
-            spec.has_door = product.has_door
-            spec.has_frame = product.has_frame
-            spec.cut_coefficients = product.cut_coefficients or {}
-            if product.product_family:
-                spec.product_family = product.product_family.name
-                if not spec.series and product.series:
-                    spec.series = product.series.name
+        if not product:
+            context.add_error("דגם מוצר לא נבחר")
+            return
+
+        spec.product_name = product.name
+        spec.product_code = product.code
+        spec.has_door = product.has_door
+        spec.has_frame = product.has_frame
+        spec.cut_coefficients = product.cut_coefficients or {}
+        if product.product_family:
+            spec.product_family = product.product_family.name
+            if not spec.series and product.series:
+                spec.series = product.series.name
+
+        # Проверка обязательных кастомизаторов модели
+        group_customizers_map = {gc.customizer_id: gc for gc in context.customizers}
+        for req_cust in product.get_required_customizers():
+            if req_cust.id not in group_customizers_map:
+                context.add_error(f"חסר קסטומייזר חובה '{req_cust.name}'")
+
+        # Проверка обязательных параметров у прикрепленных кастомизаторов
+        for gc in context.customizers:
+            c = gc.customizer
+            for i in range(1, 6):
+                if getattr(c, f'par{i}_required', False):
+                    val = getattr(gc, f'par{i}', None)
+                    if val is None or not str(val).strip():
+                        p_label = getattr(c, f'par{i}_label') or f"פרמטר {i}"
+                        context.add_error(f"בקסטומייזר '{c.name}' חסר ערך לשדה חובה '{p_label}'")
+
+
+class LockSelectionStep(SpecStep):
+    priority = 450
+
+    # important_for_phase1 = True (по умолчанию)
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        item = context.item
+
+        # Пропускаем только если модель в принципе не имеет полотна
+        if not getattr(spec, 'has_door', True):
+            return
+
+        group_customizers = context.consume_customizers('LOCK')
+
+        # 1. Проверка переопределения через кастомизатор
+        if group_customizers:
+            for gc in group_customizers:
+                c = gc.customizer
+                tag_val = (c.tag or '').upper()
+                c_code = (c.code or '').upper()
+
+                if any(k in tag_val or k in c_code for k in ('NO_LOCK', 'WITHOUT_LOCK', 'NONE')):
+                    spec.lock_id = None
+                    spec.lock_name = 'ללא מנעול'
+                    spec.bom_items = [b for b in spec.bom_items if str(b.tag).lower() != 'lock']
+                    return
+
+                main_hw = c.hardware
+                if main_hw:
+                    hardware_list = [main_hw] + list(main_hw.components.all())
+                    spec.bom_items = [b for b in spec.bom_items if str(b.tag).lower() != 'lock']
+                    spec.lock_id = main_hw.id
+                    spec.lock_name = main_hw.name
+
+                    for hw in hardware_list:
+                        spec.bom_items.append(
+                            SpecBOMItem(
+                                type='hardware',
+                                section='Lock',
+                                item_name=hw.name,
+                                quantity=1,
+                                tag='lock',
+                                item_id=hw.id
+                            )
+                        )
+
+                custom_h = self._extract_custom_height(gc)
+                if custom_h and custom_h > 0:
+                    context.data['override_lock_height'] = custom_h
+
+        # 2. Проверка значения из BOM
+        current_lock_name = (spec.lock_name or '').strip()
+        if current_lock_name in ('ללא מנעול', 'ללא', 'NO_LOCK', 'NONE') or 'ללא' in current_lock_name:
+            spec.lock_name = 'ללא מנעול'
+            spec.lock_id = None
+            return
+
+        if not spec.lock_name or spec.lock_name == 'N/A':
+            raise PipelineError(f"לא הוגדר דגם מנעול לדלת מס' {item.mark or item.id}")
+
+    @staticmethod
+    def _extract_custom_height(group_customizer) -> Optional[float]:
+        c = group_customizer.customizer
+        for i in range(1, 6):
+            label = (getattr(c, f'par{i}_label') or '').lower()
+            val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
+            if ('גובה' in label or 'height' in label) and val:
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    pass
+        val = group_customizer.par1 or c.par1_value
+        if val:
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                pass
+        return 0.0
+
+
+class LockPositionStep(SpecStep):
+    priority = 500
+
+    # important_for_phase1 = True (по умолчанию)
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        item = context.item
+
+        if not getattr(spec, 'has_door', True):
+            return
+
+        # Если замок явно отменен
+        if spec.lock_name == 'ללא מנעול' or spec.lock_id is None:
+            spec.lock_height = 0.0
+            return
+
+        effective_height = None
+
+        # Приоритет 1: Прямая высота позиции (Item)
+        if item.custom_lock_height:
+            try:
+                val = float(item.custom_lock_height)
+                if val > 0:
+                    effective_height = val
+            except (ValueError, TypeError):
+                pass
+
+        # Приоритет 2: Параметр кастомизатора группы
+        if effective_height is None:
+            override_h = context.data.get('override_lock_height')
+            if override_h and float(override_h) > 0:
+                effective_height = float(override_h)
+
+        # Приоритет 3: Нормативная таблица
+        if effective_height is None:
+            effective_height = self._get_effective_lock_height(item, spec.lock_id)
+
+        if not effective_height or effective_height <= 0:
+            raise PipelineError(
+                f"לא נמצא גובה תקני למנעול '{spec.lock_name}' (דלת מס' {item.mark or item.id})"
+            )
+
+        spec.lock_height = effective_height
+
+    @staticmethod
+    def _get_effective_lock_height(item: OrderItem, lock_id: int) -> float:
+        product = getattr(item.group, 'product', None)
+        if not product or not product.product_family or not lock_id:
+            return 0.0
+
+        std = LockStandardHeight.objects.filter(
+            product_families=product.product_family,
+            locks__id=lock_id
+        ).first()
+
+        if not std:
+            return 0.0
+
+        door_h = float(item.height or 0)
+        base_h = float(std.base_door_height)
+        base_lock = float(std.base_lock_height)
+        step = float(std.step)
+
+        diff = door_h - base_h
+        intervals = math.ceil(diff / step) if step > 0 else 0
+        return float(base_lock + (intervals * step))
+
+
+class HingeSelectionStep(SpecStep):
+    priority = 470
+
+    # important_for_phase1 = True (по умолчанию)
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        item = context.item
+
+        if not getattr(spec, 'has_door', True):
+            return
+
+        group_customizers = context.consume_customizers('HINGE')
+
+        # 1. Проверка переопределения через кастомизатор
+        if group_customizers:
+            for gc in group_customizers:
+                c = gc.customizer
+                tag_val = (c.tag or '').upper()
+                c_code = (c.code or '').upper()
+
+                if any(k in tag_val or k in c_code for k in ('NO_HINGES', 'WITHOUT_HINGES', 'NONE')):
+                    spec.hinge_name = 'ללא צירים'
+                    context.data['hinge_hardware_id'] = None
+                    spec.bom_items = [b for b in spec.bom_items if str(b.tag).lower() != 'hinge']
+                    return
+
+                main_hw = c.hardware
+                if main_hw:
+                    hardware_list = [main_hw] + list(main_hw.components.all())
+                    spec.bom_items = [b for b in spec.bom_items if str(b.tag).lower() != 'hinge']
+                    spec.hinge_name = main_hw.name
+                    context.data['hinge_hardware_id'] = main_hw.id
+
+                    for hw in hardware_list:
+                        spec.bom_items.append(
+                            SpecBOMItem(
+                                type='hardware',
+                                section='צירים',
+                                item_name=hw.name,
+                                quantity=1,
+                                tag='hinge',
+                                item_id=hw.id
+                            )
+                        )
+
+                custom_heights = self._extract_custom_heights(gc)
+                if custom_heights:
+                    context.data['override_hinge_heights'] = custom_heights
+
+        # 2. Проверка значения из BOM
+        current_hinge_name = (spec.hinge_name or '').strip()
+        if current_hinge_name in ('ללא צירים', 'ללא', 'NO_HINGES', 'NONE') or 'ללא' in current_hinge_name:
+            spec.hinge_name = 'ללא צירים'
+            context.data['hinge_hardware_id'] = None
+            return
+
+        if not spec.hinge_name or spec.hinge_name == 'N/A':
+            raise PipelineError(f"לא הוגדר דגם צירים לדלת מס' {item.mark or item.id}")
+
+    @staticmethod
+    def _extract_custom_heights(group_customizer) -> List[float]:
+        c = group_customizer.customizer
+        res = []
+        for i in range(1, 6):
+            val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
+            if val:
+                try:
+                    num = float(val)
+                    if num > 0:
+                        res.append(num)
+                except (ValueError, TypeError):
+                    pass
+        return res
+
+
+class HingePositionStep(SpecStep):
+    priority = 510
+
+    # important_for_phase1 = True (по умолчанию)
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        item = context.item
+
+        if not getattr(spec, 'has_door', True):
+            return
+
+        if spec.hinge_name == 'ללא צירים':
+            spec.hinge_heights = []
+            return
+
+        effective_heights: List[float] = []
+
+        # Проверяем, заданы ли петли на уровне двери (Item)
+        has_item_hinges = any(
+            getattr(item, f'custom_hinge{i}', None) not in (None, '', 0, '0')
+            for i in range(1, 6)
+        )
+
+        if has_item_hinges:
+            # Приоритет 1: Строго берем высоты ТОЛЬКО с двери
+            for i in range(1, 6):
+                val = getattr(item, f'custom_hinge{i}', None)
+                if val not in (None, '', 0, '0'):
+                    try:
+                        num = float(val)
+                        if num > 0:
+                            effective_heights.append(num)
+                    except (ValueError, TypeError):
+                        pass
+        else:
+            # Приоритет 2: Кастомизатор группы
+            override_heights = context.data.get('override_hinge_heights')
+            if isinstance(override_heights, list) and override_heights:
+                effective_heights = [float(h) for h in override_heights if float(h) > 0]
+
+            # Приоритет 3: Таблица стандартов
+            if not effective_heights:
+                hinge_id = context.data.get('hinge_hardware_id')
+                if not hinge_id:
+                    hinge_bi = next((bi for bi in spec.bom_items if str(bi.tag).lower() == 'hinge'), None)
+                    if hinge_bi:
+                        hinge_id = hinge_bi.item_id
+
+                if hinge_id:
+                    effective_heights = self._get_std_hinge_heights(item, hinge_id)
+
+        # Валидация
+        if not effective_heights:
+            raise PipelineError(
+                f"לא נמצאו גבהים תקניים לצירים עבור '{spec.hinge_name}' (דלת מס' {item.mark or item.id})"
+            )
+
+        if len(effective_heights) < 2:
+            raise PipelineError(
+                f"נדרשים לפחות 2 צירים לדלת מס' {item.mark or item.id} (הוגדרו {len(effective_heights)})"
+            )
+
+        spec.hinge_heights = effective_heights
+
+    @staticmethod
+    def _get_std_hinge_heights(item: OrderItem, hinge_id: int) -> List[float]:
+        product = getattr(item.group, 'product', None)
+        if not product or not product.product_family or not hinge_id:
+            return []
+
+        door_h = float(item.height or 0)
+        std = HingeStandardHeight.objects.filter(
+            product_families__id=product.product_family.id,
+            hinges__id=hinge_id,
+            min_height__lte=door_h,
+            max_height__gte=door_h
+        ).first()
+
+        if not std:
+            return []
+
+        res = []
+        for i in range(1, 6):
+            val = getattr(std, f'value{i}')
+            if val and float(val) > 0:
+                res.append(float(val))
+        return res
 
 
 class DoubleDoorStep(SpecStep):
@@ -164,6 +537,96 @@ class DoubleDoorStep(SpecStep):
             context.data['double_door_par2'] = par2
 
 
+class WoodEdgeStep(SpecStep):
+    priority = 15
+    important_for_phase1 = False  # Wood edge belongs to door leaf production (Phase 2)
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        item = context.item
+
+        if not getattr(spec, 'has_door', True):
+            return
+
+        found = context.consume_customizers('WOOD_EDGE')
+        if not found:
+            return
+
+        gc = found[0]
+        c = gc.customizer
+
+        # 1. Parameter 1: Wood type (oak, beech, etc.)
+        wood_type = (gc.par1 if gc.par1 not in (None, '') else c.par1_value or '').strip()
+
+        # 2. Parameter 2: Edge type ('outer' vs 'hidden')
+        edge_type_raw = str(gc.par2 if gc.par2 not in (None, '') else c.par2_value or '').strip().lower()
+        is_hidden = any(k in edge_type_raw for k in ('hidden', 'סמוי', 'פנימי'))
+
+        # 3. Parameter 3: Thickness (optional)
+        thickness_raw = gc.par3 if gc.par3 not in (None, '') else c.par3_value
+        custom_thickness = None
+        if thickness_raw:
+            try:
+                val = float(thickness_raw)
+                if val > 0:
+                    custom_thickness = val
+            except (ValueError, TypeError):
+                pass
+
+        if custom_thickness is not None:
+            thickness_mm = custom_thickness * 10
+        else:
+            if not is_hidden:
+                # Default for outer edge: 20 mm
+                thickness_mm = 20.0
+            else:
+                # Default for hidden edge: 17 mm if double door, else 10 mm
+                is_double = getattr(spec, 'is_double_door', False) or context.data.get('is_double', False)
+                thickness_mm = 17.0 if is_double else 10.0
+
+        # 4. Parameter 4: Sides (2, 3, 4, default = 4)
+        sides_raw = gc.par4 if gc.par4 not in (None, '') else c.par4_value
+        try:
+            sides_count = int(sides_raw) if sides_raw else 4
+        except (ValueError, TypeError):
+            sides_count = 4
+
+        if sides_count not in (2, 3, 4):
+            sides_count = 4
+
+        # 5. Store parameters in spec
+        spec.has_wood_edge = True
+        spec.is_hidden_wood_edge = is_hidden
+        spec.wood_edge_thickness = thickness_mm
+        spec.wood_edge_sides = sides_count
+        spec.wood_edge_type = 'hidden' if is_hidden else 'outer'
+
+        edge_data = {
+            'wood_type': wood_type,
+            'is_hidden': is_hidden,
+            'edge_type': spec.wood_edge_type,
+            'type_name': 'סמוי' if is_hidden else 'חיצוני',
+            'thickness': thickness_mm,
+            'sides': sides_count,
+        }
+
+        context.data['wood_edge'] = edge_data
+        spec.context['wood_edge'] = edge_data
+
+        # BOM line
+        edge_label = f"קנט עץ {wood_type} ({edge_data['type_name']}, {thickness_mm} מ\"מ, {sides_count} צדדים)".strip()
+        spec.bom_items.append(
+            SpecBOMItem(
+                type='material',
+                section='קנט עץ',
+                item_name=edge_label,
+                quantity=sides_count,
+                tag='wood_edge',
+                item_id=c.hardware_id if c.hardware else None
+            )
+        )
+
+
 class PanelDimensionStep(SpecStep):
     priority = 20
 
@@ -180,24 +643,25 @@ class PanelDimensionStep(SpecStep):
         w = float(item.width or 0)
         bottom_correction = float(getattr(item, 'bottom_correction', 0) or 0)
 
-        # Внутренний свет коробки
+        # 1. Внутренний свет проема коробки
         spec.inner_height = h + float(pf.frame_inner_height_reduction or 0)
         spec.inner_width = w + float(pf.frame_inner_width_reduction or 0)
         spec.frame_inner_height_reduction = float(pf.frame_inner_height_reduction or 0)
         spec.frame_inner_width_reduction = float(pf.frame_inner_width_reduction or 0)
         spec.leaf_top_clearance = float(pf.leaf_top_clearance or 0)
 
-        # Расчет полотен только если не первая фаза
         if context.phase == 'phase1':
             spec.panel_dimensions = []
+            spec.press_dimensions = []
             return
 
+        # 2. Чистовые размеры полотна
         h_panel = spec.inner_height + float(pf.leaf_top_clearance or 0) + float(
             pf.leaf_bottom_clearance or 0) - bottom_correction
 
         if not context.data.get('is_double'):
             w_panel = spec.inner_width + float(pf.leaf_side_clearance or 0)
-            spec.panel_dimensions = [{'width': round(w_panel, 2), 'height': round(h_panel, 2)}]
+            panels = [{'width': round(w_panel, 2), 'height': round(h_panel, 2)}]
         else:
             w_net = spec.inner_width + 2 * float(pf.leaf_side_clearance or 0)
             par1 = context.data.get('double_door_par1', 0.5)
@@ -211,15 +675,47 @@ class PanelDimensionStep(SpecStep):
                 w1 = w_net * par1 + 1
 
             w2 = w_net - w1 + float(pf.double_leaf_overlap or 0)
-
-            spec.panel_dimensions = [
+            panels = [
                 {'width': round(w1, 2), 'height': round(h_panel, 2)},
                 {'width': round(w2, 2), 'height': round(h_panel, 2)}
             ]
 
+        spec.panel_dimensions = panels
+
+        # 3. Габариты заготовки/каркаса под пресс (с вычетом канта)
+        wood_edge = context.data.get('wood_edge')
+        press_dims = []
+
+        for p in panels:
+            pw = p['width']
+            ph = p['height']
+
+            if not wood_edge:
+                # Обычная дверь: полотно + 1 мм припуска
+                press_w = pw + 1.0
+                press_h = ph + 1.0
+            else:
+                t = float(wood_edge['thickness'])
+                sides = int(wood_edge['sides'])
+
+                # Ширина: вычитаем 2 стороны канта (лево и право) + 1 мм
+                press_w = pw - (t * 2) + 1.0
+
+                # Высота: вычитаем верх (sides > 2) и низ (sides > 3) + 1 мм
+                height_sides_count = (1 if sides > 2 else 0) + (1 if sides > 3 else 0)
+                press_h = ph - (t * height_sides_count) + 1.0
+
+            press_dims.append({
+                'width': round(press_w, 2),
+                'height': round(press_h, 2)
+            })
+
+        spec.press_dimensions = press_dims
+
 
 class CutSheetsStep(SpecStep):
     priority = 210
+    important_for_phase1 = False
 
     def process(self, context: SpecContext):
         spec = context.spec
@@ -282,10 +778,10 @@ class AppearanceStep(SpecStep):
         elif order and order.series:
             spec.series = order.series.name
 
-        if group.front:
-            spec.front_name = group.front.name
-        elif order and order.front:
-            spec.front_name = order.front.name
+        front = group.front or getattr(order, 'front', None)
+
+        spec.front_name = front.name if front else ""
+        spec.finish_type = getattr(front, 'finish_type', None) or "PAINT"
 
         spec.color_panel_outside = group.effective_color_panel_outside or ""
         spec.color_panel_inside = group.effective_color_panel_inside or ""
@@ -398,6 +894,7 @@ class BOMStep(SpecStep):
 
 class MaterialSelectionStep(SpecStep):
     priority = 410
+    important_for_phase1 = False
 
     def process(self, context: SpecContext):
         spec = context.spec
@@ -456,52 +953,6 @@ class MaterialSelectionStep(SpecStep):
         spec.bom_items = new_bom_items
 
 
-class LockSelectionStep(SpecStep):
-    priority = 450
-
-    def process(self, context: SpecContext):
-        spec = context.spec
-        group_customizers = context.consume_customizers('LOCK')
-
-        for gc in group_customizers:
-            c = gc.customizer
-            main_hw = c.hardware
-
-            if main_hw:
-                hardware_list = [main_hw] + list(main_hw.components.all())
-                spec.bom_items = [item for item in spec.bom_items if item.tag != 'Lock']
-                spec.lock_id = main_hw.id
-                spec.lock_name = main_hw.name
-                spec.lock_height = 0
-
-                for hw in hardware_list:
-                    spec.bom_items.append(
-                        SpecBOMItem(
-                            type='hardware',
-                            section='Lock',
-                            item_name=hw.name,
-                            quantity=1,
-                            tag='Lock',
-                            item_id=hw.id
-                        )
-                    )
-
-            custom_h = self._extract_custom_height(gc)
-            if custom_h and custom_h > 0:
-                context.data['override_lock_height'] = custom_h
-
-    @staticmethod
-    def _extract_custom_height(group_customizer) -> Optional[float]:
-        c = group_customizer.customizer
-        val = group_customizer.par1 or c.par1_value
-        if val:
-            try:
-                return float(val)
-            except (ValueError, TypeError):
-                pass
-        return 0
-
-
 class LockOptionSelectionStep(SpecStep):
     priority = 460
 
@@ -535,189 +986,9 @@ class LockOptionSelectionStep(SpecStep):
                 spec.lock_option_type = "תפוס/פנוי"
 
 
-class HingeSelectionStep(SpecStep):
-    priority = 470
-
-    def process(self, context: SpecContext):
-        spec = context.spec
-        group_customizers = context.consume_customizers('HINGE')
-
-        for gc in group_customizers:
-            c = gc.customizer
-            main_hw = c.hardware
-
-            if main_hw:
-                hardware_list = [main_hw] + list(main_hw.components.all())
-                spec.bom_items = [item for item in spec.bom_items if item.tag != 'hinge']
-                spec.hinge_name = main_hw.name
-                context.data['hinge_hardware_id'] = main_hw.id
-
-                for hw in hardware_list:
-                    spec.bom_items.append(
-                        SpecBOMItem(
-                            type='hardware',
-                            section='צירים',
-                            item_name=hw.name,
-                            quantity=1,
-                            tag='hinge',
-                            item_id=hw.id
-                        )
-                    )
-
-            custom_heights = self._extract_custom_heights(gc)
-            if custom_heights:
-                context.data['override_hinge_heights'] = custom_heights
-
-    @staticmethod
-    def _extract_custom_heights(group_customizer) -> List[float]:
-        c = group_customizer.customizer
-        res = []
-        for i in range(1, 6):
-            val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
-            if val:
-                try:
-                    res.append(float(val))
-                except (ValueError, TypeError):
-                    pass
-        return res
-
-
-class LockPositionStep(SpecStep):
-    priority = 500
-
-    def process(self, context: SpecContext):
-        item = context.item
-        spec = context.spec
-
-        if spec.lock_id is None:
-            return
-
-        effective_height = None
-
-        # 1. Прямой замер из OrderItem
-        if item.custom_lock_height:
-            try:
-                val = float(item.custom_lock_height)
-                if val > 0:
-                    effective_height = val
-            except (ValueError, TypeError):
-                pass
-
-        # 2. Кастомная высота из кастомизатора
-        if effective_height is None:
-            override_h = context.data.get('override_lock_height') or 0
-            if override_h and override_h > 0:
-                effective_height = override_h
-
-        # 3. Расчет по нормативной таблице стандартов
-        if effective_height is None:
-            effective_height = self._get_effective_lock_height(item, spec.lock_id)
-
-        if effective_height is None or effective_height <= 0:
-            raise PipelineError(f"Lock height could not be determined for lock ID {spec.lock_id}")
-
-        spec.lock_height = effective_height
-
-    @staticmethod
-    def _get_effective_lock_height(item: OrderItem, lock_id: int) -> float:
-        product = getattr(item.group, 'product', None)
-        if not product or not product.product_family or not lock_id:
-            return 0.0
-
-        std = LockStandardHeight.objects.filter(
-            product_families=product.product_family,
-            locks__id=lock_id
-        ).first()
-
-        if not std:
-            return 0.0
-
-        door_h = float(item.height or 0)
-        base_h = float(std.base_door_height)
-        base_lock = float(std.base_lock_height)
-        step = float(std.step)
-
-        diff = door_h - base_h
-        intervals = math.ceil(diff / step) if step > 0 else 0
-        return float(base_lock + (intervals * step))
-
-
-class HingePositionStep(SpecStep):
-    priority = 510
-
-    def process(self, context: SpecContext):
-        item = context.item
-        spec = context.spec
-
-        # 1. Прямые замеры из OrderItem
-        custom_hinges = [
-            float(getattr(item, f'custom_hinge{i}'))
-            for i in range(1, 6)
-            if getattr(item, f'custom_hinge{i}')
-        ]
-        if custom_hinges:
-            spec.hinge_heights = custom_hinges
-            return
-
-        # 2. Кастомные высоты из кастомизатора
-        override_heights = context.data.get('override_hinge_heights')
-        if isinstance(override_heights, list):
-            spec.hinge_heights = [float(h) for h in override_heights]
-            return
-
-        # 3. Расчет по стандартам
-        hinge_id = context.data.get('hinge_hardware_id')
-        if not hinge_id:
-            hinge_bi = next((bi for bi in spec.bom_items if bi.tag == 'hinge'), None)
-            if hinge_bi:
-                hinge_id = hinge_bi.item_id
-
-        if hinge_id:
-            heights = self._get_std_hinge_heights(item, hinge_id)
-            if not heights:
-                raise PipelineError(
-                    f"Standard hinge heights not found for hinge ID {hinge_id} and door height {item.height}")
-            spec.hinge_heights = heights
-
-    @staticmethod
-    def _get_std_hinge_heights(item: OrderItem, hinge_id: int) -> List[float]:
-        product = getattr(item.group, 'product', None)
-        if not product or not product.product_family or not hinge_id:
-            return []
-
-        door_h = float(item.height or 0)
-        print(f"hinge_id: {hinge_id}, product_family.id: {product.product_family.id}, door_h={door_h}")
-
-        # Безопасный поиск по M2M связям с использованием ID
-        std = HingeStandardHeight.objects.filter(
-            product_families__id=product.product_family.id,
-            hinges__id=hinge_id,
-            min_height__lte=door_h,
-            max_height__gte=door_h
-        ).first()
-
-        # Фолбэк: если по конкретной петле не нашлось, попробуем поискать просто по семейству и высоте двери (на случай рассинхрона ID)
-        if not std:
-            std = HingeStandardHeight.objects.filter(
-                product_families__id=product.product_family.id,
-                min_height__lte=door_h,
-                max_height__gte=door_h
-            ).first()
-
-        if not std:
-            return []
-        print(
-            f"[DEBUG HINGES] Успех! Найден стандарт ID={std.id}, значения: {[std.value1, std.value2, std.value3, std.value4, std.value5]}")
-        res = []
-        for i in range(1, 6):
-            val = getattr(std, f'value{i}')
-            if val:
-                res.append(float(val))
-        return res
-
-
 class SandwichAndFrameStep(SpecStep):
     priority = 520
+    important_for_phase1 = False
 
     def process(self, context: SpecContext):
         spec = context.spec
@@ -731,14 +1002,18 @@ class SandwichAndFrameStep(SpecStep):
         puzzle_spec = DoorPuzzleSpec()
         prototypes = {p.code: p for p in PuzzleBlockPrototype.objects.select_related('pattern').all()}
 
-        # Загрузка и распаковка пресетов узлов
         params = {
             'H': spec.height,
             'W': spec.width,
             'thickness': getattr(bom, 'total_thickness', 40.0)
         }
 
-        for preset_field in ['filling_preset', 'panel_frame_preset', 'base_preset', 'covering_preset']:
+        # Do not unpack covering preset if door leaf has hidden wood edge
+        preset_fields = ['filling_preset', 'panel_frame_preset', 'base_preset']
+        if not getattr(spec, 'is_hidden_wood_edge', False):
+            preset_fields.append('covering_preset')
+
+        for preset_field in preset_fields:
             preset = getattr(bom, preset_field, None)
             if preset and preset.blocks_config:
                 self.unpack_preset_blocks(preset.blocks_config, prototypes, puzzle_spec, params)
@@ -784,13 +1059,13 @@ class SandwichAndFrameStep(SpecStep):
         if not proto:
             return None
 
-        # 1. Расчет геометрии через FormulaEvaluator
+        # 1. Evaluate geometry
         x = FormulaEvaluator.evaluate(cfg.get('x', 0), params)
         y = FormulaEvaluator.evaluate(cfg.get('y', 0), params)
         w = FormulaEvaluator.evaluate(cfg.get('w', 0), params)
         h = FormulaEvaluator.evaluate(cfg.get('h', 0), params)
 
-        # 2. Форматирование текста надписи
+        # 2. Text label formatting
         raw_text = cfg.get('text', '')
         rendered_text = ''
 
@@ -798,34 +1073,28 @@ class SandwichAndFrameStep(SpecStep):
             def eval_match(match):
                 expr = match.group(1).strip()
                 try:
-                    # Считаем математику внутри фигурных скобок через FormulaEvaluator
                     res = FormulaEvaluator.evaluate(expr, params)
-                    # Если число целое — убираем точку с нулем (23.0 -> 23)
                     return str(int(res)) if res == int(res) else str(round(res, 2))
                 except Exception:
                     return match.group(0)
 
-            # Заменяет любые {выражения}, например "{p1 + 10}" -> "23"
             rendered_text = re.sub(r'\{([^}]+)}', eval_match, str(raw_text))
 
-        # 5. Свойства заливки и прототипа
+        # 3. Fill and border styling
         fill_color = cfg.get('fill_color') or proto.fill_color
         border_color = cfg.get('border_color') or proto.border_color
         border_width = cfg.get('border_width', proto.border_width)
         opacity = cfg.get('opacity', proto.opacity)
 
-        # 3. Координаты надписи: из формулы или автоцентрирование внутри блока
+        # 4. Label coordinates
         text_x_raw = cfg.get('text_x')
         text_y_raw = cfg.get('text_y')
-
         text_x = FormulaEvaluator.evaluate(text_x_raw, params) if text_x_raw is not None else round(x + w / 2, 2)
         text_y = FormulaEvaluator.evaluate(text_y_raw, params) if text_y_raw is not None else round(y + h / 2, 2)
 
-        # 4. Проверка на измененный параметр для красного цвета
-        # Привязка через явный ключ "text_param": "p1" или автоопределение по {p1}..{p5}
+        # 5. Highlight custom parameters
         params_meta = params.get('params_meta', {})
         text_param_key = cfg.get('text_param')
-        # Если явный text_param не указан, ищем {p1}..{p5} в сыром тексте
         if not text_param_key and raw_text:
             for p_k in ('p1', 'p2', 'p3', 'p4', 'p5'):
                 if f"{{{p_k}" in str(raw_text):
@@ -836,11 +1105,7 @@ class SandwichAndFrameStep(SpecStep):
         if text_param_key and text_param_key in params_meta:
             is_param_custom = bool(params_meta[text_param_key].get('is_custom'))
 
-        # Назначаем цвет
-        if is_param_custom:
-            text_color = '#dc3545'  # Красный
-        else:
-            text_color = cfg.get('text_color') or proto.default_text_color or '#000000'
+        text_color = '#dc3545' if is_param_custom else (cfg.get('text_color') or proto.default_text_color or '#000000')
 
         if rendered_text and labels is not None:
             labels.append({
@@ -885,6 +1150,7 @@ class CustomizerPuzzleStep(SpecStep):
     Добавляет геометрию в puzzle_spec и регистрирует примененные пресеты в applied_presets.
     """
     priority = 530
+    important_for_phase1 = False
 
     def process(self, context: SpecContext):
         spec = context.spec
@@ -1078,6 +1344,7 @@ class SpecPipeline:
             BaseItemStep(),
             ProductDataStep(),
             DoubleDoorStep(),
+            WoodEdgeStep(),
             PanelDimensionStep(),
             CutSheetsStep(),
             AppearanceStep(),
@@ -1101,6 +1368,10 @@ class SpecPipeline:
         all_steps = sorted(self.steps, key=lambda s: getattr(s, 'priority', 9999))
 
         for step in all_steps:
+            # Skip steps not marked for Phase 1
+            if phase == 'phase1' and not getattr(step, 'important_for_phase1', True):
+                continue
+
             try:
                 step.process(context)
             except PipelineError as e:

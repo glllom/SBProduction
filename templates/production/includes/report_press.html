@@ -12,9 +12,9 @@
             הזמנה: <strong>{{ order.order_number }}</strong>
             {% if batches_label %}<span class="text-secondary fs-6 fst-italic">[{{ batches_label }}]</span>{% endif %}
             <span class="text-secondary mx-2">|</span>
-            <span class="text-primary">{{ report_label|default:"דוח חיתוך וכבישה" }}</span>
+            <span class="text-primary">{{ report_label|default:"פרס" }}</span>
         </h4>
-        <span class="fs-5 text-muted">תאריך: {{ now|date:"d/m/Y" }}</span>
+        <span class="fs-5 text-muted">תאריך: {{ now|date:"d/m/y" }}</span>
     </div>
     <!-- Список групп заготовок -->
     {% for grp in panel_groups %}
@@ -96,7 +96,8 @@
             <div class="col-{% if grp.dimensions|length >= 4 %}6{% else %}12{% endif %}">
                 <div class="dim-line d-flex gap-4 align-items-baseline font-monospace fs-4 fw-bold p-1">
                     <span>{{ d.height|floatformat }} \ {{ d.width|floatformat }}</span>
-                    {% if d.qty > 1 %}<span class="dim-qty fs-6 text-muted" dir="rtl">{{ d.qty }}x</span>{% endif %}
+                    {% if d.qty > 1 %}
+                        <span class="dim-qty fs-6 text-muted" dir="rtl">{{ d.qty }}x</span>{% endif %}
                 </div>
             </div>
         {% endfor %}

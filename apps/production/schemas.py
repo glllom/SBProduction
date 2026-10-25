@@ -109,6 +109,7 @@ class ProductionSpec(BaseModel):
 
     # Appearance
     front_name: str = ""
+    finish_type: str = "PAINT"
     color_frames: str = ""
     basic_color_frames: str = ""
     frame_paint_option: str = ""
@@ -140,6 +141,13 @@ class ProductionSpec(BaseModel):
     frame: str = ""  # Formerly 'frame' in TechnicalSpec dataclass
     bom_items: List[SpecBOMItem] = Field(default_factory=list)
     profiles: List[str] = Field(default_factory=list)
+
+    press_dimensions: List[Dict[str, float]] = Field(default_factory=list)
+    has_wood_edge: bool = False
+    is_hidden_wood_edge: bool = False
+    wood_edge_thickness: float = 0.0
+    wood_edge_sides: int = 4
+    wood_edge_type: str = ""  # 'outer' | 'hidden'
 
     # Пресс и раскрой
     applied_presets: List[Dict[str, Any]] = Field(default_factory=list)

@@ -1,18 +1,19 @@
 {% extends "production/reports/base_report.html" %}
-{% block title %}דוח חיתוך וכבישה - הזמנה {{ order.order_number }}{% endblock %}
+{% block title %}פרס{{ order.order_number }}{% endblock %}
 {% block body_class %}portrait{% endblock %}
 {% block extra_css %}
     <style>
-    @page {
-        size: A4 portrait;
-        margin: 10mm;
-    }
-    @media print {
         @page {
-            size: A4 portrait !important;
+            size: A4 portrait;
             margin: 10mm;
         }
-    }
+
+        @media print {
+            @page {
+                size: A4 portrait !important;
+                margin: 10mm;
+            }
+        }
     </style>
 {% endblock %}
 {% block content %}

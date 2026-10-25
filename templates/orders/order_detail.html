@@ -1264,40 +1264,35 @@
                         $inputOut.val('');
                         $inputIn.val('');
                         $panelSelect.after('<div id="group-no-paint-notice" class="badge bg-secondary p-2 mt-1">ללא צבע (בסיס)</div>');
-                    } else if (finishType === 'FORMICA') {
-                        $panelTitle.html('גימור פורמייקה: <i class="bi bi-info-circle help-hint-icon"></i>');
-                        $panelSelect.hide().val('SPECIAL_COLOR');
-                        $diffWrap.show();
-                        $panelWrap.show();
-
-                        $inputOut.attr('placeholder', 'מספר פורמייקה');
-                        $inputIn.attr('placeholder', 'מספר פורמייקה פנים');
-                        $labelOut.text(isDiff ? 'מספר פורמייקה (חוץ):' : 'מספר פורמייקה:');
-                        $labelIn.text('מספר פורמייקה (פנים):');
-
-                        if (isDiff) {
-                            $insideWrap.show();
-                        } else {
-                            $insideWrap.hide();
-                        }
                     } else {
-                        // PAINT
-                        $panelTitle.html('צביעת כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
+                        // FORMICA или PAINT: селектор опции всегда активен
                         $panelSelect.show();
-                        $inputOut.attr('placeholder', 'קוד צבע');
-                        $inputIn.attr('placeholder', 'קוד צבע פנים');
 
+                        if (finishType === 'FORMICA') {
+                            $panelTitle.html('גימור פורמייקה: <i class="bi bi-info-circle help-hint-icon"></i>');
+                            $inputOut.attr('placeholder', 'מספר פורמייקה');
+                            $inputIn.attr('placeholder', 'מספר פורמייקה פנים');
+                            $labelOut.text(isDiff ? 'מספר פורמייקה (חוץ):' : 'מספר פורמייקה:');
+                            $labelIn.text('מספר פורמייקה (פנים):');
+                        } else {
+                            $panelTitle.html('צביעת כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
+                            $inputOut.attr('placeholder', 'קוד צבע');
+                            $inputIn.attr('placeholder', 'קוד צבע פנים');
+                            $labelOut.text(isDiff ? 'גוון כנף חוץ:' : 'גוון כנף (דו-צדדי):');
+                            $labelIn.text('גוון כנף צד פנים:');
+                        }
+
+                        // Поля ввода номера открываются ТОЛЬКО если выбрана спец-отделка (SPECIAL_COLOR)
                         if ($panelSelect.val() === 'SPECIAL_COLOR') {
                             $panelWrap.show();
                             $diffWrap.show();
-                            $labelOut.text(isDiff ? 'גוון כנף חוץ:' : 'גוון כנף (דו-צדדי):');
-                            $labelIn.text('גוון כנף צד פנים:');
                             if (isDiff) {
                                 $insideWrap.show();
                             } else {
                                 $insideWrap.hide();
                             }
                         } else {
+                            // При MAIN_COLOR или NO_PAINT поля ввода скрыты
                             $panelWrap.hide();
                             $diffWrap.hide();
                             $insideWrap.hide();

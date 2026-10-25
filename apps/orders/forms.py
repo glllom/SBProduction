@@ -575,14 +575,13 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
             cleaned_data['color_panel_outside'] = ''
             cleaned_data['color_panel_inside'] = ''
             cleaned_data['is_door_inside_different_color'] = False
-        elif finish_type == Front.FinishType.FORMICA:
-            cleaned_data['panel_paint_option'] = OrderItemsGroup.PaintOption.SPECIAL_COLOR
-            if not cleaned_data.get('is_door_inside_different_color'):
-                cleaned_data['color_panel_inside'] = cleaned_data.get('color_panel_outside')
         else:
-            # Стандартная логика для крашеных полотен (PAINT)
+            # Единая логика и для PAINT, и для FORMICA:
+            # Сохраняем реальный выбор пользователя (MAIN_COLOR, SPECIAL_COLOR или NO_PAINT)
             panel_paint = cleaned_data.get('panel_paint_option')
             if panel_paint != OrderItemsGroup.PaintOption.SPECIAL_COLOR:
+                # Если выбран главный цвет (MAIN_COLOR) или без отделки (NO_PAINT) —
+                # очищаем локальные поля группы, значение подтянется из шапки заказа
                 cleaned_data['color_panel_outside'] = ''
                 cleaned_data['color_panel_inside'] = ''
                 cleaned_data['is_door_inside_different_color'] = False

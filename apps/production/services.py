@@ -92,21 +92,9 @@ class ValidationResult:
 
 class OrderValidationService:
     """
-    Validation service (data integrity check) for orders.
-    Executed before production start, technical report generation, and CNC/ZIP file production.
-
-    Supports validation types:
-    1. PARTIAL (Phase A - frames in split installation):
-       - Series and front/finish check for each group
-       - Product model and item existence check in group
-       - Item dimensions check (height and width for door/frame, wall thickness for frame, side/direction for door)
-       - Handles are not checked at this stage.
-    2. FULL (Phase B or regular order without split installation):
-       - Includes all Phase A checks
-       - Handle selection check
-       - Paint color check when painting option is selected
-    3. COMPLETION (Delta / Unfinished groups only):
-       - Runs full validation for groups with production_state != COMPLETED.
+    Валидатор готовности заказа.
+    Использует Dry-run прогон OrderSpecPipeline для проверки технологической
+    корректности фурнитуры, высот, кастомизаторов и материалов без сохранения в БД.
     """
 
     @classmethod
@@ -119,11 +107,8 @@ class OrderValidationService:
 
     @classmethod
     def validate_partial(cls, order) -> ValidationResult:
-        """
-        Partial validation (Phase A - frames in split installation).
-        """
-
-        errors = cls._run_validation(order, is_full=False)
+        """Частичная проверка (Фаза А — коробки при раздельном монтаже)."""
+        errors = cls._run_validation(order, phase='phase1', is_full=False)
         return ValidationResult(
             is_valid=(len(errors) == 0),
             errors=errors,
@@ -132,11 +117,8 @@ class OrderValidationService:
 
     @classmethod
     def validate_full(cls, order) -> ValidationResult:
-        """
-        Full validation (Phase B or regular order without split installation).
-        """
-
-        errors = cls._run_validation(order, is_full=True)
+        """Полная проверка (Фаза Б / стандартный заказ)."""
+        errors = cls._run_validation(order, phase='phase2', is_full=True)
         return ValidationResult(
             is_valid=(len(errors) == 0),
             errors=errors,
@@ -145,10 +127,8 @@ class OrderValidationService:
 
     @classmethod
     def validate_completion(cls, order) -> ValidationResult:
-        """
-        Validation for completions / uncompleted groups only.
-        """
-        errors = cls._run_validation(order, is_full=True, completion_only=True)
+        """Проверка для дозаказов / незавершенных групп."""
+        errors = cls._run_validation(order, phase='phase2', is_full=True, completion_only=True)
         return ValidationResult(
             is_valid=(len(errors) == 0),
             errors=errors,
@@ -157,42 +137,27 @@ class OrderValidationService:
 
     @staticmethod
     def validate_for_production(order, validation_type: Optional[str] = None):
-        """
-        Validates order readiness for production.
-        Returns ValidationResult object.
-        """
         if validation_type:
             return OrderValidationService.validate(order, validation_type)
         elif order.has_split_installation and order.status == OrderStatus.NEW:
             return OrderValidationService.validate_partial(order)
-        else:
-            return OrderValidationService.validate_full(order)
+        return OrderValidationService.validate_full(order)
 
     @classmethod
     def validate_for_report(cls, order,
                             report_type: Optional[str] = None,
                             station: Optional[ProductionStation] = None) -> ValidationResult:
-        """
-        Appropriate validation before technical report generation.
-        For Phase A frames report (PHASE1_FRAMES) - partial check.
-        For other reports (doors, press, full frames, full production) - full check.
-        """
         if order.status == OrderStatus.COMPLETION_PRODUCTION:
             return cls.validate_completion(order)
         if station and not station.has_specification:
-            # If station doesn't require specification, but we are here, do full validation
             return cls.validate_full(order)
 
-        # Determine based on phase
         if report_type in ['PHASE1_FRAMES', 'PHASE1_PRODUCTION'] or (station and getattr(station, 'is_phase1', False)):
             return cls.validate_partial(order)
         return cls.validate_full(order)
 
     @classmethod
     def validate_for_phase(cls, order, phase: str) -> ValidationResult:
-        """
-        Validation for specific phase.
-        """
         if phase == 'phase1':
             return cls.validate_partial(order)
         elif phase == 'phase2_completion':
@@ -201,9 +166,6 @@ class OrderValidationService:
 
     @classmethod
     def validate_for_zip(cls, order) -> ValidationResult:
-        """
-        Appropriate validation before production file (ZIP) generation.
-        """
         if order.status == OrderStatus.COMPLETION_PRODUCTION:
             return cls.validate_completion(order)
         has_split = getattr(order, 'has_split_installation', False)
@@ -212,140 +174,74 @@ class OrderValidationService:
         return cls.validate_full(order)
 
     @classmethod
-    def _run_validation(cls, order, is_full: bool, completion_only: bool = False) -> List[str]:
+    def _run_validation(cls, order, phase: str = 'phase2', is_full: bool = True, completion_only: bool = False) -> List[
+        str]:
         errors = []
 
         if not getattr(order, 'order_number', None):
-            errors.append("Order number missing")
+            errors.append("חסר מספר הזמנה")
         if not getattr(order, 'customer', None):
-            errors.append("Customer name missing")
+            errors.append("חסר שם לקוח")
 
-        active_groups_qs = order.groups.exclude(
-            production_state__in=[
-                OrderItemsGroup.ProductionState.WAITING,
-                OrderItemsGroup.ProductionState.CANCELED,
-            ]
-        )
-
+        # 1. Выборка позиций
+        items = TechnicalSpecService.get_rich_order_items(order_id=order.id)
         if completion_only:
-            groups = [g for g in active_groups_qs if g.production_state != OrderItemsGroup.ProductionState.COMPLETED]
-            if not groups:
-                errors.append("No active or uncompleted groups found for completion production")
-                return errors
-        else:
-            groups = list(active_groups_qs)
-            if not groups:
-                errors.append("No active product groups in order")
-                return errors
+            items = [it for it in items if it.group.production_state != OrderItemsGroup.ProductionState.COMPLETED]
+        elif phase == 'phase1' and getattr(order, 'has_split_installation', False):
+            # В Фазе 1 проверяются только позиции групп раздельного монтажа
+            items = [it for it in items if it.group.is_split_installation]
 
+        if not items:
+            errors.append("אין פריטים פעילים בהזמנה לביצוע בדיקה")
+            return errors
+
+        # 2. Проверка шапки и групп
         has_any_doors = False
+        target_groups = set(it.group for it in items)
 
-        for group in groups:
-            group_name = group.product.name if group.product else f"Group #{group.id}"
-            group_label = f"Group #{group.id} ({group_name})"
+        for group in target_groups:
+            group_label = f"קבוצה #{group.id} ({group.product.name if group.product else 'ללא מוצר'})"
 
             if not group.product:
-                errors.append(f"Group #{group.id}: Product model not selected")
+                errors.append(f"{group_label}: לא נבחר דגם מוצר")
                 continue
 
-            # 1. Series
             effective_series = group.series or getattr(order, 'series', None)
             if not effective_series:
-                errors.append(f"{group_label}: Series not selected")
+                errors.append(f"{group_label}: לא נבחרה סדרה")
 
-            # 2. Front / finish
             effective_front = group.front or getattr(order, 'front', None)
             if not effective_front:
-                errors.append(f"{group_label}: Front / finish not selected")
+                errors.append(f"{group_label}: לא נבחרה חזית")
 
-            # 3. Colors in full validation (if a special shade is selected)
             if is_full:
                 if group.panel_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
                     if not group.color_panel_outside and not getattr(order, 'color_panels', None):
-                        errors.append(f"{group_label}: Special panel color selected but no panel color defined")
+                        errors.append(f"{group_label}: נבחר צבע מיוחד לכנף אך לא הוזן גוון")
                 if group.frame_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
                     if not group.basic_color_frames and not getattr(order, 'color_frames', None):
-                        errors.append(f"{group_label}: Special frame color selected but no frame color defined")
+                        errors.append(f"{group_label}: נבחר צבע מיוחד למשקוף אך לא הוזן גוון")
 
-            # 4. Items in a group
-            items = list(group.items.all())
-            if not items:
-                errors.append(f"{group_label}: No items in group")
-                continue
-
-            product_type = None
-            if group.product and group.product.product_family and group.product.product_family.product_type:
-                product_type = group.product.product_family.product_type
-
-            has_door = product_type.has_door if product_type else True
-            has_frame = product_type.has_frame if product_type else True
-
-            if has_door:
+            if group.product.has_door:
                 has_any_doors = True
 
-            for item in items:
-                item_label = f"Item {item.mark}" if item.mark else f"Item #{item.id} ({group_label})"
+        if is_full and has_any_doors and not getattr(order, 'handle', None):
+            errors.append("חובה לבחור דגם ידית להזמנה")
 
-                # Height and width check for door or frame
-                if has_door or has_frame:
-                    if item.height is None or item.height <= 0:
-                        errors.append(f"{item_label}: Valid height not specified")
-                    if item.width is None or item.width <= 0:
-                        errors.append(f"{item_label}: Valid width not specified")
+        if errors:
+            return errors
 
-                # Wall thickness check for frame
-                if has_frame:
-                    if item.wall is None or item.wall <= 0:
-                        errors.append(f"{item_label}: Wall thickness not specified (frame)")
+        # 3. Холостой прогон через пайплайн
+        pipeline = OrderSpecPipeline()
+        spec_obj = pipeline.execute(order, items=items, phase=phase)
 
-                # Opening side and direction check for door
-                if has_door:
-                    if not item.opening:
-                        errors.append(f"{item_label}: Opening side not selected (In/Out)")
-                    if not item.direction:
-                        errors.append(f"{item_label}: Opening direction not selected (L/R)")
-                    elif group.product:
-                        # Validate direction against product restrictions
-                        allowed = getattr(group.product, 'allowed_direction', 'BOTH')
-                        dir_val = str(item.opening).strip().upper()
-
-                        # Handles both English ('IN', 'OUT') and Hebrew ('פנימה', 'החוצה') if used
-                        is_in = dir_val in ('IN', 'INWARD', 'פנימה')
-                        is_out = dir_val in ('OUT', 'OUTWARD', 'החוצה')
-
-                        if allowed == 'IN_ONLY' and not is_in:
-                            errors.append(
-                                f"{item_label}: Model '{group.product.name}' only supports Inward (IN) opening"
-                            )
-                        elif allowed == 'OUT_ONLY' and not is_out:
-                            errors.append(
-                                f"{item_label}: Model '{group.product.name}' only supports Outward (OUT) opening"
-                            )
-
-                # 5. Required customizers and parameters check
-            required_customizers = group.product.get_required_customizers()
-            group_customizers = list(group.customizers.select_related('customizer').all())
-            group_customizers_map = {gc.customizer_id: gc for gc in group_customizers}
-
-            for req_cust in required_customizers:
-                if req_cust.id not in group_customizers_map:
-                    errors.append(f"{group_label}: Required customizer '{req_cust.name}' is missing")
-
-            for gc in group_customizers:
-                cust = gc.customizer
-                for i in range(1, 6):
-                    if getattr(cust, f'par{i}_required', False):
-                        val = getattr(gc, f'par{i}', None)
-                        if val is None or not str(val).strip():
-                            param_label = getattr(cust, f'par{i}_label') or f"Parameter {i}"
-                            errors.append(
-                                f"{group_label} - {cust.name}: Parameter '{param_label}' is required and cannot be empty")
-
-        # 6. Handle selection check in full validation (Phase B or no split installation)
-        if is_full and has_any_doors:
-
-            if not getattr(order, 'handle', None):
-                errors.append("Handle not selected for order (required for Phase B / Full production)")
+        # 4. Сбор ошибок позиций
+        for b_items in spec_obj.batches.values():
+            for it in b_items:
+                if it.errors:
+                    mark_label = f"דלת מס' {it.mark}" if it.mark else f"פריט #{it.item_id}"
+                    for err in it.errors:
+                        errors.append(f"{mark_label}: {err}")
 
         return errors
 
@@ -943,7 +839,8 @@ class ProductionDataService:
 
                 w_str = str(int(w)) if (w is not None and float(w).is_integer()) else (str(w) if w is not None else "")
                 h_str = str(int(h)) if (h is not None and float(h).is_integer()) else (str(h) if h is not None else "")
-                wall_str = str(int(wall)) if (wall is not None and float(wall).is_integer()) else (str(wall) if wall is not None else "")
+                wall_str = str(int(wall)) if (wall is not None and float(wall).is_integer()) else (
+                    str(wall) if wall is not None else "")
 
                 dim_display = f"{w_str} / {h_str}" if (w_str and h_str) else (w_str or h_str or "-")
                 spec_display = f"{wall_str} {direction}".strip() if (wall_str or direction) else ""
@@ -1425,104 +1322,118 @@ class ProductionDataService:
     @staticmethod
     def prepare_press_groups_data(items):
         """
-        Groups door panels for press report from a list of ProductionSpec items.
-        Accepts List[ProductionSpec].
+        Groups door panels for press report from a list of ProductionSpec items (or dict snapshots).
+        Calculates press blank dimensions from net panel dimensions:
+        - Standard doors: W + 1, H + 1
+        - Wood edge doors:
+            W_press = W_panel - (2 * T) + 1
+            H_press = H_panel - T * ((sides > 2) + (sides > 3)) + 1
         """
         groups_map = {}
 
+        def _get(obj, key, default=None):
+            return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
         for item in items:
-            if not getattr(item, 'has_door', True):
+            if not _get(item, 'has_door', True):
                 continue
 
-            bom_items = getattr(item, 'bom_items', []) or []
+            # 1. Wood edge parameters
+            has_edge = _get(item, 'has_wood_edge', False)
+            is_hidden = _get(item, 'is_hidden_wood_edge', False)
+            thickness = float(_get(item, 'wood_edge_thickness', 0) or 0) / 10
+            sides = int(_get(item, 'wood_edge_sides', 4) or 4)
 
-            # 1. Основной состав: filling + covering + base
-            filling_names = [
-                b.item_name for b in bom_items
-                if getattr(b, 'tag', '') == 'filling' and getattr(b, 'item_name', '')
-            ]
-            covering_names = [
-                getattr(b, 'common_name', None) or b.item_name for b in bom_items
-                if
-                getattr(b, 'tag', '') == 'covering' and (getattr(b, 'common_name', None) or getattr(b, 'item_name', ''))
-            ]
-            base_names = [
-                getattr(b, 'common_name', None) or b.item_name for b in bom_items
-                if getattr(b, 'tag', '') == 'base' and (getattr(b, 'common_name', None) or getattr(b, 'item_name', ''))
-            ]
+            if not has_edge:
+                ctx = _get(item, 'context', {}) or {}
+                we = ctx.get('wood_edge') if isinstance(ctx, dict) else None
+                if we:
+                    has_edge = True
+                    is_hidden = we.get('is_hidden', False)
+                    thickness = float(we.get('thickness', 0) or 0)
+                    sides = int(we.get('sides', 4) or 4)
 
-            raw_components = base_names + covering_names + filling_names
-            comp_title = "  |  ".join(dict.fromkeys(raw_components)) or getattr(item, 'product_name', '')
+            # 2. Base & filling layers from BOM
+            bom_items = _get(item, 'bom_items', []) or []
 
-            # 2. Пресеты с вычисленными параметрами (labels)
-            applied_presets = getattr(item, 'applied_presets', []) or []
-            customizer_presets = []
-            preset_signature_parts = []
+            def _bom_name(b):
+                return _get(b, 'common_name') or _get(b, 'item_name') or ''
 
-            for p in applied_presets:
-                p_name = str(p.get('name') if isinstance(p, dict) else getattr(p, 'name', '')).strip()
-                if not p_name:
+            base_names = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'base' and _bom_name(b)]
+            filling_names = [_get(b, 'item_name') for b in bom_items if
+                             _get(b, 'tag') == 'filling' and _get(b, 'item_name')]
+
+            # 3. Covering layer (hidden edge vs FORMICA vs PAINT)
+            finish_type = _get(item, 'finish_type', 'PAINT')
+            if is_hidden:
+                covering_names = []
+            elif finish_type == 'FORMICA':
+                c_out = str(_get(item, 'color_panel_outside', '') or '').strip()
+                c_in = str(_get(item, 'color_panel_inside', '') or '').strip()
+                if c_in and c_in != c_out:
+                    covering_names = [f"פורמייקה חוץ: {c_out} / פנים: {c_in}"]
+                elif c_out:
+                    covering_names = [f"פורמייקה {c_out}"]
+                else:
+                    covering_names = ["פורמייקה"]
+            else:
+                covering_names = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'covering' and _bom_name(b)]
+
+            raw_components = base_names + filling_names + covering_names
+            comp_title = "  |  ".join(dict.fromkeys(filter(None, raw_components))) or _get(item, 'product_name', '')
+
+            # 4. Customizer presets & signature
+            applied = _get(item, 'applied_presets', []) or []
+            customizer_presets, sig_parts = [], []
+            for p in applied:
+                name = str(_get(p, 'name', '')).strip()
+                if not name:
                     continue
+                raw_labels = _get(p, 'labels', []) or []
+                labels = [
+                    {'text': str(_get(l, 'text', '')).strip(), 'is_custom': bool(_get(l, 'is_custom', False))}
+                    for l in raw_labels if str(_get(l, 'text', '')).strip()
+                ]
+                customizer_presets.append({'name': name, 'labels': labels})
+                lbl_suffix = f"({','.join(f'{l['text']}:{int(l['is_custom'])}' for l in labels)})" if labels else ""
+                sig_parts.append(f"{name}{lbl_suffix}")
 
-                raw_labels = p.get('labels', []) if isinstance(p, dict) else getattr(p, 'labels', [])
-                labels = []
-                sig_labels = []
+            presets_signature = " + ".join(dict.fromkeys(sig_parts))
 
-                for lbl in raw_labels:
-                    text_val = str(lbl.get('text', '') if isinstance(lbl, dict) else getattr(lbl, 'text', '')).strip()
-                    is_custom_val = bool(
-                        lbl.get('is_custom', False) if isinstance(lbl, dict) else getattr(lbl, 'is_custom', False)
-                    )
-                    if text_val:
-                        labels.append({
-                            'text': text_val,
-                            'is_custom': is_custom_val,
-                        })
-                        sig_labels.append(f"{text_val}:{'1' if is_custom_val else '0'}")
-
-                customizer_presets.append({
-                    'name': p_name,
-                    'labels': labels,
-                })
-
-                lbl_suffix = f"({','.join(sig_labels)})" if sig_labels else ""
-                preset_signature_parts.append(f"{p_name}{lbl_suffix}")
-
-            presets_signature = " + ".join(dict.fromkeys(preset_signature_parts))
-
-            puzzle = getattr(item, 'puzzle_spec', None)
-            face_blocks = getattr(puzzle, 'face_blocks', []) if puzzle else []
-            sandwich_blocks = getattr(puzzle, 'sandwich_blocks', []) if puzzle else []
-
+            # 5. Group registration
             group_key = (comp_title, presets_signature)
-
             if group_key not in groups_map:
+                puzzle = _get(item, 'puzzle_spec', None)
                 groups_map[group_key] = {
                     'composition_title': comp_title,
                     'customizer_presets': customizer_presets,
-                    'puzzle_face_blocks': face_blocks,
-                    'puzzle_sandwich_blocks': sandwich_blocks,
+                    'puzzle_face_blocks': _get(puzzle, 'face_blocks', []) if puzzle else [],
+                    'puzzle_sandwich_blocks': _get(puzzle, 'sandwich_blocks', []) if puzzle else [],
                     'counter': Counter(),
                 }
 
-            panel_dims = getattr(item, 'panel_dimensions', []) or []
-            for p_dim in panel_dims:
-                w = p_dim.get('width') if isinstance(p_dim, dict) else getattr(p_dim, 'width', None)
-                h = p_dim.get('height') if isinstance(p_dim, dict) else getattr(p_dim, 'height', None)
-                if w and h:
-                    calc_w = round_press_dimension(w)
-                    calc_h = round_press_dimension(h)
-                    groups_map[group_key]['counter'][(calc_w, calc_h)] += 1
+            # 6. Press dimensions calculation
+            for p_dim in (_get(item, 'panel_dimensions', []) or []):
+                w, h = _get(p_dim, 'width'), _get(p_dim, 'height')
+                if w is None or h is None:
+                    continue
 
+                w, h = float(w), float(h)
+                if has_edge and thickness > 0:
+                    w -= thickness * 2
+                    h -= thickness * ((sides > 2) + (sides > 3))
+
+                groups_map[group_key]['counter'][(round_press_dimension(w), round_press_dimension(h))] += 1
+
+        # 7. Format output grouped list
         panel_groups = []
         for grp in groups_map.values():
-            raw_counter = grp.pop('counter')
-            sorted_dims = sorted(raw_counter.items(), key=lambda x: (x[0][1], x[0][0]), reverse=True)
-            grp['dimensions'] = [
-                {'width': w, 'height': h, 'qty': count}
-                for (w, h), count in sorted_dims
+            dims = [
+                {'width': w, 'height': h, 'qty': qty}
+                for (w, h), qty in sorted(grp.pop('counter').items(), key=lambda x: (x[0][1], x[0][0]), reverse=True)
             ]
-            if grp['dimensions']:
+            if dims:
+                grp['dimensions'] = dims
                 panel_groups.append(grp)
 
         return panel_groups
