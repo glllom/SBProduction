@@ -720,10 +720,13 @@ class ProductionDataService:
     @classmethod
     def get_wooden_frames_data(cls, spec_obj):
         frames_items = []
-        for item in cls._extract_items(spec_obj):  # ИСПОЛЬЗУЕМ _extract_items
-            is_hidden = getattr(item, 'is_hidden_frame', False) if hasattr(item, 'is_hidden_frame') else item.get(
-                'is_hidden_frame', False)
-            has_frame = getattr(item, 'has_frame', True) if hasattr(item, 'has_frame') else item.get('has_frame', True)
+        for item in cls._extract_items(spec_obj):
+            # Проверяем, является ли item словарем
+            is_dict = isinstance(item, dict)
+
+            has_frame = item.get('has_frame', True) if is_dict else getattr(item, 'has_frame', True)
+            is_hidden = item.get('is_hidden_frame', False) if is_dict else getattr(item, 'is_hidden_frame', False)
+
             if not has_frame or is_hidden:
                 continue
 
@@ -792,13 +795,14 @@ class ProductionDataService:
     def prepare_wood_frames_report_data(cls, spec_obj):
         groups_map = {}
 
-        for item in cls._extract_items(spec_obj):  # ИСПОЛЬЗУЕМ _extract_items
-            if not (
-                    getattr(item, 'has_frame', True) if hasattr(item, 'has_frame') else item.get('has_frame',
-                                                                                                 True)) or (
-                    getattr(item, 'is_hidden_frame', False) if hasattr(item, 'is_hidden_frame') else item.get(
-                        'is_hidden_frame',
-                        False)):
+        for item in cls._extract_items(spec_obj):
+            # Проверяем, является ли item словарем
+            is_dict = isinstance(item, dict)
+
+            has_frame = item.get('has_frame', True) if is_dict else getattr(item, 'has_frame', True)
+            is_hidden = item.get('is_hidden_frame', False) if is_dict else getattr(item, 'is_hidden_frame', False)
+
+            if not has_frame or is_hidden:
                 continue
 
             bom_items = getattr(item, 'bom_items', []) if hasattr(item, 'bom_items') else item.get('bom_items', [])
@@ -900,6 +904,87 @@ class ProductionDataService:
                     return 999999
 
             grp['items'].sort(key=parse_mark)
+
+            # Формирование сгруппированных строк для печатного отчета משקופים
+            row_groups = {}
+            for it in grp['items']:
+                w = getattr(it, 'width', None) if hasattr(it, 'width') else it.get('width', None)
+                h = getattr(it, 'height', None) if hasattr(it, 'height') else it.get('height', None)
+                wall = getattr(it, 'wall', None) if hasattr(it, 'wall') else it.get('wall', None)
+                direction = getattr(it, 'direction', '') if hasattr(it, 'direction') else it.get('direction', '')
+                opening = getattr(it, 'opening', '') if hasattr(it, 'opening') else it.get('opening', '')
+                comment = getattr(it, 'comment', '') if hasattr(it, 'comment') else it.get('comment', '')
+                place = getattr(it, 'place', '') if hasattr(it, 'place') else it.get('place', '')
+
+                row_key = (w, h, wall, direction or '', opening or '', (comment or '').strip(), (place or '').strip())
+                if row_key not in row_groups:
+                    row_groups[row_key] = {
+                        'width': w,
+                        'height': h,
+                        'wall': wall,
+                        'direction': direction,
+                        'opening': opening,
+                        'comment': (comment or '').strip(),
+                        'place': (place or '').strip(),
+                        'qty': 0,
+                    }
+                row_groups[row_key]['qty'] += 1
+
+            grouped_rows = []
+            for r in row_groups.values():
+                w = r['width']
+                h = r['height']
+                wall = r['wall']
+                direction = r['direction']
+                opening = r['opening']
+                comment = r['comment']
+                place = r['place']
+                qty = r['qty']
+
+                w_str = str(int(w)) if (w is not None and float(w).is_integer()) else (str(w) if w is not None else "")
+                h_str = str(int(h)) if (h is not None and float(h).is_integer()) else (str(h) if h is not None else "")
+                wall_str = str(int(wall)) if (wall is not None and float(wall).is_integer()) else (str(wall) if wall is not None else "")
+
+                dim_display = f"{w_str} / {h_str}" if (w_str and h_str) else (w_str or h_str or "-")
+                spec_display = f"{wall_str} {direction}".strip() if (wall_str or direction) else ""
+
+                notes_list = []
+                if comment:
+                    notes_list.append(comment)
+                if opening in ('OUT', 'החוצה'):
+                    notes_list.append('החוצה')
+                elif place and not comment:
+                    notes_list.append(place)
+
+                note_text = " ".join(notes_list)
+                qty_label = f"{qty}x" if qty > 1 else ""
+
+                grouped_rows.append({
+                    'qty': qty,
+                    'qty_label': qty_label,
+                    'note_text': note_text,
+                    'dimension_display': dim_display,
+                    'spec_display': spec_display,
+                    'width': w,
+                    'height': h,
+                    'wall': wall,
+                    'direction': direction,
+                    'opening': opening,
+                })
+
+            grp['grouped_rows'] = grouped_rows
+
+            hinge_heights = grp.get('hinge_heights', [])
+            grp['hinge_heights_display'] = "  ".join(
+                str(int(hh)) if float(hh).is_integer() else str(hh) for hh in hinge_heights
+            ) if hinge_heights else ""
+
+            casing_val = grp.get('door_casing', '')
+            if not casing_val or casing_val.strip() in ('-', 'ללא'):
+                grp['door_casing_display'] = 'ללא'
+            else:
+                grp['door_casing_display'] = casing_val.strip()
+
             result_groups.append(grp)
 
         return result_groups

@@ -936,7 +936,9 @@
                             const fronts = (Array.isArray(data) ? data : data['results']) || [];
                             fronts.forEach(function (front) {
                                 const desc = front['description'] || '';
-                                options += '<option value="' + front['id'] + '" data-description="' + desc + '" title="' + desc + '">' + front['name'] + '</option>';
+                                const finishType = front['finish_type'] || 'PAINT';
+                                // Сохраняем finish_type прямо в атрибут опции
+                                options += '<option value="' + front['id'] + '" data-finish-type="' + finishType + '" data-description="' + desc + '" title="' + desc + '">' + front['name'] + '</option>';
                             });
                             $frontSelect.html(options);
 
@@ -1232,43 +1234,87 @@
                 const $diffToggle = $modal.find('input[name="is_door_inside_different_color"]');
                 const $insideWrap = $modal.find('#group-panel-inside-wrap');
                 const $labelOut = $modal.find('#group-label-panel-out');
+                const $labelIn = $modal.find('#group-panel-inside-wrap label');
+                const $inputOut = $modal.find('input[name="color_panel_outside"]');
+                const $inputIn = $modal.find('input[name="color_panel_inside"]');
+                const $frontSelect = $modal.find('select[name="front"]');
+                const $panelTitle = $panelSelect.closest('.col-md-6').find('.form-label').first();
 
                 function syncColors() {
-                    // Коробка
+                    // 1. Покраска коробки
                     if ($frameSelect.val() === 'SPECIAL_COLOR') {
                         $frameWrap.show();
                     } else {
                         $frameWrap.hide();
                     }
 
-                    // Полотно (дверь)
-                    if ($panelSelect.val() === 'SPECIAL_COLOR') {
-                        $panelWrap.show();
-                        $diffWrap.show();
-                        if ($diffToggle.is(':checked')) {
-                            $insideWrap.show();
-                            $labelOut.text('גוון כנף חוץ:');
-                        } else {
-                            $insideWrap.hide();
-                            $labelOut.text('גוון כנף (דו-צדדי):');
-                        }
-                    } else {
+                    // 2. Отделка полотна (читаем finish_type напрямую из выбранного option)
+                    const $selectedFront = $frontSelect.find('option:selected');
+                    const finishType = $selectedFront.attr('data-finish-type') || 'PAINT';
+                    const isDiff = $diffToggle.is(':checked');
+
+                    $('#group-no-paint-notice').remove();
+
+                    if (finishType === 'NO_PAINT') {
+                        $panelTitle.html('גימור כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
+                        $panelSelect.hide().val('NO_PAINT');
                         $panelWrap.hide();
                         $diffWrap.hide();
                         $insideWrap.hide();
+                        $inputOut.val('');
+                        $inputIn.val('');
+                        $panelSelect.after('<div id="group-no-paint-notice" class="badge bg-secondary p-2 mt-1">ללא צבע (בסיס)</div>');
+                    } else if (finishType === 'FORMICA') {
+                        $panelTitle.html('גימור פורמייקה: <i class="bi bi-info-circle help-hint-icon"></i>');
+                        $panelSelect.hide().val('SPECIAL_COLOR');
+                        $diffWrap.show();
+                        $panelWrap.show();
+
+                        $inputOut.attr('placeholder', 'מספר פורמייקה');
+                        $inputIn.attr('placeholder', 'מספר פורמייקה פנים');
+                        $labelOut.text(isDiff ? 'מספר פורמייקה (חוץ):' : 'מספר פורמייקה:');
+                        $labelIn.text('מספר פורמייקה (פנים):');
+
+                        if (isDiff) {
+                            $insideWrap.show();
+                        } else {
+                            $insideWrap.hide();
+                        }
+                    } else {
+                        // PAINT
+                        $panelTitle.html('צביעת כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
+                        $panelSelect.show();
+                        $inputOut.attr('placeholder', 'קוד צבע');
+                        $inputIn.attr('placeholder', 'קוד צבע פנים');
+
+                        if ($panelSelect.val() === 'SPECIAL_COLOR') {
+                            $panelWrap.show();
+                            $diffWrap.show();
+                            $labelOut.text(isDiff ? 'גוון כנף חוץ:' : 'גוון כנף (דו-צדדי):');
+                            $labelIn.text('גוון כנף צד פנים:');
+                            if (isDiff) {
+                                $insideWrap.show();
+                            } else {
+                                $insideWrap.hide();
+                            }
+                        } else {
+                            $panelWrap.hide();
+                            $diffWrap.hide();
+                            $insideWrap.hide();
+                        }
                     }
                 }
 
                 $frameSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
                 $panelSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
                 $diffToggle.off('change.groupPaint').on('change.groupPaint', syncColors);
+                $frontSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
 
                 $modal.find('#btn-group-copy-door').off('click.groupCopy').on('click.groupCopy', function () {
                     const outVal = $modal.find('input[name="color_panel_outside"]').val();
                     $modal.find('input[name="color_frames"]').val(outVal);
                 });
 
-                // Первичная синхронизация
                 syncColors();
             }
 
@@ -1749,5 +1795,6 @@
                     btn.innerHTML = originalHtml;
                 });
         }
+
     </script>
 {% endblock %}

@@ -1,6 +1,7 @@
 * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    box-sizing: border-box;
 }
 
 body {
@@ -11,11 +12,27 @@ body {
 
 .page {
     background: white;
-    width: 297mm;
-    min-height: 190mm;
-    padding: 20mm;
     margin: 10mm auto;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+    width: 297mm;
+    min-height: 210mm;
+    padding: 15mm;
+}
+
+/* Portrait orientation for page container on screen */
+body.portrait .page,
+.page.portrait {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 15mm;
+}
+
+body.landscape .page,
+.page.landscape {
+    width: 297mm;
+    min-height: 210mm;
+    padding: 15mm;
 }
 
 table {
@@ -53,6 +70,11 @@ th {
     background-color: #6c757d;
 }
 
+.page-break {
+    page-break-before: always;
+    break-before: page;
+}
+
 /* Класс для гарантированной чёрной заливки на печати (работает даже если в браузере снят чекбокс фонов) */
 .indicator-active {
     background-color: #000 !important;
@@ -60,25 +82,64 @@ th {
     box-shadow: inset 0 0 0 1000px #000 !important;
 }
 
+@page portrait-page {
+    size: A4 portrait;
+    margin: 10mm;
+}
+
+@page landscape-page {
+    size: A4 landscape;
+    margin: 10mm;
+}
+
 @media print {
-    @page {
-        size: landscape;
+    @page portrait-page {
+        size: A4 portrait;
         margin: 10mm;
+    }
+
+    @page landscape-page {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+
+    body.portrait,
+    body.portrait .page,
+    .page.portrait {
+        page: portrait-page;
+    }
+
+    body.landscape,
+    body.landscape .page,
+    .page.landscape,
+    .page:not(.portrait) {
+        page: landscape-page;
     }
 
     body {
         background-color: white;
         margin: 0;
-    }
-
-    .page {
-        margin: 0;
-        box-shadow: none;
-        width: 100%;
         padding: 0;
     }
 
+    .page {
+        margin: 0 !important;
+        box-shadow: none !important;
+        width: 100% !important;
+        min-height: auto !important;
+        padding: 0 !important;
+    }
+
+    .page:not(:last-child) {
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .page-break {
+        display: none !important;
+    }
+
     .no-print {
-        display: none;
+        display: none !important;
     }
 }

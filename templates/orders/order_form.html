@@ -13,7 +13,6 @@
                     <form method="post">
                         {% csrf_token %}
                         <!-- Номер заказа и Имя клиента -->
-                        <!-- Номер заказа и Имя клиента -->
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold"
@@ -171,6 +170,16 @@
                         <div class="mt-4 pt-3 border-top d-flex justify-content-end gap-2">
                             <a href="
 
+
+
+
+
+
+
+
+
+
+
 									{% if form.instance.pk %}{% url 'order-detail' form.instance.pk %}{% else %}{% url 'order-list' %}{% endif %}"
                                class="btn btn-light"
                                data-bs-toggle="tooltip"
@@ -242,6 +251,9 @@
     <!-- Select2 JS -->
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
+        // Глобальная переменная для совместимости со всеми функциями страницы (updateFronts и др.)
+        var frontsCache = window.frontsCache = (window.frontsCache || {});
+
         function setColorTBD(fieldId) {
             const el = document.getElementById(fieldId);
             if (el) {
@@ -254,27 +266,117 @@
             $('input[type="text"], input[type="number"], textarea').addClass('form-control');
             $('select:not([name="series"]):not([name="front"]):not([name="handle"])').addClass('form-select');
 
-            function initSelect2Fields() {
-                $('select[name="series"], select[name="front"], select[name="handle"]').each(function () {
-                    const $el = $(this);
-                    $el.select2({
-                        theme: 'bootstrap-5',
-                        dir: 'rtl',
-                        width: '100%',
-                        placeholder: 'בחר או הקלד לחיפוש...',
-                        allowClear: true
-                    });
+            const $seriesSelect = $('select[name="series"]');
+            const $frontSelect = $('select[name="front"]');
+            const $toggleFrames = $('#toggle-paint-frames');
+            const $frameWrapper = $('#frame-color-wrapper');
+            const $toggleSides = $('#toggle-different-sides');
+            const $insideWrapper = $('#panel-inside-wrapper');
+            const $labelOutside = $('#label-panel-outside');
+            const $labelInside = $('#panel-inside-wrapper label');
+            const $inputOutside = $('#id_color_panel_outside');
+            const $inputInside = $('#id_color_panel_inside');
+            const $diffSidesWrapper = $toggleSides.closest('.form-check');
+            const $btnCopy = $('#btn-copy-door-color');
+
+            // Предзаполнение кэша из серверной HTML-разметки (при первом открытии формы)
+            $frontSelect.find('option').each(function () {
+                const val = $(this).val();
+                const fType = $(this).attr('data-finish-type');
+                if (val && fType) {
+                    frontsCache[val] = fType;
+                }
+            });
+
+            // 1. Инициализация Select2
+            $('select[name="series"], select[name="front"], select[name="handle"]').each(function () {
+                $(this).select2({
+                    theme: 'bootstrap-5',
+                    dir: 'rtl',
+                    width: '100%',
+                    placeholder: 'בחר או הקלד לחיפוש...',
+                    allowClear: true
                 });
+            });
+
+            // 2. Декларативная карта состояний
+            const FINISH_CONFIG = {
+                FORMICA: {
+                    labelSingle: 'מספר פורמייקה:',
+                    labelOut: 'מספר פורמייקה (חוץ):',
+                    labelIn: 'מספר פורמייקה (פנים):',
+                    placeholderOut: 'מספר פורמייקה',
+                    placeholderIn: 'מספר פורמייקה צד פנים',
+                    canEdit: true,
+                    showDiffSides: true
+                },
+                NO_PAINT: {
+                    labelSingle: 'גימור כנף: ללא צבע',
+                    labelOut: 'גימור כנף: ללא צבע',
+                    labelIn: '',
+                    placeholderOut: 'ללא צבע',
+                    placeholderIn: '',
+                    canEdit: false,
+                    showDiffSides: false
+                },
+                PAINT: {
+                    labelSingle: 'צבע כנף (דו-צדדי):',
+                    labelOut: 'צבע כנף חוץ:',
+                    labelIn: 'צבע כנף צד פנים:',
+                    placeholderOut: 'צבע כנף (חוץ / דו-צדדי)',
+                    placeholderIn: 'צבע כנף פנים',
+                    canEdit: true,
+                    showDiffSides: true
+                }
+            };
+
+            // 3. Единая машина состояний UI
+            function syncOrderFormUI() {
+                const frontId = $frontSelect.val();
+                const $selectedOption = $frontSelect.find('option:selected');
+
+                // Ищем тип отделки: сначала в кэше, потом в data-finish-type опции
+                let finishType = frontsCache[frontId] || $selectedOption.attr('data-finish-type') || 'PAINT';
+                const cfg = FINISH_CONFIG[finishType] || FINISH_CONFIG.PAINT;
+
+                const isDiffSides = $toggleSides.is(':checked');
+                const isPaintFrames = $toggleFrames.is(':checked');
+
+                // А. Покраска коробок
+                if (isPaintFrames) {
+                    $frameWrapper.slideDown(150);
+                } else {
+                    $frameWrapper.slideUp(150);
+                }
+
+                // Б. Отделка полотна
+                if (!cfg.canEdit) {
+                    $labelOutside.text(cfg.labelSingle);
+                    $inputOutside.val('').prop('disabled', true).attr('placeholder', cfg.placeholderOut);
+                    $inputInside.val('').prop('disabled', true);
+                    $diffSidesWrapper.hide();
+                    $inputOutside.siblings('button').hide();
+                    $insideWrapper.slideUp(150);
+                } else {
+                    $inputOutside.prop('disabled', false).attr('placeholder', cfg.placeholderOut);
+                    $inputInside.prop('disabled', false).attr('placeholder', cfg.placeholderIn);
+                    $diffSidesWrapper.show();
+                    $inputOutside.siblings('button').show();
+
+                    if (isDiffSides) {
+                        $labelOutside.text(cfg.labelOut);
+                        $labelInside.text(cfg.labelIn);
+                        $insideWrapper.slideDown(150);
+                    } else {
+                        $labelOutside.text(cfg.labelSingle);
+                        $insideWrapper.slideUp(150);
+                    }
+                }
             }
 
-            initSelect2Fields();
-
-            $(document).on('change', 'select[name="series"]', function () {
+            // 4. Подгрузка фасадов при смене серии
+            $seriesSelect.on('change', function () {
                 const seriesId = $(this).val();
-                const $frontSelect = $('select[name="front"]');
-
-                if (!$frontSelect.length) return;
-
                 $frontSelect.empty().append('<option value="">---------</option>');
 
                 if (!seriesId) {
@@ -283,57 +385,41 @@
                 }
 
                 fetch(`/catalog/api/fronts/?series=${seriesId}`)
-                    .then(response => response.json())
+                    .then(res => res.json())
                     .then(data => {
                         const fronts = (Array.isArray(data) ? data : data.results) || [];
                         fronts.forEach(front => {
-                            const newOption = new Option(front.name, front.id, false, false);
-                            $frontSelect.append(newOption);
+                            const opt = document.createElement('option');
+                            opt.value = front.id;
+                            opt.text = front.name;
+                            opt.setAttribute('data-finish-type', front.finish_type || 'PAINT');
+                            $frontSelect.append(opt);
+
+                            frontsCache[front.id] = front.finish_type || 'PAINT';
                         });
                         $frontSelect.val(null).trigger('change');
                     })
-                    .catch(error => {
-                        console.error('Error fetching fronts:', error);
+                    .catch(err => {
+                        console.error('Error fetching fronts:', err);
                         $frontSelect.val(null).trigger('change');
                     });
             });
 
-            // Тумблеры покраски
-            const $toggleFrames = $('#toggle-paint-frames');
-            const $frameWrapper = $('#frame-color-wrapper');
-            const $toggleSides = $('#toggle-different-sides');
-            const $insideWrapper = $('#panel-inside-wrapper');
-            const $labelOutside = $('#label-panel-outside');
-            const $btnCopy = $('#btn-copy-door-color');
-
-            function syncColorsUI() {
-                if ($toggleFrames.is(':checked')) {
-                    $frameWrapper.slideDown(150);
-                } else {
-                    $frameWrapper.slideUp(150);
-                }
-
-                if ($toggleSides.is(':checked')) {
-                    $insideWrapper.slideDown(150);
-                    $labelOutside.text('צבע כנף חוץ:');
-                } else {
-                    $insideWrapper.slideUp(150);
-                    $labelOutside.text('צבע כנף (דו-צדדי):');
-                }
-            }
-
-            $toggleFrames.on('change', syncColorsUI);
-            $toggleSides.on('change', syncColorsUI);
+            // 5. Обработчики изменений
+            $frontSelect.on('change', syncOrderFormUI);
+            $toggleSides.on('change', syncOrderFormUI);
+            $toggleFrames.on('change', syncOrderFormUI);
 
             if ($btnCopy.length) {
                 $btnCopy.on('click', function () {
-                    const outVal = $('#id_color_panel_outside').val();
+                    const outVal = $inputOutside.val();
                     $('#id_color_frames').val(outVal);
                 });
             }
 
-            // Инициализация при открытии
-            syncColorsUI();
+            // 6. Инициализация при открытии формы
+            syncOrderFormUI();
         });
+    </script>
     </script>
 {% endblock %}

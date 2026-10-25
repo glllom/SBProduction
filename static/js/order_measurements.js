@@ -1,6 +1,7 @@
 /**
  * Order Measurements Management Script
- * Classic UI (Click-to-Edit) with Auto-Save and Outside-Click Close functionality.
+ * Controlled row editing with Checkmark Submit button, Enter navigation,
+ * single active row limit, and click-away/next-row save functionality.
  */
 
 const config = window.OrderMeasurementsConfig || {};
@@ -105,38 +106,37 @@ function exportToExcel() {
 
 window.exportToExcel = exportToExcel;
 
-// Функция безопасного закрытия режима редактирования строки
-function closeEditMode($row) {
-    if (!$row || !$row.length || !$row.hasClass('edit-mode')) return;
-    const itemId = $row.data('item-id');
+// Сворачивание строки в статический вид
+function renderRowStatic($row) {
+    if (!$row || !$row.length) return;
+    const itemId = $row.attr('data-item-id');
 
     $row.find('[data-bs-toggle="tooltip"]').each(function () {
-        const el = this;
         const bs = window.bootstrap;
         if (bs && bs.Tooltip) {
-            const inst = bs.Tooltip.getInstance(el);
+            const inst = bs.Tooltip.getInstance(this);
             if (inst) inst.dispose();
         }
     });
 
     const rowData = {
-        mark: $row.data('mark'),
-        place: $row.data('place'),
-        width: $row.data('width'),
-        height: $row.data('height'),
-        wall: $row.data('wall'),
-        opening: $row.data('opening'),
-        direction: $row.data('direction'),
-        bottomCorrection: $row.data('bottom-correction'),
-        comment: $row.data('comment'),
-        sketchUrl: $row.data('sketch-url'),
-        canEdit: $row.data('can-edit'),
-        customLockHeight: $row.data('custom-lock-height'),
-        customHinge1: $row.data('custom-hinge1'),
-        customHinge2: $row.data('custom-hinge2'),
-        customHinge3: $row.data('custom-hinge3'),
-        customHinge4: $row.data('custom-hinge4'),
-        customHinge5: $row.data('custom-hinge5')
+        mark: $row.attr('data-mark'),
+        place: $row.attr('data-place'),
+        width: $row.attr('data-width'),
+        height: $row.attr('data-height'),
+        wall: $row.attr('data-wall'),
+        opening: $row.attr('data-opening'),
+        direction: $row.attr('data-direction'),
+        bottomCorrection: $row.attr('data-bottom-correction'),
+        comment: $row.attr('data-comment'),
+        sketchUrl: $row.attr('data-sketch-url'),
+        canEdit: $row.attr('data-can-edit') === 'true',
+        customLockHeight: $row.attr('data-custom-lock-height'),
+        customHinge1: $row.attr('data-custom-hinge1'),
+        customHinge2: $row.attr('data-custom-hinge2'),
+        customHinge3: $row.attr('data-custom-hinge3'),
+        customHinge4: $row.attr('data-custom-hinge4'),
+        customHinge5: $row.attr('data-custom-hinge5')
     };
 
     $row.html(renderStaticRowContent(rowData)).removeClass('edit-mode');
@@ -149,275 +149,312 @@ function closeEditMode($row) {
     if (window.initTooltips) window.initTooltips($row[0]);
 }
 
+// Открытие строки для редактирования
+function openEditMode($row) {
+    if (!$row || !$row.length || $row.hasClass('edit-mode')) return;
+
+    const canEdit = $row.attr('data-can-edit') === 'true';
+    if (!canEdit || $row.hasClass('row-locked')) return;
+
+    const itemId = $row.attr('data-item-id');
+    const mark = $row.attr('data-mark') || '';
+    const place = $row.attr('data-place') || '';
+    const width = $row.attr('data-width') || '';
+    const height = $row.attr('data-height') || '';
+    const wall = $row.attr('data-wall') || '';
+    const opening = $row.attr('data-opening') || '';
+    const direction = $row.attr('data-direction') || '';
+    const allowedDirection = ($row.attr('data-allowed-direction') || 'BOTH').toUpperCase();
+    const bottomCorrection = $row.attr('data-bottom-correction') || '';
+    const comment = $row.attr('data-comment') || '';
+    const sketchUrl = $row.attr('data-sketch-url') || '';
+    const hasFrame = $row.attr('data-has-frame') === 'true';
+    const hasDoor = $row.attr('data-has-door') === 'true';
+
+    const customLockHeight = $row.attr('data-custom-lock-height') || '';
+    const customHinge1 = $row.attr('data-custom-hinge1') || '';
+    const customHinge2 = $row.attr('data-custom-hinge2') || '';
+    const customHinge3 = $row.attr('data-custom-hinge3') || '';
+    const customHinge4 = $row.attr('data-custom-hinge4') || '';
+    const customHinge5 = $row.attr('data-custom-hinge5') || '';
+
+    $row.addClass('edit-mode').attr('data-opened-at', Date.now());
+    $(`#display-custom-${itemId}`).addClass('d-none');
+
+    let openingOptions;
+    if (allowedDirection === 'IN_ONLY') {
+        openingOptions = '<option value="IN" selected>פ</option>';
+    } else if (allowedDirection === 'OUT_ONLY') {
+        openingOptions = '<option value="OUT" selected>ח</option>';
+    } else {
+        const activeOpening = opening || 'IN';
+        openingOptions = `
+            <option value="IN" ${activeOpening === 'IN' ? 'selected' : ''}>פ</option>
+            <option value="OUT" ${activeOpening === 'OUT' ? 'selected' : ''}>ח</option>
+        `;
+    }
+
+    const directionOptions = `
+        <option value="">-</option>
+        <option value="L" ${direction === 'L' ? 'selected' : ''}>L</option>
+        <option value="R" ${direction === 'R' ? 'selected' : ''}>R</option>
+    `;
+
+    const sketchBtnClass = sketchUrl ? 'btn-primary' : 'btn-outline-primary';
+
+    const html = `
+        <td class="fw-bold bg-light">${mark}</td>
+        <td><input type="text" class="form-control form-control-sm" name="place" value="${place}" placeholder="מיקום"></td>
+        <td><input type="text" class="form-control form-control-sm numeric-input" name="width" value="${width}" placeholder="רוחב"></td>
+        <td><input type="text" class="form-control form-control-sm numeric-input" name="height" value="${height}" placeholder="גובה"></td>
+        <td><input type="text" class="form-control form-control-sm numeric-input" name="wall" value="${wall}" ${hasFrame ? '' : 'disabled'} placeholder="משקוף"></td>
+        <td>
+            <div class="d-flex gap-1">
+                <select class="form-select form-select-sm" name="direction" ${hasDoor ? '' : 'disabled'}>${directionOptions}</select>
+                <select class="form-select form-select-sm" name="opening" ${hasDoor ? '' : 'disabled'} ${allowedDirection !== 'BOTH' ? 'tabindex="-1"' : ''}>${openingOptions}</select>
+            </div>
+        </td>
+        <td><input type="text" class="form-control form-control-sm numeric-input" name="bottom_correction" value="${bottomCorrection}" placeholder="רווח נוסף"></td>
+        <td><input type="text" class="form-control form-control-sm" name="comment" value="${comment}" placeholder="הערה" style="width: 100%; min-width: 100px;"></td>
+        <td class="no-print text-nowrap">
+            <!-- Кнопка-галочка подтверждения/сохранения -->
+            <button type="button" class="btn btn-sm btn-success btn-save-row px-2" data-bs-toggle="tooltip" title="שמור (Enter)">
+                <i class="bi bi-check-lg"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary btn-duplicate" data-bs-toggle="tooltip" title="שכפל מידות לשאר הפריטים">
+                <i class="bi bi-files"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-info btn-toggle-custom" data-bs-toggle="tooltip" title="גבהים חריגים">
+                <i class="bi bi-sliders"></i>
+            </button>
+            <div class="d-inline-block position-relative">
+                <button type="button" class="btn btn-sm ${sketchBtnClass} btn-sketch-upload" data-bs-toggle="tooltip" title="שרטוט">
+                    <i class="bi bi-file-earmark-image"></i>
+                </button>
+                ${sketchUrl ? '<button type="button" class="btn btn-sm btn-danger py-0 px-1 position-absolute top-0 start-0 translate-middle rounded-circle btn-sketch-delete" style="font-size: 8px; z-index: 5;"><i class="bi bi-x"></i></button>' : ''}
+                <input type="file" class="d-none sketch-file-input" accept="image/*,application/pdf" name="sketch">
+                <input type="hidden" name="delete_sketch" value="false" class="delete-sketch-input">
+            </div>
+        </td>
+    `;
+
+    $row.html(html);
+
+    const customHtml = `
+        <tr id="custom-row-${itemId}" class="edit-mode custom-heights-row d-none">
+            <td class="bg-light fw-bold small text-center">גובה מותאם</td>
+            <td colspan="7">
+                <div class="d-flex gap-2 p-1 align-items-center">
+                    <div class="input-group input-group-sm"><span class="input-group-text">מנעול</span><input type="text" class="form-control numeric-input" name="custom_lock_height" value="${customLockHeight}"></div>
+                    <div class="input-group input-group-sm"><span class="input-group-text">ציר 1</span><input type="text" class="form-control numeric-input" name="custom_hinge1" value="${customHinge1}"></div>
+                    <div class="input-group input-group-sm"><span class="input-group-text">ציר 2</span><input type="text" class="form-control numeric-input" name="custom_hinge2" value="${customHinge2}"></div>
+                    <div class="input-group input-group-sm"><span class="input-group-text">ציר 3</span><input type="text" class="form-control numeric-input" name="custom_hinge3" value="${customHinge3}"></div>
+                    <div class="input-group input-group-sm"><span class="input-group-text">ציר 4</span><input type="text" class="form-control numeric-input" name="custom_hinge4" value="${customHinge4}"></div>
+                    <div class="input-group input-group-sm"><span class="input-group-text">ציר 5</span><input type="text" class="form-control numeric-input" name="custom_hinge5" value="${customHinge5}"></div>
+                </div>
+            </td>
+            <td class="no-print"></td>
+        </tr>
+    `;
+    $row.after(customHtml);
+
+    if (window.initTooltips) window.initTooltips($row[0]);
+    $row.find('input[name="width"]').focus();
+}
+
+// Сохранение строки и переход к следующему действию
+function saveRowAndClose($row, onComplete) {
+    if (!$row || !$row.length || !$row.hasClass('edit-mode')) {
+        if (typeof onComplete === 'function') onComplete();
+        return;
+    }
+
+    const itemId = $row.attr('data-item-id');
+    const $customRow = $(`#custom-row-${itemId}`);
+    const formData = new FormData();
+
+    $row.find('input, select').each(function () {
+        const curInput = this;
+        if (curInput.type === 'file') {
+            if (curInput.files[0]) formData.append('sketch', curInput.files[0]);
+        } else if (curInput.className && curInput.className.includes('delete-sketch-input')) {
+            formData.append('delete_sketch', $(curInput).val());
+        } else if (curInput.name) {
+            formData.append(curInput.name, $(curInput).val());
+        }
+    });
+
+    if ($customRow.length) {
+        $customRow.find('input').each(function () {
+            if (this.name) formData.append(this.name, $(this).val());
+        });
+    }
+
+    // Блокируем кнопку на время отправки
+    const $btnSave = $row.find('.btn-save-row');
+    $btnSave.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
+    $.ajax({
+        url: `/orders/items/${itemId}/update-measurements/`,
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        headers: {'X-CSRFToken': config.csrfToken},
+        success: function (response) {
+            if (response.status === 'ok') {
+                // Обновляем HTML data-атрибуты строки
+                $row.attr('data-width', formatNum(formData.get('width')));
+                $row.attr('data-height', formatNum(formData.get('height')));
+                $row.attr('data-wall', formatNum(formData.get('wall')));
+                $row.attr('data-opening', formData.get('opening') || '');
+                $row.attr('data-direction', formData.get('direction') || '');
+                $row.attr('data-place', formData.get('place') || '');
+                $row.attr('data-bottom-correction', formatNum(formData.get('bottom_correction')));
+                $row.attr('data-comment', formData.get('comment') || '');
+
+                if (response.sketch_url) {
+                    $row.attr('data-sketch-url', response.sketch_url);
+                } else if (formData.get('delete_sketch') === 'true') {
+                    $row.attr('data-sketch-url', '');
+                }
+
+                const customFields = ['custom_lock_height', 'custom_hinge1', 'custom_hinge2', 'custom_hinge3', 'custom_hinge4', 'custom_hinge5'];
+                customFields.forEach(f => {
+                    $row.attr(`data-${f.replace(/_/g, '-')}`, formatNum(formData.get(f)));
+                });
+
+                renderRowStatic($row);
+            } else {
+                alert(response.message || 'שגיאה בשמירת הנתונים');
+                renderRowStatic($row);
+            }
+        },
+        error: function () {
+            alert('שגיאת תקשורת עם השרת');
+            renderRowStatic($row);
+        },
+        complete: function () {
+            if (typeof onComplete === 'function') {
+                onComplete();
+            }
+        }
+    });
+}
+
 $(document).ready(function () {
 
+    // Ограничение ввода только числами и точкой
     $(document).on('input', '.numeric-input', function () {
-        const inputEl = this;
-        inputEl.value = inputEl.value.replace(/[^0-9.]/g, '');
-        if ((inputEl.value.match(/\./g) || []).length > 1) {
-            inputEl.value = inputEl.value.replace(/\.$/, '');
+        this.value = this.value.replace(/[^0-9.]/g, '');
+        if ((this.value.match(/\./g) || []).length > 1) {
+            this.value = this.value.replace(/\.$/, '');
         }
     });
 
-    // Клик по строке для перехода в режим редактирования
-// Клик по строке для перехода в режим редактирования
-    $(document).on('click', '.clickable-row', function (e) {
-        // ОСТАНАВЛИВАЕМ ВСПЛЫТИЕ, чтобы глобальный клик документа не поймал это же событие!
+    // 1 & 2. Клик по кнопке с галочкой: сохранение текущей строки
+    $(document).on('click', '.btn-save-row', function (e) {
         e.stopPropagation();
+        const $row = $(this).closest('tr');
+        saveRowAndClose($row);
+    });
 
-        const $row = $(this);
-        console.log("👉 1. Клик по строке зафиксирован, ID:", $row.attr('data-item-id'));
+    // 2 & 3. Клик по строке таблицы
+    $(document).on('click', '.clickable-row', function (e) {
+        e.stopPropagation();
+        const $clickedRow = $(this);
 
-        const canEdit = $row.attr('data-can-edit') === 'true' || $row.data('can-edit') === true;
-
-        if (!canEdit || $row.hasClass('row-locked') || $row.hasClass('edit-mode')) {
+        // Игнорируем внутренние клики по интерактивным элементам редактируемой строки
+        if ($(e.target).closest('a, button, input, select, label').length) {
             return;
         }
 
-        if ($(e.target).closest('a, button, input, select').length) {
+        // Если строка уже в режиме редактирования — ничего не делаем
+        if ($clickedRow.hasClass('edit-mode')) {
             return;
         }
 
-        const $activeRow = $('.edit-mode');
-        if ($activeRow.length && $activeRow[0] !== $row[0]) {
-            closeEditMode($activeRow);
-        }
+        const $activeRow = $('.item-row.edit-mode');
 
-        const itemId = $row.attr('data-item-id');
-
-        // Читаем напрямую из HTML-атрибутов через .attr()
-        const mark = $row.attr('data-mark') || '';
-        const place = $row.attr('data-place') || '';
-        const width = $row.attr('data-width') || '';
-        const height = $row.attr('data-height') || '';
-        const wall = $row.attr('data-wall') || '';
-        const opening = $row.attr('data-opening') || '';
-        const direction = $row.attr('data-direction') || '';
-        const allowedDirection = ($row.attr('data-allowed-direction') || 'BOTH').toUpperCase();
-        const bottomCorrection = $row.attr('data-bottom-correction') || '';
-        const comment = $row.attr('data-comment') || '';
-        const sketchUrl = $row.attr('data-sketch-url') || '';
-        const hasFrame = $row.attr('data-has-frame') === 'true';
-        const hasDoor = $row.attr('data-has-door') === 'true';
-
-        const customLockHeight = $row.attr('data-custom-lock-height') || '';
-        const customHinge1 = $row.attr('data-custom-hinge1') || '';
-        const customHinge2 = $row.attr('data-custom-hinge2') || '';
-        const customHinge3 = $row.attr('data-custom-hinge3') || '';
-        const customHinge4 = $row.attr('data-custom-hinge4') || '';
-        const customHinge5 = $row.attr('data-custom-hinge5') || '';
-
-        // Помечаем время открытия строки, чтобы глобальный клик не закрыл её мгновенно
-        $row.addClass('edit-mode').attr('data-opened-at', Date.now());
-        $(`#display-custom-${itemId}`).addClass('d-none');
-
-        let openingOptions;
-        if (allowedDirection === 'IN_ONLY') {
-            openingOptions = '<option value="IN" selected>פ</option>';
-        } else if (allowedDirection === 'OUT_ONLY') {
-            openingOptions = '<option value="OUT" selected>ח</option>';
+        if ($activeRow.length) {
+            // Если была активна другая строка: сохраняем её, перерисовываем и открываем нажатую
+            saveRowAndClose($activeRow, function () {
+                openEditMode($clickedRow);
+            });
         } else {
-            const activeOpening = opening || 'IN';
-            openingOptions = `
-                <option value="IN" ${activeOpening === 'IN' ? 'selected' : ''}>פ</option>
-                <option value="OUT" ${activeOpening === 'OUT' ? 'selected' : ''}>ח</option>
-            `;
+            // Если активных строк не было: сразу открываем
+            openEditMode($clickedRow);
         }
-
-        const directionOptions = `
-            <option value="">-</option>
-            <option value="L" ${direction === 'L' ? 'selected' : ''}>L</option>
-            <option value="R" ${direction === 'R' ? 'selected' : ''}>R</option>
-        `;
-
-        const sketchBtnClass = sketchUrl ? 'btn-primary' : 'btn-outline-primary';
-
-        const html = `
-            <td class="fw-bold bg-light">${mark}</td>
-            <td><input type="text" class="form-control form-control-sm auto-save-input" name="place" value="${place}" placeholder="מיקום"></td>
-            <td><input type="text" class="form-control form-control-sm numeric-input auto-save-input" name="width" value="${width}" placeholder="רוחב"></td>
-            <td><input type="text" class="form-control form-control-sm numeric-input auto-save-input" name="height" value="${height}" placeholder="גובה"></td>
-            <td><input type="text" class="form-control form-control-sm numeric-input auto-save-input" name="wall" value="${wall}" ${hasFrame ? '' : 'disabled'} placeholder="משקוף"></td>
-            <td>
-                <div class="d-flex gap-1">
-                    <select class="form-select form-select-sm auto-save-input" name="direction" ${hasDoor ? '' : 'disabled'}>${directionOptions}</select>
-                    <select class="form-select form-select-sm auto-save-input" name="opening" ${hasDoor ? '' : 'disabled'} ${allowedDirection !== 'BOTH' ? 'tabindex="-1"' : ''}>${openingOptions}</select>
-                </div>
-            </td>
-            <td><input type="text" class="form-control form-control-sm numeric-input auto-save-input" name="bottom_correction" value="${bottomCorrection}" placeholder="רווח נוסף"></td>
-            <td><input type="text" class="form-control form-control-sm auto-save-input" name="comment" value="${comment}" placeholder="הערה" style="width: 100%; min-width: 100px;"></td>
-            <td class="no-print text-nowrap">
-                <button class="btn btn-sm btn-outline-primary btn-duplicate" data-bs-toggle="tooltip" title="שכפל מידות לשאר הפריטים"><i class="bi bi-files"></i></button>
-                <button class="btn btn-sm btn-outline-info btn-toggle-custom" data-bs-toggle="tooltip" title="גבהים חריגים"><i class="bi bi-sliders"></i></button>
-                
-                <div class="d-inline-block position-relative">
-                    <button class="btn btn-sm ${sketchBtnClass} btn-sketch-upload" data-bs-toggle="tooltip" title="שרטוט">
-                        <i class="bi bi-file-earmark-image"></i>
-                    </button>
-                    ${sketchUrl ? '<button type="button" class="btn btn-sm btn-danger py-0 px-1 position-absolute top-0 start-0 translate-middle rounded-circle btn-sketch-delete" style="font-size: 8px; z-index: 5;"><i class="bi bi-x"></i></button>' : ''}
-                    <input type="file" class="d-none sketch-file-input auto-save-input" accept="image/*,application/pdf" name="sketch">
-                    <input type="hidden" name="delete_sketch" value="false" class="delete-sketch-input auto-save-input">
-                </div>
-            </td>
-        `;
-
-        $row.html(html);
-
-        const customHtml = `
-            <tr id="custom-row-${itemId}" class="edit-mode custom-heights-row d-none">
-                <td class="bg-light fw-bold small text-center">גובה מותאם</td>
-                <td colspan="7">
-                    <div class="d-flex gap-2 p-1 align-items-center">
-                        <div class="input-group input-group-sm"><span class="input-group-text">מנעול</span><input type="text" class="form-control numeric-input auto-save-input" name="custom_lock_height" value="${customLockHeight}"></div>
-                        <div class="input-group input-group-sm"><span class="input-group-text">ציר 1</span><input type="text" class="form-control numeric-input auto-save-input" name="custom_hinge1" value="${customHinge1}"></div>
-                        <div class="input-group input-group-sm"><span class="input-group-text">ציר 2</span><input type="text" class="form-control numeric-input auto-save-input" name="custom_hinge2" value="${customHinge2}"></div>
-                        <div class="input-group input-group-sm"><span class="input-group-text">ציר 3</span><input type="text" class="form-control numeric-input auto-save-input" name="custom_hinge3" value="${customHinge3}"></div>
-                        <div class="input-group input-group-sm"><span class="input-group-text">ציר 4</span><input type="text" class="form-control numeric-input auto-save-input" name="custom_hinge4" value="${customHinge4}"></div>
-                        <div class="input-group input-group-sm"><span class="input-group-text">ציר 5</span><input type="text" class="form-control numeric-input auto-save-input" name="custom_hinge5" value="${customHinge5}"></div>
-                    </div>
-                </td>
-                <td class="no-print"></td>
-            </tr>
-        `;
-        $row.after(customHtml);
-
-        if (window.initTooltips) {
-            window.initTooltips($row[0]);
-        }
-        $row.find('input[name="width"]').focus();
     });
 
-    // Глобальный клик для закрытия (с защитой от мгновенного срабатывания)
+    // 4. Нажатие клавиши Enter внутри полей ввода
+    $(document).on('keydown', '.edit-mode input, .edit-mode select', function (e) {
+        if (e.which === 13) {
+            e.preventDefault();
+            const $currentInput = $(this);
+            const $row = $currentInput.closest('tr').hasClass('custom-heights-row')
+                ? $currentInput.closest('tr').prev('tr.item-row')
+                : $currentInput.closest('tr.item-row');
+
+            // Поиск следующей строки таблицы
+            const $allRows = $('.item-row');
+            const currentIndex = $allRows.index($row);
+            const $nextRow = (currentIndex >= 0 && currentIndex + 1 < $allRows.length)
+                ? $allRows.eq(currentIndex + 1)
+                : null;
+
+            saveRowAndClose($row, function () {
+                if ($nextRow && $nextRow.length && $nextRow.attr('data-can-edit') === 'true' && !$nextRow.hasClass('row-locked')) {
+                    openEditMode($nextRow);
+                }
+            });
+        }
+    });
+
+    // Клик мимо записей: сохраняем и сворачиваем редактируемую строку
     $(document).on('click', function (e) {
-        const $target = $(e.target);
-        const $activeRow = $('.edit-mode');
+        const $activeRow = $('.item-row.edit-mode');
+        if (!$activeRow.length) return;
 
-        if ($activeRow.length === 0) return;
-
-        // Проверяем, прошло ли хотя бы 300мс с момента открытия строки (защита от гонки событий)
-        const openedAt = parseInt($activeRow.attr('data-opened-at') || '0', 10);
-        if (Date.now() - openedAt < 300) {
-            return;
-        }
-
-        if ($target.closest('.edit-mode, .custom-heights-row, .btn-toggle-custom, .btn-sketch-upload, .sketch-file-input, .tooltip').length === 0) {
-            console.log("🚪 Закрываем строку по клику в пустоту");
-            closeEditMode($activeRow);
+        // Защита от закрытия при клике внутри активной строки, выпадающих окон, дропдаунов и пикеров
+        if ($(e.target).closest('.edit-mode, .custom-heights-row, .tooltip, .modal').length === 0) {
+            saveRowAndClose($activeRow);
         }
     });
 
+    // Переключение строки нестандартных высот (замки/петли)
     $(document).on('click', '.btn-toggle-custom', function (e) {
         e.stopPropagation();
-        const itemId = $(this).closest('tr').data('item-id');
+        const itemId = $(this).closest('tr').attr('data-item-id');
         $(`#custom-row-${itemId}`).toggleClass('d-none');
     });
 
+    // Загрузка чертежа
     $(document).on('click', '.btn-sketch-upload', function (e) {
         e.stopPropagation();
         $(this).closest('div').find('.sketch-file-input').click();
     });
 
+    $(document).on('change', '.sketch-file-input', function () {
+        if (this.files && this.files[0]) {
+            $(this).prevAll('.btn-sketch-upload').removeClass('btn-outline-primary').addClass('btn-primary');
+        }
+    });
+
+    // Удаление чертежа
     $(document).on('click', '.btn-sketch-delete', function (e) {
         e.stopPropagation();
         const $container = $(this).closest('div');
-        const $deleteInput = $container.find('.delete-sketch-input');
-        $deleteInput.val('true');
+        $container.find('.delete-sketch-input').val('true');
         $container.find('.btn-sketch-upload').removeClass('btn-primary').addClass('btn-outline-primary');
         $(this).remove();
-        $deleteInput.trigger('change');
     });
 
-    // Автосохранение
-    let saveTimeout;
-    $(document).on('change', '.auto-save-input', function () {
-        const $input = $(this);
-        const $row = $input.closest('tr').hasClass('custom-heights-row')
-            ? $input.closest('tr').prev('tr')
-            : $input.closest('tr');
-
-        const itemId = $row.data('item-id');
-        const inputEl = $input[0];
-
-        if (inputEl && inputEl.type === 'file') {
-            const file = inputEl.files[0];
-            if (file) {
-                $input.prev('.btn-sketch-upload').removeClass('btn-outline-primary').addClass('btn-primary');
-            }
-        } else {
-            $input.addClass('border-warning bg-warning bg-opacity-10');
-        }
-
-        clearTimeout(saveTimeout);
-        saveTimeout = setTimeout(function () {
-
-            const formData = new FormData();
-            const $customRow = $(`#custom-row-${itemId}`);
-
-            $row.find('input, select').each(function () {
-                const curInput = this;
-                if (curInput.type === 'file') {
-                    if (curInput.files[0]) formData.append('sketch', curInput.files[0]);
-                } else if (curInput.className.includes('delete-sketch-input')) {
-                    formData.append('delete_sketch', $(curInput).val());
-                } else if (curInput.name) {
-                    formData.append(curInput.name, $(curInput).val());
-                }
-            });
-
-            if ($customRow.length) {
-                $customRow.find('input').each(function () {
-                    const curCustomInput = this;
-                    if (curCustomInput.name) formData.append(curCustomInput.name, $(curCustomInput).val());
-                });
-            }
-
-            $.ajax({
-                url: `/orders/items/${itemId}/update-measurements/`,
-                method: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                headers: {'X-CSRFToken': config.csrfToken},
-                success: function (response) {
-                    if (response.status === 'ok') {
-                        $('.auto-save-input.border-warning').removeClass('border-warning bg-warning bg-opacity-10').addClass('border-success bg-success bg-opacity-10');
-                        setTimeout(() => $('.auto-save-input.border-success').removeClass('border-success bg-success bg-opacity-10'), 1500);
-
-                        $row.data('width', formatNum(formData.get('width')));
-                        $row.data('height', formatNum(formData.get('height')));
-                        $row.data('wall', formatNum(formData.get('wall')));
-                        $row.data('opening', formData.get('opening'));
-                        $row.data('direction', formData.get('direction'));
-                        $row.data('place', formData.get('place'));
-                        $row.data('bottom-correction', formatNum(formData.get('bottom_correction')));
-                        $row.data('comment', formData.get('comment'));
-
-                        if (response.sketch_url) $row.data('sketch-url', response.sketch_url);
-                        else if (formData.get('delete_sketch') === 'true') $row.data('sketch-url', '');
-
-                        const customFields = ['custom_lock_height', 'custom_hinge1', 'custom_hinge2', 'custom_hinge3', 'custom_hinge4', 'custom_hinge5'];
-                        customFields.forEach(f => {
-                            $row.data(f.replace(/_/g, '-'), formatNum(formData.get(f)));
-                        });
-                    }
-                }
-            });
-
-        }, 400);
-    });
-
-    // Клик вне формы редактирования сворачивает строку
-    $(document).on('click', function (e) {
-        const $target = $(e.target);
-        if ($target.closest('.edit-mode, .custom-heights-row, .clickable-row, .btn-toggle-custom, .btn-sketch-upload, .sketch-file-input, .tooltip').length === 0) {
-            closeEditMode($('.edit-mode'));
-        }
-    });
-
+    // Дублирование данных на остальные строки группы
     $(document).on('click', '.btn-duplicate', function (e) {
         e.stopPropagation();
         const $row = $(this).closest('tr');
-        const itemId = $row.data('item-id');
+        const itemId = $row.attr('data-item-id');
         const $customRow = $(`#custom-row-${itemId}`);
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', config.csrfToken);
@@ -431,10 +468,7 @@ $(document).ready(function () {
 
         if ($customRow.length) {
             $customRow.find('input').each(function () {
-                const curCustomInput = this;
-                if (curCustomInput.name) {
-                    formData.append(curCustomInput.name, $(curCustomInput).val());
-                }
+                if (this.name) formData.append(this.name, $(this).val());
             });
         }
 
@@ -451,26 +485,18 @@ $(document).ready(function () {
             contentType: false,
             headers: {'X-CSRFToken': config.csrfToken},
             success: function (response) {
-                if (response.status === 'ok') location.reload();
-                else {
+                if (response.status === 'ok') {
+                    location.reload();
+                } else {
                     alert(response.message || 'שגיאה בשכפול הנתונים');
                     $btnDup.prop('disabled', false).html('<i class="bi bi-files"></i>');
                 }
+            },
+            error: function () {
+                alert('שגיאת תקשורת עם השרת');
+                $btnDup.prop('disabled', false).html('<i class="bi bi-files"></i>');
             }
         });
-    });
-
-    // Enter сохраняет и закрывает строку
-    $(document).on('keypress', 'input', function (e) {
-        if (e.which === 13) {
-            e.preventDefault();
-            const $input = $(this);
-            const $row = $input.closest('tr').hasClass('custom-heights-row')
-                ? $input.closest('tr').prev('tr')
-                : $input.closest('tr');
-            $input.blur();
-            closeEditMode($row);
-        }
     });
 
 });

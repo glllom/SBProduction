@@ -24,7 +24,6 @@ class ProductType(models.Model):
 
 
 class ProductFamily(models.Model):
-
     class AllowedDirection(models.TextChoices):
         BOTH = 'BOTH', 'Both directions (In / Out)'
         IN_ONLY = 'IN_ONLY', 'Inward only (In)'
@@ -146,6 +145,11 @@ class Series(models.Model):
 
 
 class Front(models.Model):
+    class FinishType(models.TextChoices):
+        PAINT = 'PAINT', 'יש צבע (צביעה בתנור)'
+        NO_PAINT = 'NO_PAINT', 'ללא צבע (בסיס / גלם)'
+        FORMICA = 'FORMICA', 'פורמייקה (HPL)'
+
     series = models.ForeignKey(
         Series,
         on_delete=models.CASCADE,
@@ -156,6 +160,13 @@ class Front(models.Model):
     code = models.CharField('קוד/SKU', max_length=50, blank=True)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
+
+    finish_type = models.CharField(
+        'סוג גימור',
+        max_length=20,
+        choices=FinishType.choices,
+        default=FinishType.PAINT
+    )
 
     class Meta:
         verbose_name = 'חזית'
@@ -365,7 +376,6 @@ class ProductModel(models.Model):
         related_name='required_for_products',
         verbose_name='קסטומייזרים חובה'
     )
-
 
     class Meta:
         verbose_name = 'מוצר'

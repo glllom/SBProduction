@@ -9,14 +9,19 @@ from .models import Order, OrderItemsGroup, OrderItemsGroupCustomizer, OrderItem
 
 class TooltipSelect(forms.Select):
     """
-    Select a widget that extracts description/help_text from Model instances
-    and adds 'title' and 'data-description' attributes to each <option>.
+    Select widget that extracts description/help_text and finish_type from Model instances
+    and adds them as data-attributes to each <option>.
     """
 
     def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
         option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
         instance = getattr(value, 'instance', None)
         if instance:
+            # 1. Системный проброс типа отделки для Front
+            if hasattr(instance, 'finish_type'):
+                option['attrs']['data-finish-type'] = instance.finish_type
+
+            # 2. Тултипы и описания
             desc = (
                     getattr(instance, 'description', None) or
                     getattr(instance, 'help_text', None) or
@@ -292,8 +297,20 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+        front = cleaned_data.get('front')
         diff_sides = cleaned_data.get('is_door_inside_different_color')
         c_out = cleaned_data.get('color_panel_outside')
+
+        finish_type = getattr(front, 'finish_type', Front.FinishType.PAINT) if front else Front.FinishType.PAINT
+
+        if finish_type == Front.FinishType.NO_PAINT:
+            cleaned_data['color_panel_outside'] = ''
+            cleaned_data['color_panel_inside'] = ''
+            cleaned_data['is_door_inside_different_color'] = False
+        else:
+            if not diff_sides:
+                cleaned_data['color_panel_inside'] = c_out
+                cleaned_data['is_door_inside_different_color'] = False
 
         # Если тумблер выключен, дублируем наружный цвет внутрь
         if not diff_sides:
@@ -550,15 +567,28 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
                     cleaned_data['frame_paint_option'] = self.instance.frame_paint_option
                     cleaned_data['color_frames'] = self.instance.color_frames
 
-        # Нормализация покраски полотна
-        panel_paint = cleaned_data.get('panel_paint_option')
-        if panel_paint != OrderItemsGroup.PaintOption.SPECIAL_COLOR:
+        front = cleaned_data.get('front')
+        finish_type = getattr(front, 'finish_type', Front.FinishType.PAINT) if front else Front.FinishType.PAINT
+
+        if finish_type == Front.FinishType.NO_PAINT:
+            cleaned_data['panel_paint_option'] = OrderItemsGroup.PaintOption.NO_PAINT
             cleaned_data['color_panel_outside'] = ''
             cleaned_data['color_panel_inside'] = ''
             cleaned_data['is_door_inside_different_color'] = False
-        else:
+        elif finish_type == Front.FinishType.FORMICA:
+            cleaned_data['panel_paint_option'] = OrderItemsGroup.PaintOption.SPECIAL_COLOR
             if not cleaned_data.get('is_door_inside_different_color'):
                 cleaned_data['color_panel_inside'] = cleaned_data.get('color_panel_outside')
+        else:
+            # Стандартная логика для крашеных полотен (PAINT)
+            panel_paint = cleaned_data.get('panel_paint_option')
+            if panel_paint != OrderItemsGroup.PaintOption.SPECIAL_COLOR:
+                cleaned_data['color_panel_outside'] = ''
+                cleaned_data['color_panel_inside'] = ''
+                cleaned_data['is_door_inside_different_color'] = False
+            else:
+                if not cleaned_data.get('is_door_inside_different_color'):
+                    cleaned_data['color_panel_inside'] = cleaned_data.get('color_panel_outside')
 
         # Нормализация покраски коробки
         frame_paint = cleaned_data.get('frame_paint_option')

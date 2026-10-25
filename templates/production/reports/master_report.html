@@ -1,32 +1,17 @@
-<!DOCTYPE html>
-<html lang="he" dir="rtl">
-    <head>
-        <meta charset="UTF-8">
-        <title>מאסטר דו''ח ייצור - הזמנה {{ order.order_number }}</title>
-        <!-- Bootstrap 5 RTL CSS -->
-        <link rel="stylesheet"
-              href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
-        <!-- Bootstrap Icons -->
-        <link rel="stylesheet"
-              href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-        <!-- Google Fonts -->
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-              rel="stylesheet">
-        {% load static %}
-        <link rel="stylesheet" href="{% static 'css/style_reports.css' %}">
-    </head>
-    <body>
-        <div class="no-print">
-            <button onclick="window.print()" class="btn">הדפס את כל הדו''חות</button>
-            <button onclick="window.close()" class="btn btn-secondary">סגור</button>
+{% extends "production/reports/base_report.html" %}
+{% block title %}מאסטר דו''ח ייצור - הזמנה {{ order.order_number }}{% endblock %}
+{% block print_button_text %}הדפס את כל הדו''חות{% endblock %}
+{% block content %}
+    {% for section in sections %}
+        <div class="page mb-4 {% if section.is_portrait %}portrait{% else %}landscape{% endif %}">
+            {% include section.include_template with order_spec=section.order_spec groups_data=section.groups_data enriched_frames_items=section.enriched_frames_items enriched_doors_items=section.enriched_doors_items spec_items=section.spec_items panel_groups=section.panel_groups frame_groups=section.frame_groups hardware_summary=section.hardware_summary facings_data=section.facings_data batches_label=section.batches_label stage_label=stage_label report_label=section.report_label station=section.station order_qr=section.order_qr %}
         </div>
-        {% for section in sections %}
-            <div class="page mb-4">
-                {% include section.include_template with order_spec=section.order_spec groups_data=section.groups_data enriched_frames_items=section.enriched_frames_items enriched_doors_items=section.enriched_doors_items %}
+    {% empty %}
+        <div class="page text-center py-5">
+            <div class="alert alert-warning d-inline-block px-5">
+                <h4>אין דוחות זמינים להדפסה</h4>
+                <p class="mb-0">לא נמצאו תחנות ייצור פעילות עבור הזמנה זו.</p>
             </div>
-            {% if not forloop.last %}
-                <div class="page-break"></div>
-            {% endif %}
-        {% endfor %}
-    </body>
-</html>
+        </div>
+    {% endfor %}
+{% endblock %}

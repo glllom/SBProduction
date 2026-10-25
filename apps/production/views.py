@@ -646,19 +646,43 @@ def station_report(request, pk):
             if station_items or not order.groups.exists():
                 include_template = None
                 code_lower = station.code.lower() if station.code else ''
+                tmpl_lower = (station.template_name or '').lower()
 
                 # Подбор шаблона секции для Мастер-отчета
-                if code_lower in ['frames', 'alum_frames']:
-                    include_template = 'production/includes/report_alum_frames.html'
-                elif code_lower in ['doors', 'alum_doors']:
+                if 'report_wood_frames' in tmpl_lower or 'report_wooden_frames' in tmpl_lower or code_lower in ['wood_frames', 'wooden_frames']:
+                    include_template = 'production/includes/report_wood_frames.html'
+                elif 'report_press' in tmpl_lower or code_lower in ['press', 'cutting_press']:
+                    include_template = 'production/includes/report_press.html'
+                elif 'alum_doors' in tmpl_lower or code_lower in ['doors', 'alum_doors']:
                     include_template = 'production/includes/report_alum_doors.html'
-                elif code_lower in ['cut_sheets', 'sheets']:
+                elif 'alum_frames' in tmpl_lower or code_lower in ['alum_frames', '100']:
+                    include_template = 'production/includes/report_alum_frames.html'
+                elif 'cut_sheets' in tmpl_lower or code_lower in ['cut_sheets', 'sheets']:
                     include_template = 'production/includes/report_cut_sheets.html'
+                elif 'facing' in tmpl_lower or code_lower in ['facing', 'cladding', 'facing_report']:
+                    include_template = 'production/includes/report_facing.html'
+                elif 'warehouse' in tmpl_lower or 'hardware' in tmpl_lower or code_lower in ['warehouse', 'hardware', 'pick_list']:
+                    include_template = 'production/includes/report_warehouse_hardware.html'
+                elif 'carpentry' in tmpl_lower or code_lower in ['carpentry']:
+                    include_template = 'production/includes/report_carpentry.html'
+                elif 'glazing' in tmpl_lower or code_lower in ['glazing']:
+                    include_template = 'production/includes/report_glazing.html'
+                elif code_lower in ['frames']:
+                    if 'wood' in tmpl_lower:
+                        include_template = 'production/includes/report_wood_frames.html'
+                    else:
+                        include_template = 'production/includes/report_alum_frames.html'
+                elif station.template_name:
+                    base_name = station.template_name.split('/')[-1].replace('_report.html', '').replace('.html', '')
+                    if not base_name.startswith('report_'):
+                        base_name = f'report_{base_name}'
+                    include_template = f'production/includes/{base_name}.html'
+
+                if not include_template:
+                    include_template = 'production/includes/report_alum_frames.html'
 
                 # --- ПОДДЕРЖКА ОБЛИЦОВКИ В МАСТЕР-ОТЧЕТЕ ---
-                elif code_lower in ['facing', 'cladding', 'facing_report']:
-                    include_template = 'production/includes/report_facing.html'
-
+                if include_template == 'production/includes/report_facing.html':
                     # Подтягиваем URL картинок из БД для словарей снапшота
                     item_ids = [it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id') for it in
                                 station_items]
@@ -683,15 +707,18 @@ def station_report(request, pk):
                             it.image_url = img_map.get(it_id)
                 # -------------------------------------------
 
-                elif station.template_name:
-                    base_name = station.template_name.split('/')[-1].replace('_report.html', '')
-                    include_template = f'production/includes/report_{base_name}.html'
-
-                if not include_template:
-                    include_template = 'production/includes/report_alum_frames.html'
-
                 enriched_frames = enrich_report_frames_spec(station_items)
                 enriched_doors = enrich_report_doors_spec(station_items)
+                panel_groups = service.prepare_press_groups_data(station_items) if ('report_press' in include_template or code_lower in ['press', 'cutting_press']) else []
+                frame_groups = service.prepare_wood_frames_report_data(station_items) if ('report_wood_frames' in include_template or code_lower in ['wood_frames', 'wooden_frames']) else []
+                hardware_summary = service.get_warehouse_hardware_summary(station_items) if ('warehouse' in include_template or code_lower in ['warehouse', 'hardware', 'pick_list']) else []
+
+                barcode_data = f"{order.order_number};{station.code}"
+                is_portrait = include_template in [
+                    'production/includes/report_press.html',
+                    'production/includes/report_wood_frames.html',
+                    'production/includes/report_wooden_frames.html'
+                ] or code_lower in ['press', 'cutting_press', 'wood_frames', 'wooden_frames']
 
                 sections.append({
                     'station': station,
@@ -702,7 +729,13 @@ def station_report(request, pk):
                     'groups_data': service.prepare_grouped_data(station_items),
                     'enriched_frames_items': enriched_frames,
                     'enriched_doors_items': enriched_doors,
+                    'spec_items': station_items,
+                    'panel_groups': panel_groups,
+                    'frame_groups': frame_groups,
+                    'hardware_summary': hardware_summary,
                     'include_template': include_template,
+                    'order_qr': get_qr_base64(barcode_data),
+                    'is_portrait': is_portrait,
                 })
 
         return render(request, 'production/reports/master_report.html', {

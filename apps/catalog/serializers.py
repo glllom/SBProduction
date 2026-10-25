@@ -12,7 +12,7 @@ class SeriesSerializer(serializers.ModelSerializer):
 class FrontSerializer(serializers.ModelSerializer):
     class Meta:
         model = Front
-        fields = ['id', 'series', 'name', 'code', 'description']
+        fields = ['id', 'series', 'name', 'code', 'description', 'finish_type']
 
 
 class FrameColorSerializer(serializers.ModelSerializer):
@@ -35,7 +35,8 @@ class ProductFamilySerializer(serializers.ModelSerializer):
 
 class ProductModelSerializer(serializers.ModelSerializer):
     available_frames = serializers.SerializerMethodField()
-    supports_split_installation = serializers.BooleanField(source='product_family.supports_split_installation', read_only=True)
+    supports_split_installation = serializers.BooleanField(source='product_family.supports_split_installation',
+                                                           read_only=True)
 
     class Meta:
         model = ProductModel
@@ -47,6 +48,7 @@ class ProductModelSerializer(serializers.ModelSerializer):
     @staticmethod
     def get_available_frames(obj):
         return MaterialSerializer(obj.available_frames, many=True).data
+
 
 class HardwareSerializer(serializers.ModelSerializer):
     class Meta:

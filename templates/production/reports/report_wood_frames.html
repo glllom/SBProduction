@@ -1,108 +1,20 @@
-{% extends "base.html" %}
+{% extends "production/reports/base_report.html" %}
 {% block title %}דו"ח משקופי עץ - הזמנה {{ order.order_number }}{% endblock %}
+{% block body_class %}portrait{% endblock %}
+{% block extra_css %}
+    <style>
+    @page {
+        size: A4 portrait;
+        margin: 10mm;
+    }
+    @media print {
+        @page {
+            size: A4 portrait !important;
+            margin: 10mm;
+        }
+    }
+    </style>
+{% endblock %}
 {% block content %}
-    <div class="report-header mb-3">
-        <div class="row align-items-center">
-            <div class="col-8">
-                <h2 class="mb-1">דו"ח משקופי עץ (משקופים)</h2>
-                <div class="text-muted">
-                    הזמנה: <strong>{{ order.order_number }}</strong> |
-                    לקוח: <strong>{{ order.client_name|default:order.customer }}</strong> |
-                    תאריך: <strong>{{ now|date:"d/m/Y H:i" }}</strong>
-                </div>
-            </div>
-            <div class="col-4 text-end">
-                {% if order_qr %}
-                    <img src="data:image/svg+xml;base64,{{ order_qr }}"
-                         alt="QR"
-                         style="height: 65px">
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    {% for grp in frame_groups %}
-        <div class="frame-group-block page-break-inside-avoid mb-4 border rounded p-3">
-            <!-- Шапка группы характеристик -->
-            <div class="frame-header-box bg-light border p-2 mb-3">
-                <div class="row">
-                    <div class="col-7">
-                        <strong>דגם:</strong> {{ grp.product_name }} {{ grp.series }} |
-                        <strong>משקוף:</strong> {{ grp.frame_type }} |
-                        <strong>הלבשה:</strong> {{ grp.door_casing }} |
-                        <strong>גוון:</strong> {{ grp.color_frames }}
-                    </div>
-                    <div class="col-5 text-end">
-                        <strong>מנעול:</strong>
-                        {{ grp.lock_name }}{% if grp.lock_height %} ({{ grp.lock_height }}){% endif %} |
-                        <strong>צירים:</strong> {{ grp.hinge_name }}
-                        {% if grp.hinge_heights %}
-                            ({{ grp.hinge_heights|join:", " }})
-                        {% endif %}
-                    </div>
-                </div>
-                {% if grp.customizers_title %}
-                    <div class="mt-1 text-primary small">
-                        <strong>תוספות / קסטומייזרים:</strong> {{ grp.customizers_title }}
-                    </div>
-                {% endif %}
-            </div>
-            <!-- Две таблицы: сводная матрица проёмов и попозиционный список -->
-            <div class="row">
-                <!-- Сводная по исходным замерам проёма (H x W x T) -->
-                <div class="col-md-5">
-                    <h6 class="text-muted fw-bold">ריכוז מידות פתח (חיצוני)</h6>
-                    <table class="table table-sm table-bordered text-center align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th>גובה (H)</th>
-                                <th>רוחב (W)</th>
-                                <th>עובי קיר (T)</th>
-                                <th>כמות</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for sz in grp.aggregated_sizes %}
-                                <tr>
-                                    <td>{{ sz.height }}</td>
-                                    <td>{{ sz.width }}</td>
-                                    <td>{{ sz.wall|default:"-" }}</td>
-                                    <td class="fw-bold">{{ sz.qty }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <!-- Попозиционный перечень -->
-                <div class="col-md-7">
-                    <h6 class="text-muted fw-bold">פירוט פריטים</h6>
-                    <table class="table table-sm table-bordered text-center align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th>#</th>
-                                <th>מיקום</th>
-                                <th>מידות פתח</th>
-                                <th>כיוון</th>
-                                <th>פתיחה</th>
-                                <th>הערות</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for it in grp.items %}
-                                <tr>
-                                    <td class="fw-bold">{{ it.mark }}</td>
-                                    <td>{{ it.place|default:"" }}</td>
-                                    <td>{{ it.height }} × {{ it.width }} × {{ it.wall|default:"-" }}</td>
-                                    <td>{{ it.direction|default:"" }}</td>
-                                    <td>{{ it.opening|default:"" }}</td>
-                                    <td>{{ it.comment|default:"" }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    {% empty %}
-        <div class="alert alert-warning text-center">לא נמצאו משקופי עץ עבור הזמנה זו.</div>
-    {% endfor %}
+    <div class="page portrait">{% include "production/includes/report_wood_frames.html" %}</div>
 {% endblock %}
