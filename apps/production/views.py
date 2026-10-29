@@ -25,6 +25,7 @@ from .services import (
     OrderValidationError,
     TechnicalSpecService, get_qr_base64,
 )
+from .tracking_services import StationTrackingService
 from .usb_sync import run_usb_sync
 
 
@@ -164,136 +165,16 @@ def enrich_report_frames_spec(items):
 def order_transfer_to_production(request, pk):
     """
     Unified entry point for production launch:
-    - From PHASE1_READY (GET): displays measurement entry form with gross heights.
-    - From PHASE1_READY (POST): converts input gross heights to net values, saves and starts Phase 2.
+    - From PHASE1_READY (GET): displays measurement entry form with gross heights and inner dimensions.
+    - From PHASE1_READY (POST): adds frame deltas to inner dimensions, saves nominal kit sizes and starts Phase 2.
     - From NEW / reorder: immediately launches production in 1-click.
     """
     order = get_object_or_404(Order, pk=pk)
 
     if order.status == OrderStatus.PHASE1_READY:
-        if order.status == OrderStatus.PHASE1_READY:
-            if request.method == 'POST':
-                with transaction.atomic():
-                    # 1. Сохраняем правки по существующим позициям из формы
-                    items_by_id = {
-                        item.id: item for item in OrderItem.objects.filter(
-                            group__order=order
-                        ).select_related('group__product__product_family').exclude(
-                            group__production_state__in=[
-                                OrderItemsGroup.ProductionState.WAITING,
-                                OrderItemsGroup.ProductionState.CANCELED,
-                            ]
-                        )
-                    }
-                    change_logs = []
-
-                    for item_id, order_item in items_by_id.items():
-                        modified = False
-                        mark = order_item.mark or str(item_id)
-
-                        top_clearance = 0.3
-                        if order_item.group and order_item.group.product and order_item.group.product.product_family:
-                            raw_cl = order_item.group.product.product_family.leaf_top_clearance
-                            if raw_cl is not None:
-                                top_clearance = abs(float(raw_cl))
-
-                        for field in ['height', 'width', 'wall']:
-                            key = f"item_{item_id}_{field}"
-                            if key in request.POST:
-                                try:
-                                    val = request.POST.get(key)
-                                    new_val = float(val) if val else None
-                                    old_val = float(getattr(order_item, field)) if getattr(order_item, field) else None
-                                    if new_val != old_val:
-                                        setattr(order_item, field, new_val)
-                                        modified = True
-                                        change_logs.append(OrderChangeLog(
-                                            order=order,
-                                            user=request.user,
-                                            field_name=f"Item {mark} {field.capitalize()}",
-                                            old_value=str(old_val) if old_val is not None else "None",
-                                            new_value=str(new_val) if new_val is not None else "None"
-                                        ))
-                                except (ValueError, TypeError):
-                                    pass
-
-                        lh_key = f"item_{item_id}_lock_height"
-                        if lh_key in request.POST:
-                            try:
-                                val = request.POST.get(lh_key)
-                                gross_lh = float(val) if val else None
-                                new_lh = round(gross_lh - top_clearance, 2) if gross_lh is not None else None
-                                old_lh = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
-                                if new_lh != old_lh:
-                                    order_item.custom_lock_height = new_lh
-                                    modified = True
-                                    change_logs.append(OrderChangeLog(
-                                        order=order,
-                                        user=request.user,
-                                        field_name=f"Item {mark} Lock Height",
-                                        old_value=str(old_lh) if old_lh is not None else "None",
-                                        new_value=str(new_lh) if new_lh is not None else "None"
-                                    ))
-                            except (ValueError, TypeError):
-                                pass
-
-                        for i in range(1, 6):
-                            hh_key = f"item_{item_id}_hinge_height_{i - 1}"
-                            field_name = f"custom_hinge{i}"
-                            if hh_key in request.POST:
-                                try:
-                                    val = request.POST.get(hh_key)
-                                    gross_hh = float(val) if val else None
-                                    new_hh = round(gross_hh - top_clearance, 2) if gross_hh is not None else None
-                                    old_hh = float(getattr(order_item, field_name)) if getattr(order_item,
-                                                                                               field_name) else None
-                                    if new_hh != old_hh:
-                                        setattr(order_item, field_name, new_hh)
-                                        modified = True
-                                        change_logs.append(OrderChangeLog(
-                                            order=order,
-                                            user=request.user,
-                                            field_name=f"Item {mark} Hinge {i}",
-                                            old_value=str(old_hh) if old_hh is not None else "None",
-                                            new_value=str(new_hh) if new_hh is not None else "None"
-                                        ))
-                                except (ValueError, TypeError):
-                                    pass
-
-                        if modified:
-                            order_item.save()
-
-                    if change_logs:
-                        OrderChangeLog.objects.bulk_create(change_logs)
-
-                    # 2. Обрабатываем новые группы (если менеджер добавил их в статус NEW перед переходом)
-                    new_groups = order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW)
-                    if new_groups.exists():
-                        released_batch = order.current_batch
-                        new_groups.update(
-                            batch_number=released_batch,
-                            production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
-                            batch_date=date.today(),
-                        )
-                        order.current_batch = released_batch + 1
-                        order.save(update_fields=['current_batch'])
-
-                    # 3. Переводим заказ в статус PHASE2_PRODUCTION и перестраиваем кэш спецификации Фазы 2
-                    order.status = OrderStatus.PHASE2_PRODUCTION
-                    order.save(update_fields=['status'])
-
-                    TechnicalSpecService.get_or_build_spec(
-                        order, phase='phase2', force_rebuild=True, user=request.user
-                    )
-
-                messages.success(request, "ההזמנה הועברה לשלב ב' בהצלחה.")
-                return redirect('order-detail', pk=pk)
-
-        # --- GET-запрос: формируем список позиций для формы перевода во вторую фазу ---
+        # Извлекаем элементы Фазы 1 для вычисления дельт коробки (номинал - световой проем)
         try:
             order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
-
-            # Собираем все активные батчи первой фазы (точно так же, как в דוח מדידה)
             valid_groups = order.groups.filter(
                 is_split_installation=True,
                 batch_number__isnull=False
@@ -302,20 +183,170 @@ def order_transfer_to_production(request, pk):
             )
             requested_batches = list(valid_groups.values_list('batch_number', flat=True).distinct())
 
-            # Извлекаем плоский отсортированный список позиций
             raw_items, _ = ProductionDataService.extract_report_items(
                 order_spec,
                 requested_batches=requested_batches
             )
             raw_items = raw_items if raw_items is not None else []
-
         except Exception:
             raw_items = []
 
+        # Словарь дельт: {item_id: {'delta_w': ..., 'delta_h': ...}}
+        item_deltas = {}
+        for it in raw_items:
+            it_id = it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id', None)
+            nom_w = float(it.get('width') if isinstance(it, dict) else getattr(it, 'width', 0.0) or 0.0)
+            nom_h = float(it.get('height') if isinstance(it, dict) else getattr(it, 'height', 0.0) or 0.0)
+            inn_w = float(it.get('inner_width') if isinstance(it, dict) else getattr(it, 'inner_width', 0.0) or nom_w)
+            inn_h = float(it.get('inner_height') if isinstance(it, dict) else getattr(it, 'inner_height', 0.0) or nom_h)
+
+            item_deltas[it_id] = {
+                'delta_w': nom_w - inn_w,
+                'delta_h': nom_h - inn_h,
+            }
+
+        if request.method == 'POST':
+            with transaction.atomic():
+                # 1. Сохраняем правки по существующим позициям из формы
+                items_by_id = {
+                    item.id: item for item in OrderItem.objects.filter(
+                        group__order=order
+                    ).select_related('group__product__product_family').exclude(
+                        group__production_state__in=[
+                            OrderItemsGroup.ProductionState.WAITING,
+                            OrderItemsGroup.ProductionState.CANCELED,
+                        ]
+                    )
+                }
+                change_logs = []
+
+                for item_id, order_item in items_by_id.items():
+                    modified = False
+                    mark = order_item.mark or str(item_id)
+                    deltas = item_deltas.get(item_id, {'delta_w': 0.0, 'delta_h': 0.0})
+
+                    top_clearance = 0.3
+                    if order_item.group and order_item.group.product and order_item.group.product.product_family:
+                        raw_cl = order_item.group.product.product_family.leaf_top_clearance
+                        if raw_cl is not None:
+                            top_clearance = abs(float(raw_cl))
+
+                    # Сохранение габаритов: к замеренному внутреннему размеру прибавляем дельту
+                    for field in ['height', 'width', 'wall']:
+                        # Проверяем оба варианта ключей из формы (item_1_width или item_1_inner_width)
+                        key = f"item_{item_id}_{field}"
+                        inner_key = f"item_{item_id}_inner_{field}"
+                        val = request.POST.get(inner_key) if inner_key in request.POST else request.POST.get(key)
+
+                        if val is not None and val.strip() != '':
+                            try:
+                                measured_val = float(val)
+
+                                if field == 'width':
+                                    new_val = round(measured_val + deltas['delta_w'], 1)
+                                elif field == 'height':
+                                    new_val = round(measured_val + deltas['delta_h'], 1)
+                                else:
+                                    new_val = measured_val
+
+                                old_val = float(getattr(order_item, field)) if getattr(order_item, field) else None
+                                if new_val != old_val:
+                                    setattr(order_item, field, new_val)
+                                    modified = True
+                                    change_logs.append(OrderChangeLog(
+                                        order=order,
+                                        user=request.user,
+                                        field_name=f"Item {mark} {field.capitalize()}",
+                                        old_value=str(old_val) if old_val is not None else "None",
+                                        new_value=str(new_val) if new_val is not None else "None"
+                                    ))
+                            except (ValueError, TypeError):
+                                pass
+
+                    lh_key = f"item_{item_id}_lock_height"
+                    if lh_key in request.POST:
+                        try:
+                            val = request.POST.get(lh_key)
+                            gross_lh = float(val) if val else None
+                            new_lh = round(gross_lh - top_clearance, 2) if gross_lh is not None else None
+                            old_lh = float(order_item.custom_lock_height) if order_item.custom_lock_height else None
+                            if new_lh != old_lh:
+                                order_item.custom_lock_height = new_lh
+                                modified = True
+                                change_logs.append(OrderChangeLog(
+                                    order=order,
+                                    user=request.user,
+                                    field_name=f"Item {mark} Lock Height",
+                                    old_value=str(old_lh) if old_lh is not None else "None",
+                                    new_value=str(new_lh) if new_lh is not None else "None"
+                                ))
+                        except (ValueError, TypeError):
+                            pass
+
+                    for i in range(1, 6):
+                        hh_key = f"item_{item_id}_hinge_height_{i - 1}"
+                        field_name = f"custom_hinge{i}"
+                        if hh_key in request.POST:
+                            try:
+                                val = request.POST.get(hh_key)
+                                gross_hh = float(val) if val else None
+                                new_hh = round(gross_hh - top_clearance, 2) if gross_hh is not None else None
+                                old_hh = float(getattr(order_item, field_name)) if getattr(order_item,
+                                                                                           field_name) else None
+                                if new_hh != old_hh:
+                                    setattr(order_item, field_name, new_hh)
+                                    modified = True
+                                    change_logs.append(OrderChangeLog(
+                                        order=order,
+                                        user=request.user,
+                                        field_name=f"Item {mark} Hinge {i}",
+                                        old_value=str(old_hh) if old_hh is not None else "None",
+                                        new_value=str(new_hh) if new_hh is not None else "None"
+                                    ))
+                            except (ValueError, TypeError):
+                                pass
+
+                    if modified:
+                        order_item.save()
+
+                if change_logs:
+                    OrderChangeLog.objects.bulk_create(change_logs)
+
+                # 2. Обрабатываем новые группы (если менеджер добавил их в статус NEW перед переходом)
+                new_groups = order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW)
+                if new_groups.exists():
+                    released_batch = order.current_batch or 1
+                    new_groups.update(
+                        batch_number=released_batch,
+                        production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
+                        batch_date=date.today(),
+                    )
+                    order.current_batch = released_batch + 1
+                    order.save(update_fields=['current_batch'])
+
+                # 3. Переводим заказ в статус PHASE2_PRODUCTION
+                order.status = OrderStatus.PHASE2_PRODUCTION
+                order.save(update_fields=['status'])
+
+                # 4. Инициализация трекинга станций для партий Фазы 2
+                active_phase2_groups = order.groups.exclude(
+                    production_state=OrderItemsGroup.ProductionState.CANCELED
+                )
+                for group in active_phase2_groups:
+                    StationTrackingService.initialize_batch_progress(group)
+
+                # 5. Перестраиваем кэш спецификации Фазы 2
+                TechnicalSpecService.get_or_build_spec(
+                    order, phase='phase2', force_rebuild=True, user=request.user
+                )
+
+            messages.success(request, "ההזמנה הועברה לשלב ב' בהצלחה.")
+            return redirect('order-detail', pk=pk)
+
+        # --- GET-запрос: формируем список позиций для формы перевода во вторую фазу ---
         items_data = []
 
         for item in raw_items:
-            # Превращаем объект/словарь в словарь для удобства шаблона
             item_copy = dict(item) if isinstance(item, dict) else {
                 'item_id': getattr(item, 'item_id', None),
                 'mark': getattr(item, 'mark', ''),
@@ -344,8 +375,7 @@ def order_transfer_to_production(request, pk):
             if item_copy.get('hinge_heights_on_frame'):
                 gross_hinges = [h for h in item_copy['hinge_heights_on_frame'] if h is not None]
             elif item_copy.get('hinge_heights'):
-                gross_hinges = [round(float(h) + top_clearance, 2) for h in item_copy['hinge_heights'] if
-                                h is not None]
+                gross_hinges = [round(float(h) + top_clearance, 2) for h in item_copy['hinge_heights'] if h is not None]
 
             item_copy['padded_hinges'] = (list(gross_hinges) + [None] * 5)[:5]
             items_data.append(item_copy)
@@ -363,7 +393,7 @@ def order_transfer_to_production(request, pk):
                 'application/json' in request.headers.get('Accept', '')
         )
         if is_ajax:
-            released_batch = order.current_batch - 1
+            released_batch = (order.current_batch or 2) - 1
             master_url = f"{reverse('production:station-report', kwargs={'pk': pk})}?station=ALL&batch={released_batch}"
             return JsonResponse({
                 'status': 'ok',
@@ -649,7 +679,8 @@ def station_report(request, pk):
                 tmpl_lower = (station.template_name or '').lower()
 
                 # Подбор шаблона секции для Мастер-отчета
-                if 'report_wood_frames' in tmpl_lower or 'report_wooden_frames' in tmpl_lower or code_lower in ['wood_frames', 'wooden_frames']:
+                if 'report_wood_frames' in tmpl_lower or 'report_wooden_frames' in tmpl_lower or code_lower in [
+                    'wood_frames', 'wooden_frames']:
                     include_template = 'production/includes/report_wood_frames.html'
                 elif 'report_press' in tmpl_lower or code_lower in ['press', 'cutting_press']:
                     include_template = 'production/includes/report_press.html'
@@ -661,7 +692,8 @@ def station_report(request, pk):
                     include_template = 'production/includes/report_cut_sheets.html'
                 elif 'facing' in tmpl_lower or code_lower in ['facing', 'cladding', 'facing_report']:
                     include_template = 'production/includes/report_facing.html'
-                elif 'warehouse' in tmpl_lower or 'hardware' in tmpl_lower or code_lower in ['warehouse', 'hardware', 'pick_list']:
+                elif 'warehouse' in tmpl_lower or 'hardware' in tmpl_lower or code_lower in ['warehouse', 'hardware',
+                                                                                             'pick_list']:
                     include_template = 'production/includes/report_warehouse_hardware.html'
                 elif 'carpentry' in tmpl_lower or code_lower in ['carpentry']:
                     include_template = 'production/includes/report_carpentry.html'
@@ -709,9 +741,14 @@ def station_report(request, pk):
 
                 enriched_frames = enrich_report_frames_spec(station_items)
                 enriched_doors = enrich_report_doors_spec(station_items)
-                panel_groups = service.prepare_press_groups_data(station_items) if ('report_press' in include_template or code_lower in ['press', 'cutting_press']) else []
-                frame_groups = service.prepare_wood_frames_report_data(station_items) if ('report_wood_frames' in include_template or code_lower in ['wood_frames', 'wooden_frames']) else []
-                hardware_summary = service.get_warehouse_hardware_summary(station_items) if ('warehouse' in include_template or code_lower in ['warehouse', 'hardware', 'pick_list']) else []
+                panel_groups = service.prepare_press_groups_data(station_items) if (
+                        'report_press' in include_template or code_lower in ['press', 'cutting_press']) else []
+                frame_groups = service.prepare_wood_frames_report_data(station_items) if (
+                        'report_wood_frames' in include_template or code_lower in ['wood_frames',
+                                                                                   'wooden_frames']) else []
+                hardware_summary = service.get_warehouse_hardware_summary(station_items) if (
+                        'warehouse' in include_template or code_lower in ['warehouse', 'hardware',
+                                                                          'pick_list']) else []
 
                 barcode_data = f"{order.order_number};{station.code}"
                 is_portrait = include_template in [

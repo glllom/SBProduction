@@ -1,6 +1,9 @@
 from django.contrib import admin
+from django.db import models
+from django_json_widget.widgets import JSONEditorWidget
 
 from apps.production.models import ProductTechnicalData, BOM
+from .models import Customizer
 from .models import (
     ProductType,
     ProductFamily,
@@ -138,103 +141,8 @@ class ProductAdmin(admin.ModelAdmin):
     inlines = [BOMInline, ProductTechnicalDataInline]
 
 
-from django.contrib import admin
-from .models import Customizer
-
-
 @admin.register(Customizer)
 class CustomizerAdmin(admin.ModelAdmin):
-    # Fields displayed in the list
-    list_display = (
-        "code",
-        "name",
-        "tag",
-        "is_required",
-        "active",
-        "hardware",
-    )
-
-    # Quick filter on the right
-    list_filter = (
-        "active",
-        "is_required",
-        "tag",
-        "product_types",
-        "product_families",
-        "product_models",
-    )
-
-    # Search by code and name
-    search_fields = ("code", "name", "description", "tag")
-
-    # Filter horizontal for M2M
-    filter_horizontal = ("product_types", "product_families", "product_models", "materials")
-
-    # Default ordering
-    ordering = ("tag", "code")
-
-    # Grouping fields in the edit form
-    fieldsets = (
-        (
-            "Основная информация",
-            {"fields": ("code", "name", "description", "is_required", "active", "hardware")},
-        ),
-        (
-            "Привязка к каталогу",
-            {
-                "fields": (
-                    "product_types",
-                    "product_families",
-                    "product_models",
-                )
-            },
-        ),
-        (
-            "Настройки движка (Pipeline)",
-            {
-                "fields": ("tag",),
-                "classes": ("collapse",),  # Can be collapsed
-            },
-        ),
-        (
-            "Комплектующие и материалы (Replacement/Addition)",
-            {
-                "fields": ("materials",),
-            },
-        ),
-        (
-            "Параметр 1",
-            {
-                "fields": ("par1_label", "par1_required", 'par1_options', "par1_value", "par1_hint"),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Параметр 2",
-            {
-                "fields": ("par2_label", "par2_required", 'par2_options', "par2_value", "par2_hint"),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Параметр 3",
-            {
-                "fields": ("par3_label", "par3_required", 'par3_options', "par3_value", "par3_hint"),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Параметр 4",
-            {
-                "fields": ("par4_label", "par4_required", 'par4_options', "par4_value", "par4_hint"),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Параметр 5",
-            {
-                "fields": ("par5_label", "par5_required", 'par5_options', "par5_value", "par5_hint"),
-                "classes": ("collapse",),
-            },
-        ),
-    )
+    formfield_overrides = {
+        models.JSONField: {'widget': JSONEditorWidget},
+    }

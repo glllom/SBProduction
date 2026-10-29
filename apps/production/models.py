@@ -69,7 +69,6 @@ class BOM(models.Model):
                                     verbose_name='מסגרת עץ')
     panel_frame_consumption = models.CharField('צריכת מסגרת עץ', max_length=255, default='1', blank=True)
 
-    # В класс BOM:
     filling_preset = models.ForeignKey(
         'PuzzlePreset', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='+', verbose_name='פיקטוגרמה: מילוי'
@@ -352,9 +351,7 @@ class ProductionRoute(models.Model):
         """
         Возвращает итоговый список станций для группы.
         """
-        print(f"\n[DEBUG] === Запуск get_stations_for_group для Группы ID: {group.id} ===")
         if not group.product:
-            print("[DEBUG] ОШИБКА: У группы нет продукта.")
             return []
 
         # 1. Получаем базовые станции
@@ -362,7 +359,6 @@ class ProductionRoute(models.Model):
         station_ids = [s.id for s in stations]
 
         # 2. Перебираем кастомизаторы группы
-        print(f"[DEBUG] Проверка кастомизаторов для группы {group.id}...")
         for gc in group.customizers.all():
             customizer = gc.customizer
 
@@ -662,3 +658,234 @@ class CustomizerPuzzleMapping(models.Model):
 
     def __str__(self):
         return f"{self.customizer.name} -> {self.preset.name if self.preset else 'ללא פיקטוגרמה'}"
+
+
+######################################
+# Tracking orders in production line #
+######################################
+from django.db import models
+from django.conf import settings
+from django.utils import timezone
+
+
+class StationStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Ожидает'
+    IN_PROGRESS = 'IN_PROGRESS', 'В работе'
+    COMPLETED = 'COMPLETED', 'Выполнено'
+    SKIPPED = 'SKIPPED', 'Пропущено'
+
+
+class StationProgressSource(models.TextChoices):
+    MANUAL = 'MANUAL', 'Вручную (диспетчер)'
+    SCANNER = 'SCANNER', 'Офисный сканер (QR бланка)'
+    AGENT = 'AGENT', 'ПК-агент (станок)'
+    TERMINAL = 'TERMINAL', 'Цеховой терминал'
+
+
+class ItemStationProgress(models.Model):
+    """
+    Отслеживание прохождения конкретного изделия (OrderItem) через участок (ProductionStation).
+    Базовый квант трекинга Фазы 2.
+    """
+    item = models.ForeignKey(
+        'orders.OrderItem',
+        on_delete=models.CASCADE,
+        related_name='station_progress',
+        verbose_name='Позиция заказа'
+    )
+    station = models.ForeignKey(
+        'production.ProductionStation',
+        on_delete=models.CASCADE,
+        related_name='items_progress',
+        verbose_name='Станция'
+    )
+    sequence = models.PositiveSmallIntegerField(
+        default=1,
+        verbose_name='Порядковый номер этапа',
+        help_text='Порядок станции в маршруте конкретной группы'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=StationStatus.choices,
+        default=StationStatus.PENDING,
+        db_index=True,
+        verbose_name='Статус'
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=StationProgressSource.choices,
+        default=StationProgressSource.MANUAL,
+        verbose_name='Источник отметки'
+    )
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Время начала'
+    )
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name='Время завершения'
+    )
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='completed_station_progress',
+        verbose_name='Оператор / Диспетчер'
+    )
+
+    class Meta:
+        db_table = 'production_item_station_progress'
+        verbose_name = 'Прогресс позиции на станции'
+        verbose_name_plural = 'Прогресс позиций на станциях'
+        unique_together = ('item', 'station', 'sequence')
+        ordering = ['sequence', 'id']
+        indexes = [
+            models.Index(fields=['station', 'status']),
+            models.Index(fields=['completed_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.item} @ {self.station.code} [{self.get_status_display()}]"
+
+    def mark_in_progress(self, user=None, source=StationProgressSource.MANUAL):
+        """Переводит позицию в работу."""
+        if self.status == StationStatus.PENDING:
+            self.status = StationStatus.IN_PROGRESS
+            self.started_at = timezone.now()
+            self.source = source
+            if user and user.is_authenticated:
+                self.completed_by = user
+            self.save(update_fields=['status', 'started_at', 'source', 'completed_by'])
+
+    def mark_completed(self, user=None, source=StationProgressSource.MANUAL):
+        """Отмечает позицию как выполненную."""
+        self.status = StationStatus.COMPLETED
+        self.completed_at = timezone.now()
+        if not self.started_at:
+            self.started_at = self.completed_at
+        self.source = source
+        if user and user.is_authenticated:
+            self.completed_by = user
+        self.save(update_fields=['status', 'started_at', 'completed_at', 'source', 'completed_by'])
+
+    def reset_status(self):
+        """Сброс отметки в исходное состояние при отмене или ошибке сканирования."""
+        self.status = StationStatus.PENDING
+        self.started_at = None
+        self.completed_at = None
+        self.completed_by = None
+        self.source = StationProgressSource.MANUAL
+        self.save(update_fields=['status', 'started_at', 'completed_at', 'completed_by', 'source'])
+
+
+class StationDailySheetLog(models.Model):
+    """
+    Журнал выданных в цех сменных агрегатных отчетов по станциям.
+    Фиксирует факт печати листа на смену для контроля переходящих остатков.
+    """
+    station = models.ForeignKey(
+        'production.ProductionStation',
+        on_delete=models.CASCADE,
+        related_name='daily_sheet_logs',
+        verbose_name='Станция'
+    )
+    sheet_date = models.DateField(
+        default=timezone.now,
+        db_index=True,
+        verbose_name='Дата смены'
+    )
+    printed_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Время печати'
+    )
+    printed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        verbose_name='Распечатал'
+    )
+    notes = models.TextField(
+        blank=True,
+        verbose_name='Примечания'
+    )
+
+    class Meta:
+        db_table = 'production_station_daily_log'
+        verbose_name = 'Сменный журнал станции'
+        verbose_name_plural = 'Сменные журналы станций'
+        ordering = ['-sheet_date', '-printed_at']
+
+    def __str__(self):
+        return f"{self.station.code} - {self.sheet_date}"
+
+
+class StationScanAuditLog(models.Model):
+    """
+    Аудит-лог каждого действия сканирования или запроса от локального агента.
+    Позволяет разбирать конфликтные ситуации («почему заказ не отметился»).
+    """
+    raw_payload = models.CharField(
+        max_length=255,
+        verbose_name='Сырой код / Пейлоад'
+    )
+    station_code = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name='Код станции'
+    )
+    order_number = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name='Номер заказа'
+    )
+    batch_number = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name='Номер батча'
+    )
+    item_mark = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name='Марка позиции'
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=StationProgressSource.choices,
+        default=StationProgressSource.SCANNER,
+        verbose_name='Источник'
+    )
+    is_success = models.BooleanField(
+        default=True,
+        verbose_name='Успешно'
+    )
+    message = models.TextField(
+        blank=True,
+        verbose_name='Результат / Текст ошибки'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        verbose_name='Время события'
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        verbose_name='Пользователь'
+    )
+
+    class Meta:
+        db_table = 'production_station_scan_audit'
+        verbose_name = 'Аудит сканирования станции'
+        verbose_name_plural = 'Аудит сканирований станций'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        status_flag = "OK" if self.is_success else "ERR"
+        return f"[{status_flag}] {self.raw_payload} ({self.created_at:%d.%m %H:%M})"

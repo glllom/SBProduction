@@ -25,6 +25,7 @@ from .models import (
 )
 from .pipeline import OrderSpecPipeline
 from .schemas import OrderSpec
+from .tracking_services import StationTrackingService
 
 
 def get_qr_base64(data: str) -> str:
@@ -290,7 +291,6 @@ class TechnicalSpecService:
                 'group__basic_color_frames',
             )
             .prefetch_related(
-                'group__customizers__customizer__materials',
                 'group__customizers__customizer__hardware__components',
                 'group__product__bom__additional',
             ).order_by('id')
@@ -696,9 +696,8 @@ class ProductionDataService:
             is_dict = isinstance(item, dict)
 
             has_frame = item.get('has_frame', True) if is_dict else getattr(item, 'has_frame', True)
-            is_hidden = item.get('is_hidden_frame', False) if is_dict else getattr(item, 'is_hidden_frame', False)
 
-            if not has_frame or is_hidden:
+            if not has_frame:
                 continue
 
             bom_items = getattr(item, 'bom_items', []) if hasattr(item, 'bom_items') else item.get('bom_items', [])
@@ -711,6 +710,24 @@ class ProductionDataService:
                                                                                                       'casing', 'הלבשה',
                                                                                                       'הלבשות')
             ]
+            paint_opt = getattr(item, 'frame_paint_option', None) if hasattr(item, 'frame_paint_option') else item.get(
+                'frame_paint_option', None)
+            frame_finish_display = "צבע" if paint_opt and str(paint_opt).upper() != 'NO_PAINT' else ""
+            frames_caption = ''
+            for b in bom_items:
+                b_tag = getattr(b, 'tag', '') if hasattr(b, 'tag') else b.get('tag', '')
+                b_sec = getattr(b, 'section', '') if hasattr(b, 'section') else b.get('section', '')
+
+                if b_tag == 'frame' or b_sec == 'frame':
+                    common_name = getattr(b, 'common_name', None) if hasattr(b, 'common_name') else b.get('common_name',
+                                                                                                          None)
+                    if common_name:
+                        frames_caption = str(common_name).strip()
+                        break
+
+            if not frames_caption:
+                frames_caption = getattr(item, 'frame', '') if hasattr(item, 'frame') else item.get('frame', '')
+            frames_caption += " " + frame_finish_display
             door_casing = " / ".join(dict.fromkeys(filter(None, casing_names))) or "-"
 
             raw_cmz = getattr(item, 'frames_report_customizers', []) if hasattr(item,
@@ -723,7 +740,6 @@ class ProductionDataService:
                 p_strs = [f"{p.get('label')}:{p.get('value')}" for p in c_params]
                 cmz_signature.append(f"{c_name}({', '.join(p_strs)})")
             cmz_key = " + ".join(cmz_signature)
-
             raw_hinges = getattr(item, 'hinge_heights', []) if hasattr(item, 'hinge_heights') else item.get(
                 'hinge_heights', [])
             hinges_tuple = tuple(h for h in raw_hinges if h is not None)
@@ -753,13 +769,10 @@ class ProductionDataService:
                         'product_family', '')) or (getattr(item, 'product_name', '') if hasattr(item,
                                                                                                 'product_name') else item.get(
                         'product_name', '')),
-                    'series': getattr(item, 'series', '') if hasattr(item, 'series') else item.get('series', ''),
-                    'frame_type': getattr(item, 'frame', '') if hasattr(item, 'frame') else item.get('frame', ''),
+                    'frames_caption': frames_caption,
+
                     'door_casing': door_casing,
-                    'color_frames': getattr(item, 'color_frames', '') if hasattr(item, 'color_frames') else item.get(
-                        'color_frames', '') or (getattr(item, 'basic_color_frames', '') if hasattr(item,
-                                                                                                   'basic_color_frames') else item.get(
-                        'basic_color_frames', '')),
+
                     'lock_name': getattr(item, 'lock_name', '') if hasattr(item, 'lock_name') else item.get('lock_name',
                                                                                                             ''),
                     'lock_height': getattr(item, 'lock_height', None) if hasattr(item, 'lock_height') else item.get(
@@ -842,8 +855,7 @@ class ProductionDataService:
                 wall_str = str(int(wall)) if (wall is not None and float(wall).is_integer()) else (
                     str(wall) if wall is not None else "")
 
-                dim_display = f"{w_str} / {h_str}" if (w_str and h_str) else (w_str or h_str or "-")
-                spec_display = f"{wall_str} {direction}".strip() if (wall_str or direction) else ""
+                dim_display = f"{w_str} \\ {h_str} \t {wall_str}{direction}"
 
                 notes_list = []
                 if comment:
@@ -861,7 +873,6 @@ class ProductionDataService:
                     'qty_label': qty_label,
                     'note_text': note_text,
                     'dimension_display': dim_display,
-                    'spec_display': spec_display,
                     'width': w,
                     'height': h,
                     'wall': wall,
@@ -872,7 +883,7 @@ class ProductionDataService:
             grp['grouped_rows'] = grouped_rows
 
             hinge_heights = grp.get('hinge_heights', [])
-            grp['hinge_heights_display'] = "  ".join(
+            grp['hinge_heights_display'] = " \\ ".join(
                 str(int(hh)) if float(hh).is_integer() else str(hh) for hh in hinge_heights
             ) if hinge_heights else ""
 
@@ -1366,20 +1377,19 @@ class ProductionDataService:
             # 3. Covering layer (hidden edge vs FORMICA vs PAINT)
             finish_type = _get(item, 'finish_type', 'PAINT')
             if is_hidden:
-                covering_names = []
+                covering_names = ''
             elif finish_type == 'FORMICA':
                 c_out = str(_get(item, 'color_panel_outside', '') or '').strip()
                 c_in = str(_get(item, 'color_panel_inside', '') or '').strip()
                 if c_in and c_in != c_out:
-                    covering_names = [f"פורמייקה חוץ: {c_out} / פנים: {c_in}"]
+                    covering_names = " חוץ: {c_out} / פנים: {c_in}"
                 elif c_out:
-                    covering_names = [f"פורמייקה {c_out}"]
-                else:
-                    covering_names = ["פורמייקה"]
+                    covering_names = c_out
             else:
-                covering_names = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'covering' and _bom_name(b)]
+                covering_names = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'covering' and _bom_name(b)][
+                                     0] or ''
 
-            raw_components = base_names + filling_names + covering_names
+            raw_components = base_names + filling_names
             comp_title = "  |  ".join(dict.fromkeys(filter(None, raw_components))) or _get(item, 'product_name', '')
 
             # 4. Customizer presets & signature
@@ -1406,6 +1416,7 @@ class ProductionDataService:
                 puzzle = _get(item, 'puzzle_spec', None)
                 groups_map[group_key] = {
                     'composition_title': comp_title,
+                    'covering': covering_names,
                     'customizer_presets': customizer_presets,
                     'puzzle_face_blocks': _get(puzzle, 'face_blocks', []) if puzzle else [],
                     'puzzle_sandwich_blocks': _get(puzzle, 'sandwich_blocks', []) if puzzle else [],
@@ -1552,86 +1563,119 @@ class OrderProductionService:
 
         return order.current_batch
 
-    @classmethod
-    def start_production(cls, order, user=None):
-        # 1. Получаем объект ValidationResult
-        val_res = cls.validate_for_production(order)
+    from django.db import transaction
 
-        # 2. Если это по какой-то причине всё еще кортеж, подстрахуемся:
+    @classmethod
+    @transaction.atomic
+    def start_production(cls, order, user=None):
+        # 1. Validation
+        val_res = cls.validate_for_production(order)
         if isinstance(val_res, tuple):
             is_valid, errors = val_res
             if not is_valid:
                 raise OrderValidationError("Data validation error", errors=errors)
         else:
-            # Штатный вызов для ValidationResult
             val_res.raise_if_invalid()
 
         if not order.production_start_date:
             order.production_start_date = timezone.now()
 
-        # 1. Если заказ в ожидании Фазы 2 — переводим его в PHASE2_PRODUCTION
+        released_batch = order.current_batch or 1
+
+        # -------------------------------------------------------------
+        # SCENARIO A: Launching Phase 2 (doors after on-site measurements)
+        # -------------------------------------------------------------
         if order.status == OrderStatus.PHASE1_READY:
-            active_groups = order.groups.exclude(
-                production_state__in=[
-                    OrderItemsGroup.ProductionState.WAITING,
-                    OrderItemsGroup.ProductionState.CANCELED,
-                ]
+            # Retrieve waiting door groups held back during Phase 1
+            phase2_groups = list(
+                order.groups.filter(
+                    production_state__in=[
+                        OrderItemsGroup.ProductionState.WAITING,
+                        OrderItemsGroup.ProductionState.NEW,
+                    ]
+                )
             )
-            if not active_groups.exists():
-                raise OrderValidationError("Нет активных групп для запуска второй фазы.")
+            if not phase2_groups:
+                raise OrderValidationError("Нет групп в ожидании (WAITING) для запуска второй фазы.")
 
+            # Update group states and assign batch
+            group_ids = [g.id for g in phase2_groups]
+            OrderItemsGroup.objects.filter(id__in=group_ids).update(
+                batch_number=released_batch,
+                production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
+                batch_date=date.today(),
+            )
+
+            # Refresh local objects state
+            for g in phase2_groups:
+                g.batch_number = released_batch
+                g.production_state = OrderItemsGroup.ProductionState.IN_PRODUCTION
+                g.batch_date = date.today()
+
+            # Update order state
             order.status = OrderStatus.PHASE2_PRODUCTION
-            order.save(update_fields=['status'])
+            order.current_batch = released_batch + 1
+            order.save(update_fields=['status', 'current_batch', 'production_start_date'])
 
-            # Строим спецификацию Фазы 2 (по всем запущенным ранее партиям)
+            # Initialize granular station tracking for Phase 2 door batches
+            for group in phase2_groups:
+                StationTrackingService.initialize_batch_progress(group)
+
+            # Build specification for Phase 2 batch
             TechnicalSpecService.get_or_build_spec(
-                order, phase='phase2', force_rebuild=True, user=user
+                order, phase='phase2', batch_number=released_batch, force_rebuild=True, user=user
             )
             return
 
-        # 2. Обычный запуск нового заказа или дозаказа (ищем группы со статусом NEW)
-        new_groups = order.groups.filter(
+        # -------------------------------------------------------------
+        # SCENARIO B: Standard launch or Phase 1 start (NEW groups)
+        # -------------------------------------------------------------
+        new_groups_qs = order.groups.filter(
             production_state=OrderItemsGroup.ProductionState.NEW
         )
-        if not new_groups.exists():
+        if not new_groups_qs.exists():
             raise OrderValidationError("Нет новых групп для запуска в производство.")
 
-        # --- ЗАЩИТА ОТ ДУРАКА (Шаг 2) ---
-        # Если в заказе есть раздельный монтаж (has_split_installation),
-        # то в первый запуск (Фазу 1) идут ТОЛЬКО группы с is_split_installation=True.
-        # Остальные группы принудительно уводятся в статус WAITING.
-        if getattr(order, 'has_split_installation', False):
-            # Группы без раздельного монтажа переводятся в WAITING
-            new_groups.filter(is_split_installation=False).update(
+        has_split = getattr(order, 'has_split_installation', False)
+
+        if has_split:
+            # Move doors to WAITING until on-site measurements are ready
+            new_groups_qs.filter(is_split_installation=False).update(
                 production_state=OrderItemsGroup.ProductionState.WAITING
             )
-            # Оставляем для запуска только те группы, у которых is_split_installation=True
-            new_groups = new_groups.filter(is_split_installation=True)
-
-            if not new_groups.exists():
+            # Launch only frame groups in Phase 1
+            groups_to_launch = list(new_groups_qs.filter(is_split_installation=True))
+            if not groups_to_launch:
                 raise OrderValidationError("Нет подходящих групп с раздельным монтажом для запуска первой фазы.")
 
-        # Фиксируем текущий номер батча для запускаемой партии
-        released_batch = order.current_batch
+            order.status = OrderStatus.PHASE1_PRODUCTION
+        else:
+            # Standard complete sets (both frames and doors together)
+            groups_to_launch = list(new_groups_qs)
+            order.status = OrderStatus.IN_PRODUCTION
 
-        # Всем запускаемым группам проставляем номер партии и переводим в работу
-        new_groups.update(
+        # Update launched groups
+        launch_ids = [g.id for g in groups_to_launch]
+        OrderItemsGroup.objects.filter(id__in=launch_ids).update(
             batch_number=released_batch,
             production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
             batch_date=date.today(),
         )
 
-        # Переводим статус заказа в зависимости от раздельного монтажа
-        if getattr(order, 'has_split_installation', False):
-            order.status = OrderStatus.PHASE1_PRODUCTION
-        else:
-            order.status = OrderStatus.IN_PRODUCTION
+        for g in groups_to_launch:
+            g.batch_number = released_batch
+            g.production_state = OrderItemsGroup.ProductionState.IN_PRODUCTION
+            g.batch_date = date.today()
 
-        # Инкрементируем счетчик: батч выдан, следующий дозаказ получит released_batch + 1
         order.current_batch = released_batch + 1
         order.save(update_fields=['status', 'current_batch', 'production_start_date'])
 
-        # Строим спецификацию для запущенного батча
+        # Initialize station tracking only for full production sets (skip Phase 1 frames)
+        if order.status == OrderStatus.IN_PRODUCTION:
+            for group in groups_to_launch:
+                StationTrackingService.initialize_batch_progress(group)
+
+        # Build technical specification for the launched batch
         phase = 'phase1' if order.status == OrderStatus.PHASE1_PRODUCTION else 'phase2'
         TechnicalSpecService.get_or_build_spec(
             order, phase=phase, batch_number=released_batch, force_rebuild=True, user=user

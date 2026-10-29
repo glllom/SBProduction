@@ -6,3 +6,4 @@ openpyxl
 holidays
 pydantic
 django-qrcode
+django-json-widget

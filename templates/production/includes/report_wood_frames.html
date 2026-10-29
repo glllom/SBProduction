@@ -1,140 +1,13 @@
 <div class="wood-frames-report-content" dir="rtl">
-    <style>
-        .wood-frames-report-content {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            color: #111;
-            line-height: 1.4;
-        }
-
-        .wood-report-header {
-            border-bottom: none;
-            padding-bottom: 5px;
-        }
-
-        .header-station-label {
-            font-size: 22px;
-            font-weight: 500;
-            color: #222;
-        }
-
-        .header-order-number {
-            font-size: 26px;
-            font-weight: bold;
-            color: #1f4e79;
-            text-decoration: underline;
-            text-underline-offset: 4px;
-        }
-
-        .header-date {
-            font-size: 15px;
-            color: #333;
-        }
-
-        .wood-frame-card {
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-
-        .card-title {
-            font-size: 22px;
-            font-weight: bold;
-            color: #111;
-        }
-
-        .card-grey-box {
-            background-color: #d8d8d8 !important;
-            border-radius: 0;
-            margin: 0 auto 10px auto;
-            width: 100%;
-        }
-
-        .box-color {
-            font-size: 18px;
-            font-weight: 600;
-            color: #111;
-        }
-
-        .box-casing {
-            font-size: 15px;
-            color: #111;
-            margin-top: 2px;
-        }
-
-        .card-specs {
-            font-size: 16px;
-            color: #111;
-            margin-bottom: 0;
-        }
-
-        .spec-line {
-            font-size: 16px;
-            line-height: 1.5;
-        }
-
-        .spec-hinges {
-            font-size: 18px;
-            letter-spacing: 5px;
-            font-weight: 600;
-            margin-top: 6px;
-            margin-bottom: 8px;
-        }
-
-        .card-rows-container {
-            width: 100%;
-            margin: 0 auto;
-        }
-
-        .dimension-row {
-            font-size: 19px;
-            line-height: 1.9;
-        }
-
-        .row-spec {
-            width: 70px;
-            font-size: 19px;
-            text-align: right;
-        }
-
-        .row-dimension {
-            flex-grow: 1;
-            font-size: 19px;
-            font-weight: 600;
-            letter-spacing: 1px;
-            text-align: center;
-        }
-
-        .row-note {
-            width: 130px;
-            font-size: 16px;
-            color: #111;
-            text-align: left;
-        }
-
-        .qty-badge {
-            font-weight: bold;
-            font-size: 18px;
-        }
-
-        .note-text {
-            font-size: 16px;
-        }
-
-        .card-bottom-divider {
-            border-bottom: 4px solid #111;
-            margin-top: 15px;
-            margin-bottom: 25px;
-            width: 100%;
-        }
-    </style>
-    <!-- Верхняя шапка документа: Дата слева, Номер заказа и Название станции справа -->
-    <div class="wood-report-header d-flex justify-content-between align-items-baseline mb-4">
-        <div class="header-right d-flex align-items-baseline gap-2">
-            <span class="header-station-label">{{ report_label|default:"משקופים" }}</span>
-            <span class="header-order-number">{{ order.order_number }}</span>
-        </div>
-        <div class="header-left">
-            <span class="header-date">{{ now|date:"d/m/Y" }}</span>
-        </div>
+    <!-- Шапка отчёта -->
+    <div class="report-header mb-3 border-bottom pb-2 d-flex justify-content-between align-items-baseline">
+        <h4 class="mb-0">
+            הזמנה: <strong>{{ order.order_number }}</strong>
+            {% if batches_label %}<span class="text-secondary fs-6 fst-italic">[{{ batches_label }}]</span>{% endif %}
+            <span class="text-secondary mx-2">|</span>
+            <span class="text-primary">{{ report_label|default:"" }}</span>
+        </h4>
+        <span class="fs-5 text-muted">תאריך: {{ now|date:"d/m/y" }}</span>
     </div>
     <!-- Секции по группам характеристик משקופים -->
     {% for grp in frame_groups %}
@@ -142,64 +15,28 @@
             <div class="row align-items-start g-4">
                 <!-- Правая колонка: Информационная шапка группы -->
                 <div class="col-6 wood-card-header-col">
-                    <!-- 1. Название продукта / серии (если есть) -->
-                    {% if grp.product_name or grp.series %}
-                        <div class="card-title text-center fw-bold mb-2">
-                            {{ grp.product_name }}{% if grp.series and grp.series != grp.product_name %} {{ grp.series }}{% endif %}
-                        </div>
-                    {% endif %}
+                    <p class="card-title fw-bold mb-2 fs-4">{{ grp.product_name }}</p>
                     <!-- 2. Серая плашка: Цвет и הלבשה -->
-                    <div class="card-grey-box text-center py-2 px-3 mb-2">
-                        <div class="box-color fw-bold">{{ grp.color_frames|default:"ללא גוון" }}</div>
-                        <div class="box-casing">הלבשה : {{ grp.door_casing_display|default:"ללא" }}</div>
+                    <div class="bg-light">
+                        <p>{{ grp.frames_caption }}</p>
+                        <p>{{ grp.door_casing }}</p>
+                        <p>מנעול: <strong>{{ grp.lock_name|default:"ללא" }} </strong><span class="fs-5"> {{ grp.lock_height| floatformat }}</span></p>
+                        <p>
+                            צירים: <strong>{{ grp.hinge_name|default:"ללא" }} </strong><span class="fs-5"> {{ grp.hinge_heights_display }}</span>
+                        </p>
                     </div>
-                    <!-- 3. Характеристики: Замок, Петли, Высоты петель -->
-                    <div class="card-specs text-center">
-                        <div class="spec-line">
-                            <span class="spec-label">מנעול :</span>
-                            <span class="spec-val" dir="ltr">{{ grp.lock_name|default:"ללא" }}</span>
-                        </div>
-                        <div class="spec-line">
-                            <span class="spec-label">צירים :</span>
-                            <span class="spec-val" dir="ltr">{{ grp.hinge_name|default:"ללא" }}</span>
-                        </div>
-                        {% if grp.hinge_heights_display %}
-                            <div class="spec-hinges fw-bold" dir="ltr">{{ grp.hinge_heights_display }}</div>
-                        {% endif %}
-                        {% if grp.customizers_title %}
-                            <div class="spec-customizers small text-muted mt-1">{{ grp.customizers_title }}</div>
-                        {% endif %}
-                    </div>
-                </div>
-                <!-- Левая колонка: Список размеров и позиций -->
-                <div class="col-6 wood-card-rows-col">
-                    <div class="card-rows-container">
-                        {% for row in grp.grouped_rows %}
-                            <div class="dimension-row d-flex align-items-center justify-content-between py-1">
-                                <div class="row-spec fw-bold"><span dir="ltr">{{ row.spec_display }}</span></div>
-                                <div class="row-dimension fw-bold"><span dir="ltr">{{ row.dimension_display }}</span></div>
-                                <div class="row-note">
-                                    {% if row.qty_label %}<span class="qty-badge me-2">{{ row.qty_label }}</span>{% endif %}
-                                    {% if row.note_text %}<span class="note-text">{{ row.note_text }}</span>{% endif %}
-                                </div>
-                            </div>
-                        {% empty %}
-                            {% for sz in grp.aggregated_sizes %}
-                                <div class="dimension-row d-flex align-items-center justify-content-between py-1">
-                                    <div class="row-spec fw-bold"><span dir="ltr">{{ sz.wall|default:"" }}</span></div>
-                                    <div class="row-dimension fw-bold"><span dir="ltr">{{ sz.width }} / {{ sz.height }}</span></div>
-                                    <div class="row-note">
-                                        {% if sz.qty > 1 %}<span class="qty-badge">{{ sz.qty }}x</span>{% endif %}
-                                    </div>
+                    <div class="col-6 wood-card-rows-col">
+                        <div class="card-rows-container">
+                            {% for row in grp.grouped_rows %}
+                                <div class="">
+                                    <p dir="rtl" class="fs-5 fw-bold">{{ row.dimension_display }}</p>
                                 </div>
                             {% endfor %}
-                        {% endfor %}
+                        </div>
                     </div>
+                    <!-- Нижняя черная разделительная линия -->
+                    <div class="card-bottom-divider"></div>
                 </div>
-            </div>
-            <!-- Нижняя черная разделительная линия -->
-            <div class="card-bottom-divider"></div>
-        </div>
     {% empty %}
         <div class="alert alert-warning text-center">לא נמצאו משקופי עץ עבור הזמנה זו.</div>
     {% endfor %}

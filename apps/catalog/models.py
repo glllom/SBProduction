@@ -545,6 +545,12 @@ class Customizer(models.Model):
         verbose_name="תג / אלגוריתם",
         help_text="מזהה אסטרטגיית עיבוד בקוד",
     )
+    bom_overrides = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="דריסות BOM (BOM Overrides)",
+        help_text='JSON: {"filling": "SKU_OR_ID", "panel_frame": "SKU_OR_ID", "filling_preset": "ID_OR_NAME", "covering": ""}'
+    )
 
     # --- Parameters 1..5 (Labels, Required Flags, Default Values, Hints) ---
     par1_label = models.CharField(
@@ -693,13 +699,6 @@ class Customizer(models.Model):
         help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
     )
 
-    materials = models.ManyToManyField(
-        Material,
-        blank=True,
-        related_name="customizers",
-        verbose_name='חומרים (Material)',
-        help_text="חומרים להחלפה או הוספה במפרט הטכני",
-    )
 
     class Meta:
         db_table = "customizers"

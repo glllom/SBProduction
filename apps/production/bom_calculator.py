@@ -67,10 +67,10 @@ class BOMCalculator:
 
     def calculate_for_product(self, product, quantity=1):
         """
-        Recursively calculates BOM for a product based on the structured BOM model.
-        Uses effective BOM (local or from parent model).
+        Calculates BOM for a product based on the structured BOM model.
+        Uses in-memory effective_bom if prepared by BOMOverrideStep.
         """
-        bom = product.effective_bom
+        bom = self.context.get('effective_bom') or product.effective_bom
         if not bom:
             return []
 
@@ -87,7 +87,6 @@ class BOMCalculator:
         ]
 
         for slot_name, label in material_slots:
-            # Skip frame-related materials if has_frame is False
             if not has_frame and slot_name in ['frame', 'casing']:
                 continue
             material = getattr(bom, slot_name)
@@ -102,7 +101,7 @@ class BOMCalculator:
                         'section': label,
                         'item': material,
                         'quantity': total_qty,
-                        'tag': slot_name  # For backward compatibility or extra identification
+                        'tag': slot_name
                     })
 
         # 2. Process Hardware Slots
@@ -116,7 +115,6 @@ class BOMCalculator:
             if not val:
                 continue
 
-            # Handle both ForeignKey and ManyToManyField
             if hasattr(val, 'all'):
                 hardware_list = val.all()
             else:
@@ -128,7 +126,7 @@ class BOMCalculator:
                     'section': label,
                     'item': hw,
                     'tag': tag,
-                    'quantity': 1 * quantity  # Default to 1 per unit
+                    'quantity': 1 * quantity
                 })
 
         if not has_frame:
