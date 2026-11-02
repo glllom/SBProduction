@@ -16,8 +16,9 @@ from apps.catalog.models import Hardware
 from apps.orders.models import (
     Order, OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus, OrderComponentSelection
 )
-from .label_services import DoorLabelService
-from .models import DoorLabel, ProductionStation, SvgPattern
+from apps.production.models import ProductionStation, StationProgressSource
+from apps.production.tracking_services import StationTrackingService
+from .models import DoorLabel, SvgPattern
 from .services import (
     OrderProductionService,
     OrderValidationService,
@@ -25,7 +26,6 @@ from .services import (
     OrderValidationError,
     TechnicalSpecService, get_qr_base64,
 )
-from .tracking_services import StationTrackingService
 from .usb_sync import run_usb_sync
 
 
@@ -1084,8 +1084,7 @@ def order_dev_force_rebuild_spec(request, pk):
 
     try:
         TechnicalSpecService.get_or_build_spec(order, phase='phase1', force_rebuild=True)
-        spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2', force_rebuild=True)
-        DoorLabelService.generate_labels_for_order(order, spec_obj)
+        TechnicalSpecService.get_or_build_spec(order, phase='phase2', force_rebuild=True)
         messages.success(request, f"Spec for Order {order.order_number} was forcefully rebuilt.")
     except Exception as e:
         messages.error(request, f"Rebuild failed: {str(e)}")
@@ -1472,4 +1471,53 @@ def report_facing(request, pk):
         'batches_label': batches_label,
         'order_qr': get_qr_base64(barcode_data),
         'now': timezone.now(),
+    })
+
+
+@login_required
+def station_backlog_sheet_print(request, station_code):
+    """Печатный лист-бегунок очереди заказов на станции."""
+    station = get_object_or_404(ProductionStation, code__iexact=station_code)
+    backlog = StationTrackingService.get_station_order_backlog(station.code)
+
+    return render(request, 'production/reports/station_backlog_sheet.html', {
+        'station': station,
+        'backlog': backlog,
+        'today': timezone.now(),
+    })
+
+
+@login_required
+def station_control_view(request, station_code):
+    """Экранная форма менеджера для отметки заказов с листа."""
+    station = get_object_or_404(ProductionStation, code__iexact=station_code)
+
+    if request.method == 'POST':
+        selected_orders = request.POST.getlist('selected_orders')
+        updated_count = 0
+
+        for order_no in selected_orders:
+            success, _, _ = StationTrackingService._complete_batch_station(
+                order_number=order_no,
+                station_code=station.code,
+                batch_number=None,
+                user=request.user,
+                source=StationProgressSource.MANUAL,
+            )
+            if success:
+                updated_count += 1
+
+        if updated_count:
+            messages.success(request, f"עודכנו {updated_count} הזמנות בתחנת {station.name}.")
+        else:
+            messages.info(request, "לא בוצעו שינויים.")
+
+        return redirect('production:station-control', station_code=station.code)
+
+    backlog = StationTrackingService.get_station_order_backlog(station.code)
+
+    return render(request, 'production/tracking/station_control_form.html', {
+        'station': station,
+        'backlog': backlog,
+        'today': timezone.now(),
     })

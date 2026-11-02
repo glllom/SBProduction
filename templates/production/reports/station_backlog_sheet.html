@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>{{ station.name }} - דוח תחנה</title>
+        <style>
+        @page {
+            size: A4 portrait;
+            margin: 10mm 15mm;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #000;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 2px solid #000;
+            padding-bottom: 6px;
+            margin-bottom: 12px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .header .meta {
+            font-size: 13px;
+            text-align: left;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th, td {
+            border: 1px solid #000;
+            padding: 6px 8px;
+            text-align: right;
+        }
+
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+
+        .col-cb {
+            width: 40px;
+            text-align: center;
+        }
+
+        .cb-box {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 1.5px solid #000;
+            vertical-align: middle;
+        }
+
+        .col-order {
+            width: 22%;
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        .col-date {
+            width: 20%;
+            text-align: center;
+        }
+
+        .col-qty {
+            width: 15%;
+            text-align: center;
+        }
+
+        .col-notes {
+            width: 43%;
+        }
+
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+        </style>
+    </head>
+    <body>
+        <div class="no-print" style="margin-bottom: 12px;">
+            <button onclick="window.print()"
+                    style="padding: 6px 14px;
+                           font-size: 13px;
+                           font-weight: bold;
+                           cursor: pointer">הדפסה (Print)</button>
+        </div>
+        <div class="header">
+            <div>
+                <h1>תחנה: {{ station.name }} ({{ station.code }})</h1>
+                <div style="font-size: 13px; margin-top: 3px;">הזמנות פתוחות בתחנה: {{ backlog|length }}</div>
+            </div>
+            <div class="meta" dir="ltr">
+                <div><strong>תאריך:</strong> {{ today|date:"d/m/Y" }}</div>
+                <div><strong>שעה:</strong> {{ today|date:"H:i" }}</div>
+            </div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th class="col-cb">סיום</th>
+                    <th class="col-order">מספר הזמנה</th>
+                    <th class="col-date">יעד סיום</th>
+                    <th class="col-qty">כמות</th>
+                    <th>לקוח</th>
+                    <th class="col-notes">הערות ביצוע</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in backlog %}
+                    <tr>
+                        <td class="col-cb">
+                            <span class="cb-box"></span>
+                        </td>
+                        <td class="col-order" dir="ltr">{{ row.order_number }}</td>
+                        <td class="col-date" dir="ltr">
+                            {% if row.target_date %}
+                                <strong>{{ row.target_date|date:"d/m/Y" }}</strong>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="col-qty">{{ row.pending_qty }} / {{ row.total_qty }}</td>
+                        <td>{{ row.customer|default:"-" }}</td>
+                        <td class="col-notes"></td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 25px;">אין הזמנות פתוחות בתחנה זו כעת.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </body>
+</html>

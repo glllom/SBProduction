@@ -6,6 +6,44 @@ from .models import DoorLabel
 
 class DoorLabelService:
     @staticmethod
+    def init_item_label_drafts(order, item, is_double_door: bool, has_inlaid_edge: bool) -> list[dict]:
+        """
+        Creates initial draft dictionaries for door labels.
+        Sets identifiers, leaf role (0, 1, 2) and required label types.
+        """
+        drafts = []
+
+        roles = (
+            [DoorLabel.LeafRole.ACTIVE, DoorLabel.LeafRole.PASSIVE]
+            if is_double_door
+            else [DoorLabel.LeafRole.SINGLE]
+        )
+
+        label_types = [
+            DoorLabel.LabelType.ROUGHING,
+            DoorLabel.LabelType.FINISHING,
+        ]
+        if has_inlaid_edge:
+            label_types.insert(0, DoorLabel.LabelType.PRE_ROUGHING)
+
+        mark_str = str(item.mark or item.id)
+        client_name = order.customer or ''
+
+        for role in roles:
+            for l_type in label_types:
+                drafts.append({
+                    'order_id': order.id,
+                    'order_item_id': item.id,
+                    'order_number': order.order_number,
+                    'client_name': client_name,
+                    'item_mark': mark_str,
+                    'leaf_role': role,
+                    'label_type': l_type,
+                })
+
+        return drafts
+
+    @staticmethod
     def _evaluate_cnc_target(item_spec) -> Tuple[str, str]:
         """
         Determines the CNC machine and creates the payload string.
@@ -137,3 +175,134 @@ class DoorLabelService:
             ))
 
         return DoorLabel.objects.bulk_create(labels_to_create)
+
+    @staticmethod
+    def enrich_geometry(
+            drafts: list[dict],
+            item_spec,
+            leaf_width: float,
+            leaf_height: float,
+            leaf_thickness: float = 40.0,
+            direction: str = '',
+            opening: str = '',
+            edge_type: str = '',
+            is_paint: bool = False,
+            passive_width: float = None,
+    ) -> None:
+        """
+        Enriches label drafts with calculated panel dimensions, opening, and finish specs.
+        Modifies drafts in-place.
+        """
+        for draft in drafts:
+            # If double door and passive leaf has its own width
+            if draft.get('leaf_role') == DoorLabel.LeafRole.PASSIVE and passive_width is not None:
+                w = passive_width
+            else:
+                w = leaf_width
+
+            draft.update({
+                'width': float(w) if w is not None else None,
+                'height': float(leaf_height) if leaf_height is not None else None,
+                'thickness': float(leaf_thickness) if leaf_thickness is not None else 40.0,
+                'direction': direction or '',
+                'opening': opening or '',
+                'edge_type': edge_type or '',
+                'is_paint': is_paint,
+            })
+
+    @classmethod
+    def enrich_hardware_and_cnc(cls, drafts: list[dict], spec, item) -> None:
+        """
+        Обогащает заготовки наклеек данными фурнитуры, высотами петель,
+        комментариями, кастомизаторами и вычисляет управляющую программу ЧПУ.
+        """
+        if not drafts:
+            return
+
+        raw_hinges = getattr(spec, 'hinge_heights', []) or []
+        padded_hinges = (list(raw_hinges) + [None] * 5)[:5]
+
+        # Определение станка ЧПУ и QR-пейлоада
+        target_machine, qr_payload = cls._evaluate_cnc_target(spec)
+
+        # Сводка по кастомизаторам для наклейки
+        customizers_list = getattr(spec, 'doors_report_customizers', []) or []
+        addons_parts = []
+        for c in customizers_list:
+            c_name = getattr(c, 'name', '') if hasattr(c, 'name') else c.get('name', '')
+            params = getattr(c, 'params', []) if hasattr(c, 'params') else c.get('params', [])
+            p_strs = [
+                f"{p.label}:{p.value}" if hasattr(p, 'label') else f"{p.get('label')}:{p.get('value')}"
+                for p in params
+            ]
+            if p_strs:
+                addons_parts.append(f"{c_name} ({', '.join(p_strs)})")
+            elif c_name:
+                addons_parts.append(c_name)
+        addons_summary = " | ".join(addons_parts)
+
+        comment = spec.comment or item.comment or ''
+
+        for draft in drafts:
+            draft.update({
+                'lock_name': getattr(spec, 'lock_name', '') or '',
+                'lock_height': getattr(spec, 'lock_height', None),
+                'hinge_name': getattr(spec, 'hinge_name', '') or '',
+                'hinge_1': padded_hinges[0],
+                'hinge_2': padded_hinges[1],
+                'hinge_3': padded_hinges[2],
+                'hinge_4': padded_hinges[3],
+                'hinge_5': padded_hinges[4],
+                'addons_summary': addons_summary,
+                'comment': comment,
+                'target_machine': target_machine,
+                'qr_payload': qr_payload,
+            })
+
+    @classmethod
+    def persist_label_drafts(cls, order: Order, all_drafts: list[dict]) -> None:
+        """
+        Пакетно сохраняет или обновляет наклейки заказа в БД.
+        Для существующих записей обновляет параметры геометрии и ЧПУ,
+        сохраняя print_count и last_printed_at.
+        """
+        if not all_drafts:
+            return
+
+        # Общее число дверных позиций в заказе
+        total_doors = len({d['order_item_id'] for d in all_drafts})
+        for d in all_drafts:
+            d['total_items'] = total_doors
+
+        # Существующие наклейки по уникальному ключу створки
+        existing_map = {
+            (l.order_item_id, l.leaf_role, l.label_type): l
+            for l in DoorLabel.objects.filter(order_id=order.id)
+        }
+
+        to_create = []
+        to_update = []
+
+        update_fields = [
+            'order_number', 'client_name', 'item_mark', 'total_items',
+            'width', 'height', 'thickness', 'direction', 'opening',
+            'edge_type', 'is_paint', 'lock_name', 'lock_height',
+            'hinge_name', 'hinge_1', 'hinge_2', 'hinge_3', 'hinge_4', 'hinge_5',
+            'addons_summary', 'comment', 'target_machine', 'qr_payload'
+        ]
+
+        for d in all_drafts:
+            key = (d['order_item_id'], d['leaf_role'], d['label_type'])
+            if key in existing_map:
+                lbl = existing_map[key]
+                for f in update_fields:
+                    if f in d:
+                        setattr(lbl, f, d[f])
+                to_update.append(lbl)
+            else:
+                to_create.append(DoorLabel(**d))
+
+        if to_update:
+            DoorLabel.objects.bulk_update(to_update, update_fields)
+        if to_create:
+            DoorLabel.objects.bulk_create(to_create)

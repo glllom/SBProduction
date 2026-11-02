@@ -44,6 +44,7 @@ class SpecContext:
             mark=item.mark or ""
         )
         self.data: Dict[str, Any] = {}
+        self.label_drafts: List[Dict[str, Any]] = []  # <-- Заготовки наклеек для позиции
         self._bom = None  # In-memory patched BOM container
 
         if customizers is not None:
@@ -761,6 +762,28 @@ class PanelDimensionStep(SpecStep):
             })
 
         spec.press_dimensions = press_dims
+        # 4. Обогащение заготовок наклеек геометрией полотен
+        if context.label_drafts:
+            from .label_services import DoorLabelService
+            from apps.orders.models import OrderItemsGroup
+
+            is_double = len(panels) > 1
+            passive_w = panels[1]['width'] if is_double else None
+            is_paint = bool(
+                context.group and context.group.panel_paint_option != OrderItemsGroup.PaintOption.NO_PAINT
+            )
+
+            DoorLabelService.enrich_geometry(
+                drafts=context.label_drafts,
+                item_spec=spec,
+                leaf_width=panels[0]['width'],
+                leaf_height=panels[0]['height'],
+                direction=spec.direction or item.get_direction_display() or '',
+                opening=spec.opening or item.get_opening_display() or '',
+                edge_type=getattr(spec, 'wood_edge_type', '') or '',
+                is_paint=is_paint,
+                passive_width=passive_w,
+            )
 
 
 class CutSheetsStep(SpecStep):
@@ -1477,6 +1500,7 @@ class SpecPipeline:
             ProductDataStep(),
             DoubleDoorStep(),
             WoodEdgeStep(),
+            DoorLabelInitStep(),
             PanelDimensionStep(),
             CutSheetsStep(),
             AppearanceStep(),
@@ -1494,6 +1518,7 @@ class SpecPipeline:
             MeasurerDataStep(),
             TechnicalDataStep(),
             MediaStep(),
+            DoorLabelEnrichStep(),
         ]
 
     def execute(self, item: OrderItem, customizers=None, phase: str = 'phase2') -> ProductionSpec:
@@ -1524,9 +1549,10 @@ class SpecPipeline:
 
 
 class OrderSpecContext:
-    def __init__(self, order, items=None, phase: str = 'phase2'):
+    def __init__(self, order, items=None, phase: str = 'phase2', save_labels: bool = False):
         self.order = order
         self.phase = phase
+        self.save_labels = save_labels
         self.items = items if items is not None else list(
             OrderItem.objects.filter(group__order=order).exclude(
                 group__production_state__in=[
@@ -1597,10 +1623,81 @@ class OrderSpecPipeline:
         self.steps = steps or [
             OrderHeaderStep(),  # 1. Header mapping
             OrderItemsStep(),  # 2. Door items processing
+            OrderDoorLabelsStep(),  # 3. Сохранение наклеек (при save_labels=True)
         ]
 
-    def execute(self, order, items=None, phase: str = 'phase2') -> OrderSpec:
-        context = OrderSpecContext(order, items, phase=phase)
+    def execute(self, order, items=None, phase: str = 'phase2', save_labels: bool = False) -> OrderSpec:
+        context = OrderSpecContext(order, items, phase=phase, save_labels=save_labels)
         for step in self.steps:
             step.process(context)
         return context.spec
+
+
+class DoorLabelInitStep(SpecStep):
+    """
+    Приоритет 18: Создает заготовки наклеек (drafts) с базовыми идентификаторами
+    после выяснения одинарная/двойная дверь и типа канта.
+    """
+    priority = 18
+    important_for_phase1 = False  # Наклейки полотен актуальны для Фазы 2
+
+    def process(self, context: SpecContext):
+        product = context.product
+        has_door = product.has_door if product else True
+        if not has_door:
+            return
+
+        is_double = getattr(context.spec, 'is_double_door', False) or context.data.get('is_double', False)
+        has_inlaid = getattr(context.spec, 'is_hidden_wood_edge', False)
+
+        from .label_services import DoorLabelService
+        context.label_drafts = DoorLabelService.init_item_label_drafts(
+            order=context.order,
+            item=context.item,
+            is_double_door=is_double,
+            has_inlaid_edge=has_inlaid,
+        )
+        # Сохраняем ссылку в контекст спецификации
+        context.spec.context['label_drafts'] = context.label_drafts
+
+
+class DoorLabelEnrichStep(SpecStep):
+    """
+    Приоритет 1100: Финальное обогащение заготовок наклеек фурнитурой,
+    высотами петель, комментариями и управляющей программой ЧПУ.
+    """
+    priority = 1100
+    important_for_phase1 = False
+
+    def process(self, context: SpecContext):
+        if not context.label_drafts:
+            return
+
+        from .label_services import DoorLabelService
+        DoorLabelService.enrich_hardware_and_cnc(
+            drafts=context.label_drafts,
+            spec=context.spec,
+            item=context.item,
+        )
+
+
+class OrderDoorLabelsStep(OrderStep):
+    """
+    Шаг 3: Собирает все label_drafts позиций и передает их в сервис
+    для пакетной записи в таблицу DoorLabel.
+    Пропускается при холостом прогоне (dry_run) и в Фазе 1.
+    """
+
+    def process(self, context: OrderSpecContext):
+        if context.phase == 'phase1' or not getattr(context, 'save_labels', False):
+            return
+
+        all_drafts = []
+        for batch_items in context.spec.batches.values():
+            for item_spec in batch_items:
+                drafts = item_spec.context.get('label_drafts') or []
+                all_drafts.extend(drafts)
+
+        if all_drafts:
+            from .label_services import DoorLabelService
+            DoorLabelService.persist_label_drafts(context.order, all_drafts)

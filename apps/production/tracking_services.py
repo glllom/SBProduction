@@ -304,3 +304,59 @@ class StationTrackingService:
                 'is_urgent': getattr(g.order, 'is_urgent', False),
             })
         return backlog
+
+    @staticmethod
+    def get_station_order_backlog(station_code: str) -> List[Dict[str, Any]]:
+        """
+        Возвращает список незавершенных заказов для станции,
+        отсортированный по срочности (дате завершения).
+        """
+        from apps.orders.models import Order
+        from apps.production.models import ProductionStation, ItemStationProgress, StationStatus
+
+        station = ProductionStation.objects.filter(code__iexact=station_code).first()
+        if not station:
+            return []
+
+        pending_orders = (
+            Order.objects.filter(
+                groups__items__station_progress__station=station,
+                groups__items__station_progress__status__in=[
+                    StationStatus.PENDING,
+                    StationStatus.IN_PROGRESS
+                ]
+            )
+            .distinct()
+        )
+
+        is_painting = station.code.upper() in ('PAINTING', 'PAINT')
+        backlog = []
+
+        for order in pending_orders:
+            target_date = (
+                order.painting_completion_date
+                if is_painting and order.painting_completion_date
+                else order.completion_date
+            )
+
+            station_items = ItemStationProgress.objects.filter(
+                item__group__order=order,
+                station=station
+            )
+            pending_count = station_items.filter(
+                status__in=[StationStatus.PENDING, StationStatus.IN_PROGRESS]
+            ).count()
+            total_count = station_items.count()
+
+            backlog.append({
+                'order_id': order.id,
+                'order_number': order.order_number,
+                'customer': order.customer or '',
+                'target_date': target_date,
+                'pending_qty': pending_count,
+                'total_qty': total_count,
+            })
+
+        backlog.sort(key=lambda x: (x['target_date'] is None, x['target_date'], x['order_number']))
+        return backlog
+    

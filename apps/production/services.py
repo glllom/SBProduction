@@ -341,8 +341,12 @@ class TechnicalSpecService:
 
         # 3. Запуск пайплайна
         pipeline = OrderSpecPipeline()
-        spec_obj = pipeline.execute(order, items=items, phase=phase)
-
+        spec_obj = pipeline.execute(
+            order,
+            items=items,
+            phase=phase,
+            save_labels=(phase == 'phase2')
+        )
         # Проверка ошибок расчетов в узлах
         errors = []
         for b_items in spec_obj.batches.values():

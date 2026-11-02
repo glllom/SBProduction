@@ -31,4 +31,7 @@ urlpatterns = [
     # Dev Tools / Режим бога (инспекция и принудительный пересчет батча)
     path('order/<int:pk>/spec-json/', views.spec_json_preview, name='spec-json-preview'),
     path('order/<int:pk>/rebuild-batch-spec/', views.order_dev_force_rebuild_spec, name='order-rebuild-batch-spec'),
+
+    path('stations/<str:station_code>/sheet/', views.station_backlog_sheet_print, name='station-sheet-print'),
+    path('stations/<str:station_code>/control/', views.station_control_view, name='station-control'),
 ]

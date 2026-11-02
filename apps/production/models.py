@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.catalog.models import ProductModel
 from apps.orders.models import Order, OrderItem
@@ -349,27 +351,47 @@ class ProductionRoute(models.Model):
     @classmethod
     def get_stations_for_group(cls, group):
         """
-        Возвращает итоговый список станций для группы.
+        Возвращает итоговый упорядоченный список станций для группы:
+        1. Всегда первой идет станция верификации (VERIFICATION)
+        2. Базовые технологические станции продукта
+        3. Дополнительные станции от кастомизаторов
+        4. Малярный цех (PAINTING), если требуется покраска
         """
         if not group.product:
             return []
 
-        # 1. Получаем базовые станции
-        stations = cls.get_stations_for_product(group.product)
-        station_ids = [s.id for s in stations]
+        stations = []
+        station_ids = set()
 
-        # 2. Перебираем кастомизаторы группы
+        def add_station(st):
+            if st and st.id not in station_ids:
+                stations.append(st)
+                station_ids.add(st.id)
+
+        # 1. Первая станция — всегда верификация
+        verification = ProductionStation.objects.filter(code='VERIFICATION', active=True).first()
+        add_station(verification)
+
+        # 2. Базовые станции маршрута продукта
+        for st in cls.get_stations_for_product(group.product):
+            add_station(st)
+
+        # 3. Станции от кастомизаторов группы
         for gc in group.customizers.all():
             customizer = gc.customizer
-
-            # В зависимости от того, как у вас кастомизатор связан со станцией, получаем её:
-            # (Если у вас есть поле production_station в модели Customizer, то код ниже сработает)
             c_station = getattr(customizer, 'production_station', None)
+            add_station(c_station)
 
-            if c_station:
-                if c_station.id not in station_ids:
-                    stations.append(c_station)
-                    station_ids.append(c_station.id)
+        # 4. Проверка необходимости покраски
+        from apps.orders.models import OrderItemsGroup
+        needs_paint = (
+                group.panel_paint_option != OrderItemsGroup.PaintOption.NO_PAINT
+                or group.frame_paint_option != OrderItemsGroup.PaintOption.NO_PAINT
+        )
+        if needs_paint:
+            painting = ProductionStation.objects.filter(code__in=['PAINTING', 'PAINT'], active=True).first()
+            add_station(painting)
+
         return stations
 
 
@@ -454,6 +476,18 @@ class DoorLabel(models.Model):
         ROUGHING = 1, 'Стандартная обгонка'
         FINISHING = 2, 'Фурнитура и замки'
 
+    class LeafRole(models.IntegerChoices):
+        SINGLE = 0, 'Одинарная'
+        ACTIVE = 1, 'Активная (доминантная)'
+        PASSIVE = 2, 'Пассивная (вторичная)'
+
+    leaf_role = models.PositiveSmallIntegerField(
+        'Тип створки',
+        choices=LeafRole.choices,
+        default=LeafRole.SINGLE,
+        db_index=True
+    )
+
     # Target CNC machines
     class TargetMachine(models.TextChoices):
         ESSEPIGI = 'ESSEPIGI', 'Essepigi'
@@ -506,12 +540,12 @@ class DoorLabel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['item_mark', 'label_type']
+        ordering = ['item_mark', 'leaf_role', 'label_type']
         indexes = [
             models.Index(fields=['order_number', 'print_count']),
             models.Index(fields=['order', 'label_type']),
+            models.Index(fields=['order_number', 'item_mark', 'leaf_role', 'label_type']),
         ]
-
     def __str__(self):
         return f"{self.order_number} - Item {self.item_mark} (Type {self.label_type})"
 
@@ -663,9 +697,6 @@ class CustomizerPuzzleMapping(models.Model):
 ######################################
 # Tracking orders in production line #
 ######################################
-from django.db import models
-from django.conf import settings
-from django.utils import timezone
 
 
 class StationStatus(models.TextChoices):

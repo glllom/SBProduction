@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="container-fluid py-4" dir="rtl">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h2 class="mb-1">ניהול תחנה: {{ station.name }} ({{ station.code }})</h2>
+                <div class="text-muted small">סימון הזמנות שבוצעו על פי דף עבודה</div>
+            </div>
+            <div>
+                <a href="{% url 'production:station-sheet-print' station.code %}"
+                   target="_blank"
+                   class="btn btn-outline-dark">הדפס דף עבודה</a>
+            </div>
+        </div>
+        <form method="POST">
+            {% csrf_token %}
+            <div class="card shadow-sm">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 45px;" class="text-center">
+                                    <input type="checkbox" id="checkAll" class="form-check-input">
+                                </th>
+                                <th>מספר הזמנה</th>
+                                <th>תאריך יעד</th>
+                                <th>לקוח</th>
+                                <th>פריטים בתחנה</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in backlog %}
+                                <tr>
+                                    <td class="text-center">
+                                        <input type="checkbox"
+                                               name="selected_orders"
+                                               value="{{ row.order_number }}"
+                                               class="form-check-input row-cb">
+                                    </td>
+                                    <td class="fw-bold" dir="ltr">{{ row.order_number }}</td>
+                                    <td dir="ltr">
+                                        {% if row.target_date %}
+                                            <span class="{% if row.target_date < today.date %}text-danger fw-bold{% endif %}">
+                                                {{ row.target_date|date:"d/m/Y" }}
+                                            </span>
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ row.customer|default:"-" }}</td>
+                                    <td>{{ row.pending_qty }} מתוך {{ row.total_qty }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center py-4 text-muted">אין הזמנות ממתינות לתחנה זו.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if backlog %}
+                    <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
+                        <span class="text-muted" id="selectedCounter">נבחרו 0 הזמנות</span>
+                        <button type="submit" class="btn btn-success px-4">סמן הזמנות שנבחרו כ-בוצעו (Pass)</button>
+                    </div>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+    <script>
+        const checkAll = document.getElementById('checkAll');
+        const rowCheckboxes = document.querySelectorAll('.row-cb');
+        const selectedCounter = document.getElementById('selectedCounter');
+
+        function updateCounter() {
+            const checkedCount = document.querySelectorAll('.row-cb:checked').length;
+            if (selectedCounter) {
+                selectedCounter.textContent = `נבחרו ${checkedCount} הזמנות`;
+            }
+        }
+
+        if (checkAll) {
+            checkAll.addEventListener('change', function () {
+                rowCheckboxes.forEach(cb => cb.checked = checkAll.checked);
+                updateCounter();
+            });
+        }
+
+        rowCheckboxes.forEach(cb => cb.addEventListener('change', updateCounter));
+    </script>
+{% endblock %}
