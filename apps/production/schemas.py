@@ -48,6 +48,8 @@ class SpecCustomizerParam(BaseModel):
 
 
 class SpecCustomizerReport(BaseModel):
+    id: Optional[int] = None
+    code: Optional[str] = None
     name: str
     tag: Optional[str] = None
     params: List[SpecCustomizerParam] = Field(default_factory=list)
@@ -155,9 +157,16 @@ class ProductionSpec(BaseModel):
     frame_spec: Optional[FrameStructureSpec] = None
     puzzle_spec: Optional[DoorPuzzleSpec] = None
 
-    # Additional
+    # Additional & Customizers
     frames_report_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
     doors_report_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
+    label_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
+    engraving_data: Dict[str, Any] = Field(default_factory=dict)
+
+    # Individual Item Routing & CNC Targets
+    route_station_ids: List[int] = Field(default_factory=list)
+    route_station_codes: List[str] = Field(default_factory=list)
+    cnc_targets: Dict[int, str] = Field(default_factory=dict)
 
     # Context/Metadata
     context: Dict[str, Any] = Field(default_factory=dict)

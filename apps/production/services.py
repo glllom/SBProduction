@@ -1145,17 +1145,34 @@ class ProductionDataService:
         # Получаем спецификацию заказа из единого шлюза
         order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
 
-        # 1. Извлечение позиций: конкретный батч или все доступные батчи
+        # 1. Extract items: specific batch or all batches
         if batch_number is not None:
             raw_spec_items = order_spec.batches.get(str(batch_number), [])
         else:
             raw_spec_items = [it for b_items in order_spec.batches.values() for it in b_items]
 
-        # 2. Фильтрация по участку/типу отчета (коробки, двери и т.д.)
+        # 2. Filter items by station/report type, respecting per-item station routing
         filtered_items = self.get_filtered_items(report_type, station=station)
         filtered_item_ids = {item.id for item in filtered_items}
 
-        target_items = [it for it in raw_spec_items if it.item_id in filtered_item_ids]
+        target_items = []
+        for it in raw_spec_items:
+            it_id = getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')
+            if it_id not in filtered_item_ids:
+                continue
+
+            # If a specific station is requested and item has individual routing calculated
+            if station:
+                it_station_ids = (
+                    getattr(it, 'route_station_ids', None)
+                    if hasattr(it, 'route_station_ids')
+                    else it.get('route_station_ids')
+                )
+                if it_station_ids:
+                    if station.id not in it_station_ids:
+                        continue
+
+            target_items.append(it)
 
         # 3. Клонирование структуры OrderSpec с выбранными позициями для рендера
         order_spec_for_report = order_spec.model_copy()
@@ -1192,6 +1209,7 @@ class ProductionDataService:
     def get_filtered_items(self, report_type=None, station=None):
         """
         Returns a list of items that belong to the specified report or station.
+        Includes groups where the requested station is either a primary or an alternative station.
         """
         items = []
         is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
@@ -1208,15 +1226,15 @@ class ProductionDataService:
             if is_completion and group.production_state == OrderItemsGroup.ProductionState.COMPLETED:
                 continue
 
-            # Получаем динамический список станций для группы
             group_stations = ProductionRoute.get_stations_for_group(group)
             group_station_codes = [s.code for s in group_stations if s.code]
 
             if station:
-                # Надежная проверка по ID (защита от сравнения разных объектов памяти)
-                is_valid = any(s.id == station.id for s in group_stations)
+                is_valid = any(
+                    s.id == station.id or getattr(s, 'alternative_station_id', None) == station.id
+                    for s in group_stations
+                )
             else:
-                # Фолбэки для стандартных типов отчетов, когда station_code не передан
                 rt = str(report_type).upper()
                 group_codes_upper = {c.upper() for c in group_station_codes}
 
@@ -1621,16 +1639,15 @@ class OrderProductionService:
             order.current_batch = released_batch + 1
             order.save(update_fields=['status', 'current_batch', 'production_start_date'])
 
-            # Initialize granular station tracking for Phase 2 door batches
-            for group in phase2_groups:
-                StationTrackingService.initialize_batch_progress(group)
-
-            # Build specification for Phase 2 batch
+            # Build specification for Phase 2 batch FIRST
             TechnicalSpecService.get_or_build_spec(
                 order, phase='phase2', batch_number=released_batch, force_rebuild=True, user=user
             )
-            return
 
+            # Initialize granular station tracking AFTER spec is built
+            for group in phase2_groups:
+                StationTrackingService.initialize_batch_progress(group)
+            return
         # -------------------------------------------------------------
         # SCENARIO B: Standard launch or Phase 1 start (NEW groups)
         # -------------------------------------------------------------
@@ -1674,16 +1691,16 @@ class OrderProductionService:
         order.current_batch = released_batch + 1
         order.save(update_fields=['status', 'current_batch', 'production_start_date'])
 
-        # Initialize station tracking only for full production sets (skip Phase 1 frames)
-        if order.status == OrderStatus.IN_PRODUCTION:
-            for group in groups_to_launch:
-                StationTrackingService.initialize_batch_progress(group)
-
-        # Build technical specification for the launched batch
+        # Build technical specification for the launched batch FIRST
         phase = 'phase1' if order.status == OrderStatus.PHASE1_PRODUCTION else 'phase2'
         TechnicalSpecService.get_or_build_spec(
             order, phase=phase, batch_number=released_batch, force_rebuild=True, user=user
         )
+
+        # Initialize station tracking only for full production sets AFTER spec is built
+        if order.status == OrderStatus.IN_PRODUCTION:
+            for group in groups_to_launch:
+                StationTrackingService.initialize_batch_progress(group)
 
     @staticmethod
     def complete_phase1(order, user=None):

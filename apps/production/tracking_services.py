@@ -30,12 +30,40 @@ class StationTrackingService:
     ) -> int:
         """
         Creates ItemStationProgress records for Phase 2 / complete door sets.
-        Phase 1 items are ignored by design.
+        Uses per-item route_station_ids from order spec cache when available,
+        falling back to group-level ProductionRoute.
         """
         if not items:
             return 0
 
-        # Load stations grouped by route
+        # 1. Extract pre-calculated per-item station IDs from order spec cache
+        item_route_map: Dict[int, List[int]] = {}
+        orders = {
+            it.group.order for it in items
+            if getattr(it, 'group', None) and getattr(it.group, 'order', None)
+        }
+        cache_field = 'phase1_spec_cache' if phase == 'phase1' else 'phase2_spec_cache'
+
+        for order in orders:
+            spec_cache = getattr(order, cache_field, None)
+            if isinstance(spec_cache, dict):
+                batches = spec_cache.get('batches', {})
+                if isinstance(batches, dict):
+                    for batch_items in batches.values():
+                        for spec_item in batch_items:
+                            if isinstance(spec_item, dict):
+                                it_id = spec_item.get('item_id')
+                                st_ids = spec_item.get('route_station_ids') or []
+                            else:
+                                it_id = getattr(spec_item, 'item_id', None)
+                                st_ids = getattr(spec_item, 'route_station_ids', []) or []
+                            if it_id and st_ids:
+                                item_route_map[int(it_id)] = [int(s) for s in st_ids]
+
+        stations_by_id = {
+            s.id: s for s in ProductionStation.objects.all()
+        }
+
         progress_entries: List[ItemStationProgress] = []
 
         for item in items:
@@ -43,12 +71,30 @@ class StationTrackingService:
             if not group:
                 continue
 
-            stations = ProductionRoute.get_stations_for_group(group)
-            for idx, station in enumerate(stations, start=1):
-                # Filter out phase 1 stations if this is pure phase 2 tracking
-                if phase == 'phase2' and getattr(station, 'is_phase1', False):
-                    continue
+            # Resolve individual item stations or fallback to group route
+            if item.id in item_route_map:
+                stations = [
+                    stations_by_id[sid]
+                    for sid in item_route_map[item.id]
+                    if sid in stations_by_id
+                ]
+            else:
+                stations = ProductionRoute.get_stations_for_group(group)
 
+            # Filter out phase 1 stations if this is pure phase 2 tracking
+            effective_stations = [
+                s for s in stations
+                if not (phase == 'phase2' and getattr(s, 'is_phase1', False))
+            ]
+
+            # Remove obsolete PENDING stations if item routing changed (e.g. Essepigi -> Accord)
+            valid_station_ids = [s.id for s in effective_stations]
+            ItemStationProgress.objects.filter(
+                item=item,
+                status=StationStatus.PENDING
+            ).exclude(station_id__in=valid_station_ids).delete()
+
+            for idx, station in enumerate(effective_stations, start=1):
                 progress_entries.append(
                     ItemStationProgress(
                         item=item,
@@ -73,9 +119,11 @@ class StationTrackingService:
     def initialize_batch_progress(cls, group: OrderItemsGroup) -> int:
         """
         Initializes progress for all items in a specific batch group.
+        Loads fresh order spec cache via select_related.
         """
-        items = list(group.items.all().select_related('group'))
+        items = list(group.items.all().select_related('group', 'group__order'))
         return cls.initialize_items_progress(items, phase='phase2')
+
 
     @classmethod
     @transaction.atomic

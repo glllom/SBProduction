@@ -94,23 +94,41 @@ class HingeStandardHeightAdmin(admin.ModelAdmin):
 
 @admin.register(CustomizerProductionStation)
 class CustomizerProductionStationAdmin(admin.ModelAdmin):
-    list_display = ('customizer', 'station')
+    list_display = ('customizer', 'station', 'force_alternative_machine')
+    list_filter = ('force_alternative_machine', 'station')
+    list_editable = ('force_alternative_machine',)
     raw_id_fields = ('customizer', 'station')
+    search_fields = ('customizer__name', 'station__name', 'station__code')
 
 
 @admin.register(ProductionStation)
 class ProductionStationAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'label', 'has_specification', 'active')
-    list_filter = ('active', 'has_specification')
+    list_display = (
+        'name',
+        'code',
+        'specification_type',
+        'target_machine',
+        'alternative_station',
+        'is_phase1',
+        'active',
+    )
+    list_filter = ('active', 'specification_type', 'target_machine', 'is_phase1')
     search_fields = ('name', 'code', 'label', 'description')
     ordering = ('name',)
+    raw_id_fields = ('alternative_station',)
 
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'code', 'description', 'active')
+            'fields': ('name', 'code', 'description', 'active', 'is_phase1')
         }),
-        ('Buttons and Reports Settings', {
-            'fields': ('label', 'hint', 'template_name', 'has_specification')
+        ('Specification & Output Type', {
+            'fields': ('specification_type', 'template_name')
+        }),
+        ('Routing & CNC Equipment', {
+            'fields': ('target_machine', 'alternative_station')
+        }),
+        ('Buttons & Interface Settings', {
+            'fields': ('label', 'hint')
         }),
     )
 

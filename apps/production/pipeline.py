@@ -856,6 +856,23 @@ class AppearanceStep(SpecStep):
         spec.front_name = front.name if front else ""
         spec.finish_type = getattr(front, 'finish_type', None) or "PAINT"
 
+        # Base front identifier is always passed to the label for door identification
+        if front:
+            front_short = (
+                    getattr(front, 'short_name', None)
+                    or getattr(front, 'code', None)
+                    or front.name
+            )
+            spec.engraving_data = {
+                'engraving_id': front.id,
+                'icon_filename': str(front_short).strip(),
+                'p1': None,
+                'p2': None,
+                'p3': None,
+                'p4': None,
+                'p5': None,
+            }
+
         spec.color_panel_outside = group.effective_color_panel_outside or ""
         spec.color_panel_inside = group.effective_color_panel_inside or ""
         spec.color_frames = group.effective_color_frames or ""
@@ -866,6 +883,220 @@ class AppearanceStep(SpecStep):
 
         if order and order.handle:
             spec.handle_name = order.handle.name
+
+
+class SingleCustomizerStep(SpecStep):
+    priority = 700
+
+    # Customizer tags that must be printed on the door label
+    LABEL_CUSTOMIZER_TAGS = {'WINDOW', 'CUSTOM_ROUTING', 'DOOR_CNC', 'HARDWARE_EXTRA'}
+    # Customizer tags that represent face engraving parameters
+    ENGRAVING_TAGS = {'ENGRAVING', 'FRONT_ENGRAVING', 'FACE_MILLING'}
+
+    def __init__(self, group_customizer):
+        self.group_customizer = group_customizer
+
+    def process(self, context: SpecContext):
+        gc = self.group_customizer
+        c = gc.customizer
+        spec = context.spec
+        tag_str = (c.tag or "").upper()
+        item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
+
+        if c.hardware:
+            hardware_list = [c.hardware] + list(c.hardware.components.all())
+            for hw in hardware_list:
+                spec.bom_items.append(
+                    SpecBOMItem(
+                        type='hardware',
+                        section=tag_str or 'Customizer',
+                        item_name=hw.name,
+                        quantity=1,
+                        tag=tag_str,
+                        item_id=hw.id
+                    )
+                )
+
+        formatted = self._format_customizer(gc)
+
+        if item_tags & {'FRAMES_REPORT', 'FRAME_MODIFICATION'}:
+            spec.frames_report_customizers.append(formatted)
+
+        if item_tags & {'DOORS_REPORT'}:
+            spec.doors_report_customizers.append(formatted)
+
+        if item_tags & self.LABEL_CUSTOMIZER_TAGS:
+            spec.label_customizers.append(formatted)
+
+        if item_tags & self.ENGRAVING_TAGS:
+            spec.engraving_data = self._extract_engraving_dict(gc)
+
+    @staticmethod
+    def _format_customizer(group_customizer) -> SpecCustomizerReport:
+        c = group_customizer.customizer
+        params = []
+        for i in range(1, 6):
+            label = getattr(c, f'par{i}_label')
+            if label:
+                val_order = getattr(group_customizer, f'par{i}')
+                val_default = getattr(c, f'par{i}_value')
+                is_custom = False
+                val = val_order
+                if val is None or val == '':
+                    val = val_default
+                elif val_default and val != val_default:
+                    is_custom = True
+
+                if val:
+                    display_val = group_customizer.get_parameter_display_value(i)
+                    params.append(SpecCustomizerParam(
+                        label=label,
+                        value=str(display_val),
+                        is_custom=is_custom
+                    ))
+        return SpecCustomizerReport(
+            id=c.id,
+            code=c.code,
+            name=c.name,
+            tag=c.tag,
+            params=params
+        )
+
+    @staticmethod
+    def _extract_engraving_dict(group_customizer) -> Dict[str, Any]:
+        c = group_customizer.customizer
+        short_name = getattr(c, 'short_name', None) or c.code or c.name
+        raw_vals = []
+        for i in range(1, 6):
+            val = getattr(group_customizer, f'par{i}', None)
+            if val in (None, ''):
+                val = getattr(c, f'par{i}_value', None)
+            raw_vals.append(val if val not in (None, '') else None)
+
+        return {
+            'engraving_id': c.id,
+            'icon_filename': str(short_name).strip(),
+            'p1': raw_vals[0],
+            'p2': raw_vals[1],
+            'p3': raw_vals[2],
+            'p4': raw_vals[3],
+            'p5': raw_vals[4],
+        }
+
+
+class UnprocessedCustomizersStep(SpecStep):
+    """
+    Priority 700: Processes all remaining customizers before routing and label enrichment.
+    """
+    priority = 700
+
+    def process(self, context: SpecContext):
+        for gc in list(context.unprocessed_customizers):
+            try:
+                SingleCustomizerStep(gc).process(context)
+            except PipelineError as e:
+                context.add_error(str(e))
+            except Exception as e:
+                context.add_error(f"Unexpected error in customizer {gc.customizer.code}: {str(e)}")
+        context.unprocessed_customizers = []
+
+
+class MachiningRoutingStep(SpecStep):
+    """
+    Priority 750: Resolves individual station routing and CNC target machines for the item.
+    Substitutes default stations with alternative_station when dimensions or customizer rules require it.
+    """
+    priority = 750
+    important_for_phase1 = False
+
+    ESSEPIGI_MIN_W = 600.0
+    ESSEPIGI_MAX_W = 1000.0
+    ESSEPIGI_MIN_H = 1800.0
+    ESSEPIGI_MAX_H = 2300.0
+
+    @staticmethod
+    def _to_mm(val: float) -> float:
+        if val <= 0:
+            return 0.0
+        return val * 10.0 if val < 300.0 else val
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        group = context.group
+        if not group:
+            return
+
+        from .models import ProductionRoute, CustomizerProductionStation, DoorLabel
+
+        # 1. Base stations configured for the group
+        base_stations = ProductionRoute.get_stations_for_group(group)
+
+        # 2. Check dimensional limits on calculated leaf dimensions (or item dimensions)
+        if spec.panel_dimensions:
+            w_raw = float(spec.panel_dimensions[0].get('width', 0) or 0)
+            h_raw = float(spec.panel_dimensions[0].get('height', 0) or 0)
+        else:
+            w_raw = float(spec.width or 0)
+            h_raw = float(spec.height or 0)
+
+        w_mm = self._to_mm(w_raw)
+        h_mm = self._to_mm(h_raw)
+
+        fits_essepigi_dims = (
+                not spec.is_double_door
+                and (self.ESSEPIGI_MIN_W <= w_mm <= self.ESSEPIGI_MAX_W)
+                and (self.ESSEPIGI_MIN_H <= h_mm <= self.ESSEPIGI_MAX_H)
+        )
+
+        # 3. Check if any active customizer on the group forces alternative machine
+        customizer_ids = [gc.customizer_id for gc in context.customizers if gc.customizer_id]
+        forced_alt_global = False
+        forced_station_ids = set()
+
+        if customizer_ids:
+            forced_rules = CustomizerProductionStation.objects.filter(
+                customizer_id__in=customizer_ids,
+                force_alternative_machine=True
+            ).values_list('station_id', flat=True)
+            forced_station_ids = set(forced_rules)
+            forced_alt_global = bool(forced_station_ids)
+
+        # 4. Build final station list for this specific door item
+        final_stations = []
+        cnc_targets: Dict[int, str] = {}
+
+        for st in base_stations:
+            effective_st = st
+            is_cnc_label_station = (1 <= getattr(st, 'specification_type', 0) <= 3)
+
+            if is_cnc_label_station:
+                needs_alternative = (
+                        not fits_essepigi_dims
+                        or forced_alt_global
+                        or (st.id in forced_station_ids)
+                )
+                if needs_alternative and st.alternative_station_id:
+                    effective_st = st.alternative_station
+
+                label_type_idx = effective_st.specification_type - 1
+                if effective_st.target_machine:
+                    cnc_targets[label_type_idx] = effective_st.target_machine
+
+            final_stations.append(effective_st)
+
+        # Fallback if stations are not yet linked in BOM route
+        default_machine = (
+            DoorLabel.TargetMachine.ESSEPIGI
+            if (fits_essepigi_dims and not forced_alt_global)
+            else DoorLabel.TargetMachine.ACCORD_STD
+        )
+        for l_idx in (0, 1, 2):
+            if l_idx not in cnc_targets:
+                cnc_targets[l_idx] = default_machine
+
+        spec.route_station_ids = [s.id for s in final_stations if s and s.id]
+        spec.route_station_codes = [s.code for s in final_stations if s and s.code]
+        spec.cnc_targets = cnc_targets
 
 
 class FrameResolutionStep(SpecStep):
@@ -1427,72 +1658,6 @@ class MediaStep(SpecStep):
             spec.sketch_url = item.sketch.url
 
 
-class SingleCustomizerStep(SpecStep):
-    priority = 1000
-
-    def __init__(self, group_customizer):
-        self.group_customizer = group_customizer
-
-    def process(self, context: SpecContext):
-        gc = self.group_customizer
-        c = gc.customizer
-        spec = context.spec
-        tag_str = (c.tag or "").upper()
-        item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
-
-        if c.hardware:
-            hardware_list = [c.hardware] + list(c.hardware.components.all())
-            for hw in hardware_list:
-                spec.bom_items.append(
-                    SpecBOMItem(
-                        type='hardware',
-                        section=tag_str or 'Customizer',
-                        item_name=hw.name,
-                        quantity=1,
-                        tag=tag_str,
-                        item_id=hw.id
-                    )
-                )
-
-        formatted = None
-        if item_tags & {'FRAMES_REPORT', 'FRAME_MODIFICATION'}:
-            formatted = self._format_customizer(gc)
-            spec.frames_report_customizers.append(formatted)
-
-        if item_tags & {'DOORS_REPORT'}:
-            if not formatted:
-                formatted = self._format_customizer(gc)
-            spec.doors_report_customizers.append(formatted)
-
-    @staticmethod
-    @staticmethod
-    def _format_customizer(group_customizer) -> SpecCustomizerReport:
-        c = group_customizer.customizer
-        params = []
-        for i in range(1, 6):
-            label = getattr(c, f'par{i}_label')
-            if label:
-                val_order = getattr(group_customizer, f'par{i}')
-                val_default = getattr(c, f'par{i}_value')
-                is_custom = False
-                val = val_order
-                if val is None or val == '':
-                    val = val_default
-                elif val_default and val != val_default:
-                    is_custom = True
-
-                if val:
-                    # Автоматически получаем красивый текст вместо ключа
-                    display_val = group_customizer.get_parameter_display_value(i)
-
-                    params.append(SpecCustomizerParam(
-                        label=label,
-                        value=display_val,
-                        is_custom=is_custom
-                    ))
-        return SpecCustomizerReport(name=c.name, tag=c.tag, params=params)
-
-
 class SpecPipeline:
     def __init__(self):
         self.steps = [
@@ -1516,9 +1681,11 @@ class SpecPipeline:
             SandwichAndFrameStep(),
             CustomizerPuzzleStep(),
             MeasurerDataStep(),
-            TechnicalDataStep(),
-            MediaStep(),
-            DoorLabelEnrichStep(),
+            UnprocessedCustomizersStep(),  # <-- Priority 700
+            MachiningRoutingStep(),  # <-- Priority 750
+            TechnicalDataStep(),  # <-- Priority 800
+            MediaStep(),  # <-- Priority 900
+            DoorLabelEnrichStep(),  # <-- Priority 1100
         ]
 
     def execute(self, item: OrderItem, customizers=None, phase: str = 'phase2') -> ProductionSpec:

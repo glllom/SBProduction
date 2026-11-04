@@ -255,15 +255,54 @@ class ProductionStation(models.Model):
     """
     Production stations or departments (areas / stations).
     """
+
+    class TargetMachine(models.TextChoices):
+        NONE = '', 'ללא שיוך למכונה'
+        ESSEPIGI = 'ESSEPIGI', 'Essepigi'
+        ACCORD_STD = 'ACCORD_STD', 'Accord (Standard)'
+        ACCORD_CUSTOM = 'ACCORD_CUSTOM', 'Accord (Custom)'
+
+    class SpecType(models.IntegerChoices):
+        NONE = 0, 'ללא מפרט (0: Нет)'
+        LABEL_PRE_CLEANING = 1, 'מדבקה 0: כרסום מקדים (1: Наклейка 0)'
+        LABEL_CLEANING = 2, 'מדבקה 1: כרסום סופי (2: Наклейка 1)'
+        LABEL_FINISHING = 3, 'מדבקה 2: פרזול ומנעול (3: Наклейка 2)'
+        # 4-9: Reserved for future label/special types
+        REPORT = 10, 'דו"ח תחנה רגיל (10: Отчёт)'
+
     name = models.CharField('שם התחנה', max_length=255)
     code = models.CharField('קוד תחנה', max_length=50, blank=True)
     label = models.CharField('תווית לכפתור', max_length=100, blank=True, help_text='הטקסט שיופיע על הכפתור')
     hint = models.CharField('רמז/תיאור קצר', max_length=255, blank=True, help_text='יופיע כ-tooltip')
     description = models.TextField('תיאור מפורט', blank=True)
+    target_machine = models.CharField(
+        'מכונת CNC משויכת',
+        max_length=32,
+        choices=TargetMachine.choices,
+        default=TargetMachine.NONE,
+        blank=True,
+        help_text='סוג המכונה ליצירת קוד QR ופקודות CNC'
+    )
+    alternative_station = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='primary_stations',
+        verbose_name='תחנה חלופית (עומס / מידות חריגות)',
+        help_text='תחנה שתחליף את הנוכחית כאשר המידות חורגות (למשל: Accord במקום Essepigi)'
+    )
+
+    # --- Type of output / specification ---
+    specification_type = models.PositiveSmallIntegerField(
+        'סוג מפרט / פלט',
+        choices=SpecType.choices,
+        default=SpecType.NONE,
+        help_text='0 = ללא, 1-3 = מדבקות CNC, 10 = דו"ח מודפס'
+    )
+
     template_name = models.CharField('שם תבנית HTML', max_length=255, blank=True,
                                      help_text='נתיב לקובץ ה-html של הדו"ח')
-    has_specification = models.BooleanField('יש מפרט/כפתור', default=True,
-                                            help_text='האם להציג כפתור להפקת דו"ח עבור תחנה זו')
     is_phase1 = models.BooleanField('שלב א', default=False, help_text='האם תחנה זו שייכת לשלב א (ייצור מקדים/משקופים)')
     active = models.BooleanField('פעיל', default=True)
 
@@ -275,32 +314,59 @@ class ProductionStation(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def has_specification(self) -> bool:
+        """Backward compatibility for template button rendering."""
+        return self.specification_type != self.SpecType.NONE
+
+    @property
+    def is_report(self) -> bool:
+        """Station generates a standard printed HTML report."""
+        return self.specification_type == self.SpecType.REPORT
+
+    @property
+    def is_label(self) -> bool:
+        """Station requires a CNC barcode label (types 1, 2, 3)."""
+        return 1 <= self.specification_type <= 3
+
+    @property
+    def label_type_index(self) -> int | None:
+        """
+        Maps specification_type to DoorLabel.label_type integer (0, 1, 2).
+        SpecType.LABEL_PRE_CLEANING (1) -> 0
+        SpecType.LABEL_CLEANING (2) -> 1
+        SpecType.LABEL_FINISHING (3) -> 2
+        """
+        if self.is_label:
+            return self.specification_type - 1
+        return None
+
 
 class CustomizerProductionStation(models.Model):
     """
-    Links customizers to production stations.
-    Example: Customizer 'Japanese Window' adds 'Glazing' station.
+    Production routing rules for catalog customizers.
     """
     customizer = models.ForeignKey(
         'catalog.Customizer',
         on_delete=models.CASCADE,
-        related_name='added_stations',
-        verbose_name='קסטומייזר'
+        related_name='production_station_rules',
+        verbose_name='התאמה אישית'
     )
     station = models.ForeignKey(
-        ProductionStation,
+        'ProductionStation',
         on_delete=models.CASCADE,
-        related_name='customizer_links',
+        related_name='customizer_rules',
         verbose_name='תחנת ייצור'
+    )
+    force_alternative_machine = models.BooleanField(
+        'העברה למכונה חלופית',
+        default=False,
+        help_text='אם מסומן, מחייב שימוש בתחנה החלופית (למשל Accord במקום Essepigi)'
     )
 
     class Meta:
-        verbose_name = 'תחנה לקסטומייזר'
-        verbose_name_plural = 'תחנות לקסטומייזרים'
-        unique_together = ('customizer', 'station')
-
-    def __str__(self):
-        return f"{self.customizer.name} -> {self.station.name}"
+        verbose_name = 'ניתוב התאמה אישית לתחנה'
+        verbose_name_plural = 'ניתוב התאמות אישיות לתחנות'
 
 
 class ProductionRoute(models.Model):
@@ -546,6 +612,7 @@ class DoorLabel(models.Model):
             models.Index(fields=['order', 'label_type']),
             models.Index(fields=['order_number', 'item_mark', 'leaf_role', 'label_type']),
         ]
+
     def __str__(self):
         return f"{self.order_number} - Item {self.item_mark} (Type {self.label_type})"
 
