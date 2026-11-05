@@ -1,0 +1,132 @@
+<div class="station-report-section">
+    <div style="display: flex;
+                justify-content: space-between"
+         class="report-header mb-1">
+        <div class="btn-group btn-group-sm p-0 w-25 mb-0"
+             role="group"
+             aria-label="">
+            <button type="button"
+                    class="btn bg-secondary border border-dark m-0 p-0 text-secondary pe-none">משקופים</button>
+            <button type="button"
+                    class="btn bg-secondary border border-dark m-0 p-0 text-secondary pe-none">כנפיים</button>
+            <button type="button" class="btn m-0 p-0 btn-dark pe-none fa-bold">פנלים</button>
+        </div>
+        <p class="text-danger fw-bold mb-0">{{ stage_label }}</p>
+        <p class="fs-5">הזמנה: <span class="fw-bold">{{ order.order_number }}</span></p>
+        <p class="mb-0">לקוח: <strong>{{ order.customer }}</strong></p>
+        <p class="mb-0">תאריך סיום: {{ order_spec.order.completion_date }}</p>
+        {% if order_qr %}
+            <div class="d-flex flex-column align-items-center">
+                <img src="data:image/svg+xml;base64,{{ order_qr }}"
+                     alt="QR"
+                     style="width: 42px;
+                            height: 42px">
+            </div>
+        {% endif %}
+    </div>
+    {% regroup spec_items by product_family as family_list %}
+    {% for family in family_list %}
+        {% regroup family.list by series as series_list %}
+        {% for series in series_list %}
+            <div class="group-section mb-4">
+                <div class="group-header bg-light px-2 border">
+                    <div class="row g-1">
+                        <div class="col-8">
+                            <h4>דגם: <span class="text-decoration-underline">{{ family.grouper }}</span></h4>
+                        </div>
+                        <div class="col-4 text-end">
+                            <h5>סדרה: <span class="text-decoration-underline">{{ series.grouper }}</span></h5>
+                        </div>
+                    </div>
+                </div>
+                <table class="table table-sm table-bordered mt-0">
+                    <thead>
+                        <tr class="table-secondary">
+                            <th style="width: 8%;">#</th>
+                            <th style="width: 9%;" class="text-center fs-6">
+                                תשתית
+                                <th style="width: 9%;" class="text-center">רוחבנים</th>
+                                <th colspan="2" style="width: 37%;" class="text-center">צד צר</th>
+                                {#                                <th style="width: 15%;">צבע</th>#}
+                                <th colspan="2" class="text-center">צד רחב</th>
+                                {#                                <th>צבע</th>#}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for spec in series.list %}
+                                <tr>
+                                    <td class="fw-bolder fs-5">{{ spec.mark }} <span class="text-secondary fs-6">{{ spec.opening }}</span></td>
+                                    <td class="fs-6">
+                                        {% for sheet in spec.cut_sheets %}
+                                            {% if sheet.alucobond %}
+                                                {{ sheet.alucobond.width|floatformat }} \
+                                                {{ sheet.alucobond.height|floatformat }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                            {% if not forloop.last %}<br>{% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td class="fs-6">
+                                        {% for sheet in spec.cut_sheets %}
+                                            {% if sheet.rails %}
+                                                {{ sheet.rails.width|floatformat }} ({{ sheet.rails.count }}x)
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                            {% if not forloop.last %}<br>{% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td class="fw-bold fs-5 fw-bold" style="width:15%;">
+                                        {% for sheet in spec.cut_sheets %}
+                                            {% if sheet.exterior_panel %}
+                                                {{ sheet.exterior_panel.width|floatformat }} \
+                                                {{ sheet.exterior_panel.height|floatformat }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                            {% if not forloop.last %}<br>{% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td class="fs-6">
+                                        <div class="fw-bold fst-italic text-primary">
+                                            {% if spec.opening_code == "IN" %}
+                                                {{ spec.color_panel_outside|default:"-" }}
+                                            {% else %}
+                                                {{ spec.color_panel_inside|default:"-" }}
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td class="fw-bold fs-5" style="width:15%;">
+                                        {% for sheet in spec.cut_sheets %}
+                                            {% if sheet.interior_panel %}
+                                                {{ sheet.interior_panel.width|floatformat }} \
+                                                {{ sheet.interior_panel.height|floatformat }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                            {% if not forloop.last %}<br>{% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td class="fs-6">
+                                        <div class="fw-bold fst-italic text-primary">
+                                            {% if spec.opening_code == "OUT" %}
+                                                {{ spec.color_panel_outside|default:"-" }}
+                                            {% else %}
+                                                {{ spec.color_panel_inside|default:"-" }}
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+        {% endfor %}
+    {% empty %}
+        <div class="alert alert-info text-center mt-5">
+            <h4>אין נתונים להצגה בדוח זה</h4>
+            <p>הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
+        </div>
+    {% endfor %}
+</div>

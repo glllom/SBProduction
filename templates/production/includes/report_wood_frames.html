@@ -1,0 +1,43 @@
+<div class="wood-frames-report-content" dir="rtl">
+    <!-- Шапка отчёта -->
+    <div class="report-header mb-3 border-bottom pb-2 d-flex justify-content-between align-items-baseline">
+        <h4 class="mb-0">
+            הזמנה: <strong>{{ order.order_number }}</strong>
+            {% if batches_label %}<span class="text-secondary fs-6 fst-italic">[{{ batches_label }}]</span>{% endif %}
+            <span class="text-secondary mx-2">|</span>
+            <span class="text-primary">{{ report_label|default:"" }}</span>
+        </h4>
+        <span class="fs-5 text-muted">תאריך: {{ now|date:"d/m/y" }}</span>
+    </div>
+    <!-- Секции по группам характеристик משקופים -->
+    {% for grp in frame_groups %}
+        <div class="wood-frame-card mb-4">
+            <div class="row align-items-start g-4">
+                <!-- Правая колонка: Информационная шапка группы -->
+                <div class="col-6 wood-card-header-col">
+                    <p class="card-title fw-bold mb-2 fs-4">{{ grp.product_name }}</p>
+                    <!-- 2. Серая плашка: Цвет и הלבשה -->
+                    <div class="bg-light">
+                        <p>{{ grp.frames_caption }}</p>
+                        <p>{{ grp.door_casing }}</p>
+                        <p>מנעול: <strong>{{ grp.lock_name|default:"ללא" }} </strong><span class="fs-5"> {{ grp.lock_height| floatformat }}</span></p>
+                        <p>
+                            צירים: <strong>{{ grp.hinge_name|default:"ללא" }} </strong><span class="fs-5"> {{ grp.hinge_heights_display }}</span>
+                        </p>
+                    </div>
+                    <div class="col-6 wood-card-rows-col">
+                        <div class="card-rows-container">
+                            {% for row in grp.grouped_rows %}
+                                <div class="">
+                                    <p dir="rtl" class="fs-5 fw-bold">{{ row.dimension_display }}</p>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <!-- Нижняя черная разделительная линия -->
+                    <div class="card-bottom-divider"></div>
+                </div>
+    {% empty %}
+        <div class="alert alert-warning text-center">לא נמצאו משקופי עץ עבור הזמנה זו.</div>
+    {% endfor %}
+</div>

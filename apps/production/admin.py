@@ -1,3 +1,179 @@
 from django.contrib import admin
 
-# Register your models here.
+from .models import (
+    SvgPattern,
+    PuzzleBlockPrototype,
+    PuzzlePreset,
+    CustomizerPuzzleMapping,
+    ProductTechnicalData, BOM, LockStandardHeight, HingeStandardHeight,
+    ProductionStation, ProductionRoute, ProductionRouteStep,
+    CustomizerProductionStation, OrderSpecificationSnapshot
+)
+
+
+@admin.register(OrderSpecificationSnapshot)
+class OrderSpecificationSnapshotAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'snapshot_type', 'created_at', 'created_by')
+    list_filter = ('snapshot_type', 'created_at')
+    search_fields = ('order__order_number', 'order__customer')
+    readonly_fields = ('created_at',)
+    raw_id_fields = ('order', 'created_by')
+
+
+@admin.register(ProductTechnicalData)
+class ProductTechnicalDataAdmin(admin.ModelAdmin):
+    list_display = ('product', 'cnc_program_name')
+    search_fields = ('product__name', 'product__code', 'cnc_program_name')
+    raw_id_fields = ('product',)
+
+
+@admin.register(BOM)
+class BOMAdmin(admin.ModelAdmin):
+    list_display = ('product',)
+    raw_id_fields = (
+        'product', 'covering', 'base', 'filling', 'casing', 'frame', 'panel_frame',
+        'profile1', 'profile2', 'profile3',
+        'other1', 'other2', 'other3', 'other4', 'other5',
+        'lock', 'hinges',
+        # Пресеты для отрисовки базовых слотов
+        'panel_frame_preset', 'filling_preset', 'base_preset', 'covering_preset'
+    )
+    filter_horizontal = ('additional', 'required_customizers')
+
+    fieldsets = (
+        (None, {
+            'fields': ('product',)
+        }),
+        ('Materials (חומרים)', {
+            'fields': (
+                ('covering', 'covering_consumption'),
+                ('base', 'base_consumption'),
+                ('filling', 'filling_consumption'),
+                ('panel_frame', 'panel_frame_consumption'),
+                ('casing', 'casing_consumption'),
+                ('frame', 'frame_consumption'),
+            )
+        }),
+        ('Puzzle Presets (פיקטוגרמות סלוטים)', {
+            'description': 'Пресеты отрисовки для схемы пресса (анфас и торец)',
+            'fields': (
+                ('panel_frame_preset', 'filling_preset'),
+                ('base_preset', 'covering_preset'),
+            )
+        }),
+        ('Profiles & Others (פרופילים ואחרים)', {
+            'fields': (
+                ('profile1', 'profile1_consumption'),
+                ('profile2', 'profile2_consumption'),
+                ('profile3', 'profile3_consumption'),
+                ('other1', 'other1_consumption'),
+                ('other2', 'other2_consumption'),
+                ('other3', 'other3_consumption'),
+                ('other4', 'other4_consumption'),
+                ('other5', 'other5_consumption'),
+            )
+        }),
+        ('Hardware (פרזול)', {
+            'fields': ('lock', 'hinges', 'additional', 'required_customizers')
+        }),
+        ('Technological Parameters (פרמטרים טכנולוגיים)', {
+            'fields': ('cut_coefficients',)
+        }),
+    )
+
+
+@admin.register(LockStandardHeight)
+class LockStandardHeightAdmin(admin.ModelAdmin):
+    filter_horizontal = ('product_families', 'locks')
+
+
+@admin.register(HingeStandardHeight)
+class HingeStandardHeightAdmin(admin.ModelAdmin):
+    filter_horizontal = ('product_families', 'hinges')
+
+
+@admin.register(CustomizerProductionStation)
+class CustomizerProductionStationAdmin(admin.ModelAdmin):
+    list_display = ('customizer', 'station', 'force_alternative_machine')
+    list_filter = ('force_alternative_machine', 'station')
+    list_editable = ('force_alternative_machine',)
+    raw_id_fields = ('customizer', 'station')
+    search_fields = ('customizer__name', 'station__name', 'station__code')
+
+
+@admin.register(ProductionStation)
+class ProductionStationAdmin(admin.ModelAdmin):
+    list_display = (
+        'name',
+        'code',
+        'specification_type',
+        'target_machine',
+        'alternative_station',
+        'is_phase1',
+        'active',
+    )
+    list_filter = ('active', 'specification_type', 'target_machine', 'is_phase1')
+    search_fields = ('name', 'code', 'label', 'description')
+    ordering = ('name',)
+    raw_id_fields = ('alternative_station',)
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'code', 'description', 'active', 'is_phase1')
+        }),
+        ('Specification & Output Type', {
+            'fields': ('specification_type', 'template_name')
+        }),
+        ('Routing & CNC Equipment', {
+            'fields': ('target_machine', 'alternative_station')
+        }),
+        ('Buttons & Interface Settings', {
+            'fields': ('label', 'hint')
+        }),
+    )
+
+
+class ProductionRouteStepInline(admin.TabularInline):
+    model = ProductionRouteStep
+    extra = 3
+    raw_id_fields = ('station',)
+
+
+@admin.register(ProductionRoute)
+class ProductionRouteAdmin(admin.ModelAdmin):
+    list_display = ('name', 'active', 'display_products',)
+    list_filter = ('active',)
+    filter_horizontal = ('products',)
+    inlines = [ProductionRouteStepInline]
+
+    def display_products(self, obj):
+        products = obj.products.all()[:5]
+        return ", ".join([p.name for p in products]) + ("..." if obj.products.count() > 5 else "")
+
+    display_products.short_description = 'מוצרים (Продукты)'
+
+
+@admin.register(SvgPattern)
+class SvgPatternAdmin(admin.ModelAdmin):
+    list_display = ('title', 'name', 'width', 'height')
+    search_fields = ('title', 'name')
+
+
+@admin.register(PuzzleBlockPrototype)
+class PuzzleBlockPrototypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'fill_type', 'fill_color', 'pattern', 'border_color')
+    list_filter = ('fill_type',)
+    search_fields = ('name', 'code')
+
+
+@admin.register(PuzzlePreset)
+class PuzzlePresetAdmin(admin.ModelAdmin):
+    list_display = ('name', 'description')
+    search_fields = ('name',)
+
+
+@admin.register(CustomizerPuzzleMapping)
+class CustomizerPuzzleMappingAdmin(admin.ModelAdmin):
+    list_display = ('customizer', 'preset', 'slot_action', 'target_slot')
+    list_filter = ('slot_action', 'target_slot')
+    search_fields = ('customizer__name', 'preset__name')

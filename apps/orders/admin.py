@@ -1,44 +1,297 @@
 from django.contrib import admin
-from .models import Order, OrderItemsGroup, OrderItem
+
+from .models import Order, OrderChangeLog
+from .models import OrderItemsGroup, GroupSpecification, GroupSpecificationCustomizer
 
 
-class OrderItemInline(admin.TabularInline):
-    """Позволяет замерщику/менеджеру вводить габариты дверей внутри группы."""
-    model = OrderItem
-    extra = 0
-    readonly_fields = ('position_number',)
-    fields = ('position_number', 'item_label', 'height', 'width', 'wall_thickness', 'opening_direction', 'opening_type',
-              'note')
-    ordering = ('position_number',)
+class OrderItemsGroupInline(admin.TabularInline):
+    model = OrderItemsGroup
+    extra = 1
+    fields = (
+        "production_state",
+        "product",
+        "quantity",
+        "production_state",
+        "series",
+        "front",
+        "basic_color_frames",
+        "color_panels",
+        "color_frames",
+        "is_split_installation",
+    )
 
 
 @admin.register(OrderItemsGroup)
 class OrderItemsGroupAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'order', 'product', 'front', 'has_window')
-    list_filter = ('product', 'has_window')
-    search_fields = ('name', 'order__order_number')
-    inlines = [OrderItemInline]
+    list_display = (
+        "id",
+        "order",
+        "production_state",
+        "product",
+        "quantity",
+        "production_state",
+        "series",
+        "front",
+        "basic_color_frames",
+        "color_panel_outside",
+        "color_frames",
+        "is_split_installation",
+    )
 
+    list_filter = (
+        "production_state",
+        "is_split_installation",
+        "series",
+        "product",
+    )
 
-class OrderGroupInline(admin.StackedInline):
-    """Позволяет создавать группы прямо на странице Заказа."""
-    model = OrderItemsGroup
-    extra = 1
+    search_fields = (
+        "order__order_number",
+        "comments",
+        "color_panel_outside",
+        "color_frames",
+    )
+
+    ordering = ("id",)
+
+    fieldsets = (
+        (
+            "Привязка к заказу и Объем",
+            {
+                "fields": ("order", "product", "quantity", "production_state", "batch_date"),
+            },
+        ),
+        (
+            "Конструкция и Отделка",
+            {
+                "fields": (
+                    "series",
+                    "front",
+                    "basic_color_frames",
+                    "color_panel_outside",
+                    "color_frames",
+                ),
+            },
+        ),
+        (
+            "Параметры монтажа",
+            {
+                "fields": ("is_split_installation",),
+            },
+        ),
+        (
+            "Примечание",
+            {
+                "fields": ("comments",),
+            },
+        ),
+    )
 
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('order_number', 'status', 'created_at')
-    list_filter = ('status', 'created_at')
-    search_fields = ('order_number',)
-    inlines = [OrderGroupInline]
+    # Поля в списке всех заказов
+    list_display = (
+        "id",
+        "order_number",
+        "customer",
+        "status",
+        "painting_completion_date",
+        "completion_date",
+        "series",
+        "created_at",
+    )
+
+    # Фильтры в правой панели
+    list_filter = (
+        "status",
+        "series",
+        "painting_completion_date",
+        "completion_date",
+    )
+
+    # Поиск по номеру, клиенту и комментариям
+    search_fields = ("order_number", "customer", "comments")
+
+    # Сортировка по умолчанию (новые вверху)
+    ordering = ("-id",)
+
+    # Структурированная форма редактирования
+    fieldsets = (
+        (
+            "Основная информация",
+            {
+                "fields": (
+                    "order_number",
+                    "customer",
+                    "status",
+                )
+            },
+        ),
+        (
+            "Даты и График",
+            {
+                "fields": (
+                    "painting_completion_date",
+                    "completion_date",
+                )
+            },
+        ),
+        (
+            "Характеристики заказа",
+            {
+                "fields": (
+                    "series",
+                    "front",
+                    "handle",
+                    "color_panel_outside",
+                    "is_frames_to_paint",
+                    "color_frames",
+                )
+            },
+        ),
+        (
+            "Дополнительно",
+            {
+                "fields": ("comments",),
+            },
+        ),
+    )
+
+
+from django.contrib import admin
+from .models import OrderItem
+
+
+class OrderItemInline(admin.TabularInline):
+    model = OrderItem
+    extra = 0
+    fields = (
+        "width",
+        "height",
+        "wall",
+        "opening",
+        "direction",
+        "sketch",
+        "place",
+        "custom_lock_height",
+    )
+
+
+@admin.register(OrderChangeLog)
+class OrderChangeLogAdmin(admin.ModelAdmin):
+    list_display = ("timestamp", "order", "user", "field_name", "old_value", "new_value")
+    list_filter = ("timestamp", "field_name", "user")
+    search_fields = ("order__order_number", "field_name")
+    readonly_fields = ("timestamp", "order", "user", "field_name", "old_value", "new_value")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
-    list_display = ('position_number', 'get_order_number', 'group', 'item_label', 'height', 'width')
-    list_filter = ('group__order', 'opening_direction', 'opening_type')
-    ordering = ('group__order', 'position_number')
+    list_display = (
+        "id",
+        "group",
+        "width",
+        "height",
+        "wall",
+        "opening",
+        "direction",
+        "place",
+        "custom_lock_height",
+    )
 
-    @admin.display(description='Order')
-    def get_order_number(self, obj):
-        return obj.group.order.order_number
+    list_filter = (
+        "opening",
+        "direction",
+        "group",
+    )
+
+    search_fields = (
+        "place",
+        "comment",
+        "bottom_correction",
+        "group__order__order_number",
+    )
+
+    ordering = ("id",)
+
+    fieldsets = (
+        (
+            "Основная привязка",
+            {
+                "fields": ("group", "place"),
+            },
+        ),
+        (
+            "Габариты и Конструкция",
+            {
+                "fields": (
+                    "width",
+                    "height",
+                    "wall",
+                    "opening",
+                    "direction",
+                    "bottom_correction",
+                ),
+            },
+        ),
+        (
+            "Врезка замка и петель (Кастомизация)",
+            {
+                "fields": (
+                    "custom_lock_height",
+                    "custom_hinge1",
+                    "custom_hinge2",
+                    "custom_hinge3",
+                    "custom_hinge4",
+                    "custom_hinge5",
+                ),
+            },
+        ),
+        (
+            "Дополнительно",
+            {
+                "fields": ("comment",),
+            },
+        ),
+    )
+
+
+class GroupSpecificationCustomizerInline(admin.TabularInline):
+    model = GroupSpecificationCustomizer
+    extra = 0
+    fields = ("customizer", "par1", "par2", "par3", "par4")
+
+
+@admin.register(GroupSpecification)
+class GroupSpecificationAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "product",
+        "series",
+        "front",
+        "basic_color_frames",
+        "quantity",
+        "created_by",
+        "created_at",
+    )
+    list_filter = (
+        "product",
+        "series",
+        "is_split_installation",
+        "created_at",
+    )
+    search_fields = (
+        "name",
+        "description",
+        "comments",
+    )
+    inlines = [GroupSpecificationCustomizerInline]
+    ordering = ("-created_at",)

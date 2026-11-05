@@ -1,0 +1,27 @@
+{
+  "order": {
+    "number": 1234,
+    "customer": "Customer name",
+    "status": "IN_PRODUCTION"
+  },
+  "items": [
+    {
+      "number": "1",
+      "model": "mdl1",
+      "model_name": "דלת נסתרת",
+      "width": "80",
+      "height": "220",
+      "direction": "R",
+      "opening": "IN",
+      "lock": "מגנט",
+      "lock's height": 97,
+      "hinges": "סמום",
+      "hinges height": [
+        15,
+        75,
+        170
+      ],
+      "frame": "משקוף N60 לבן"
+    }
+  ]
+}

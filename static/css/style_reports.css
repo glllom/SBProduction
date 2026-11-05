@@ -1,0 +1,145 @@
+* {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background-color: #f0f0f0;
+}
+
+.page {
+    background: white;
+    margin: 10mm auto;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+    width: 297mm;
+    min-height: 210mm;
+    padding: 15mm;
+}
+
+/* Portrait orientation for page container on screen */
+body.portrait .page,
+.page.portrait {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 15mm;
+}
+
+body.landscape .page,
+.page.landscape {
+    width: 297mm;
+    min-height: 210mm;
+    padding: 15mm;
+}
+
+table {
+    width: 100%;
+    margin-top: 20px;
+}
+
+th, td {
+    border: 1px solid #000;
+    padding: 8px;
+}
+
+th {
+    background-color: #f2f2f2;
+}
+
+.no-print {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* Ограничиваем стили только верхними сервисными кнопками, чтобы не ломать Bootstrap-кнопки в отчёте */
+.no-print .btn {
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    margin: 0 5px;
+}
+
+.no-print .btn-secondary {
+    background-color: #6c757d;
+}
+
+.page-break {
+    page-break-before: always;
+    break-before: page;
+}
+
+/* Класс для гарантированной чёрной заливки на печати (работает даже если в браузере снят чекбокс фонов) */
+.indicator-active {
+    background-color: #000 !important;
+    color: #fff !important;
+    box-shadow: inset 0 0 0 1000px #000 !important;
+}
+
+@page portrait-page {
+    size: A4 portrait;
+    margin: 10mm;
+}
+
+@page landscape-page {
+    size: A4 landscape;
+    margin: 10mm;
+}
+
+@media print {
+    @page portrait-page {
+        size: A4 portrait;
+        margin: 10mm;
+    }
+
+    @page landscape-page {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+
+    body.portrait,
+    body.portrait .page,
+    .page.portrait {
+        page: portrait-page;
+    }
+
+    body.landscape,
+    body.landscape .page,
+    .page.landscape,
+    .page:not(.portrait) {
+        page: landscape-page;
+    }
+
+    body {
+        background-color: white;
+        margin: 0;
+        padding: 0;
+    }
+
+    .page {
+        margin: 0 !important;
+        box-shadow: none !important;
+        width: 100% !important;
+        min-height: auto !important;
+        padding: 0 !important;
+    }
+
+    .page:not(:last-child) {
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .page-break {
+        display: none !important;
+    }
+
+    .no-print {
+        display: none !important;
+    }
+}

@@ -1,0 +1,129 @@
+<div class="station-report-section facing-section">
+    <!-- Шапка документа -->
+    <div class="report-header mb-3 border-bottom pb-2">
+        <div class="row align-items-center">
+            <div class="col-8">
+                <h3 class="fw-bold mb-1">
+                    הזמנה {{ order.order_number }}
+                    <span class="text-secondary mx-2">|</span>
+                    <span class="text-primary">{{ report_label|default:"דוח חיפויים" }}</span>
+                </h3>
+                <div class="text-muted">
+                    <span class="me-3">לקוח: <strong class="text-dark">{{ order.customer }}</strong></span>
+                    <span class="me-3">אצוות: <strong class="text-dark">{{ batches_label }}</strong></span>
+                    {% if order.completion_date %}
+                        <span>תאריך יעד: <strong class="text-dark">{{ order.completion_date|date:"d/m/Y" }}</strong></span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-4 text-end">
+                {% if order_qr %}
+                    <img src="data:image/svg+xml;base64,{{ order_qr }}"
+                         alt="QR Code"
+                         style="height: 55px">
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <!-- Вывод позиций облицовки -->
+    {% if facings_data %}
+        {% for data in facings_data %}
+            <div class="facing-item mb-4 pb-3 border-bottom">
+                <!-- Инфо-блок позиции -->
+                <div class="bg-light p-3 border rounded shadow-sm mb-3">
+                    <h5 class="fw-bold text-dark mb-2 border-bottom pb-2">
+                        <i class="bi bi-tag-fill me-2 text-primary"></i>פריט #{{ data.item.mark }}
+                        {% if data.item.place %}
+                            <span class="text-muted fs-6 ms-2 fw-normal">({{ data.item.place }})</span>
+                        {% endif %}
+                    </h5>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <span class="text-muted d-block small">דגם (מוצר):</span>
+                            <strong>{{ data.group.product.name }}</strong>
+                        </div>
+                        <div class="col-md-8">
+                            <span class="text-muted small">גוון / חיפוי:</span>
+                            <strong class="text-primary ms-2">{{ data.group.color_panel_outside|default:"ללא צבע מוגדר" }}</strong>
+                        </div>
+                        {% if data.item.comment %}
+                            <div class="col-md-12 mt-2 text-danger small">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                <strong>הערה:</strong> {{ data.item.comment }}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- Область эскиза/чертежа -->
+                {% if data.image_url %}
+                    <div class="text-center mt-3 border border-2 border-secondary rounded p-2 bg-white">
+                        <img src="{{ data.image_url }}"
+                             alt="Sketch for Item {{ data.item.mark }}"
+                             style="max-height: 600px;
+                                    max-width: 100%;
+                                    object-fit: contain">
+                    </div>
+                {% else %}
+                    <div class="text-center mt-3 border border-1 border-secondary rounded p-4 text-muted bg-white"
+                         style="border-style: dashed !important">
+                        <i class="bi bi-image text-secondary mb-2 d-block"
+                           style="font-size: 3rem"></i>
+                        <h6 class="fw-bold">לא צורפה סקיצה או שרטוט לפריט זה</h6>
+                        <p class="small mb-0">יש להעלות שרטוט לכרטיס ההזמנה במערכת</p>
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% elif spec_items %}
+        {% for it in spec_items %}
+            <div class="facing-item mb-4 pb-3 border-bottom">
+                <div class="bg-light p-3 border rounded shadow-sm mb-3">
+                    <h5 class="fw-bold text-dark mb-2 border-bottom pb-2">
+                        <i class="bi bi-tag-fill me-2 text-primary"></i>פריט #{{ it.mark }}
+                        {% if it.place %}
+                            <span class="text-muted fs-6 ms-2 fw-normal">({{ it.place }})</span>
+                        {% endif %}
+                    </h5>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <span class="text-muted d-block small">דגם (מוצר):</span>
+                            <strong>{{ it.product_name|default:it.product_family }}</strong>
+                        </div>
+                        <div class="col-md-8">
+                            <span class="text-muted small">גוון / חיפוי:</span>
+                            <strong class="text-primary ms-2">{{ it.color_facing|default:it.color_panel_outside|default:"ללא צבע מוגדר" }}</strong>
+                        </div>
+                        {% if it.comment %}
+                            <div class="col-md-12 mt-2 text-danger small">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                <strong>הערה:</strong> {{ it.comment }}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if it.image_url %}
+                    <div class="text-center mt-3 border border-2 border-secondary rounded p-2 bg-white">
+                        <img src="{{ it.image_url }}"
+                             alt="Sketch for Item {{ it.mark }}"
+                             style="max-height: 600px;
+                                    max-width: 100%;
+                                    object-fit: contain">
+                    </div>
+                {% else %}
+                    <div class="text-center mt-3 border border-1 border-secondary rounded p-4 text-muted bg-white"
+                         style="border-style: dashed !important">
+                        <i class="bi bi-image text-secondary mb-2 d-block"
+                           style="font-size: 3rem"></i>
+                        <h6 class="fw-bold">לא צורפה סקיצה או שרטוט לפריט זה</h6>
+                        <p class="small mb-0">יש להעלות שרטוט לכרטיס ההזמנה במערכת</p>
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info text-center shadow-sm p-4 border-0">
+            <i class="bi bi-info-circle-fill me-2 text-info fs-4 align-middle"></i>
+            לא נמצאו פריטי חיפוי באצווה זו.
+        </div>
+    {% endif %}
+</div>

@@ -1,0 +1,271 @@
+<div class="modal fade" id="editItemModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">עריכת פריט: <span id="modalItemMarkDisplay"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action=""
+                  method="post"
+                  id="editItemForm"
+                  enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="סימון פריט ייחודי בהזמנה">
+                                # <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <input type="text"
+                                   name="mark"
+                                   id="id_item_mark"
+                                   class="form-control"
+                                   placeholder="סימון"
+                                   data-bs-toggle="tooltip"
+                                   title="סימון פריט בהזמנה">
+                        </div>
+                        <div class="col-md-4 field-dims">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="רוחב פתח אור / כנף במילימטרים">
+                                רוחב (מ"מ) <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <input type="number"
+                                   name="width"
+                                   id="id_item_width"
+                                   class="form-control"
+                                   placeholder="רוחב (מ''מ)"
+                                   data-bs-toggle="tooltip"
+                                   title="רוחב פתח אור / כנף במילימטרים">
+                        </div>
+                        <div class="col-md-4 field-dims">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="גובה פתח אור / כנף במילימטרים">
+                                גובה (מ"מ) <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <input type="number"
+                                   name="height"
+                                   id="id_item_height"
+                                   class="form-control"
+                                   placeholder="גובה (מ''מ)"
+                                   data-bs-toggle="tooltip"
+                                   title="גובה פתח אור / כנף במילימטרים">
+                        </div>
+                        <div class="col-md-4 field-wall">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="עובי קיר עבור המשקוף במילימטרים">
+                                עובי קיר (מ"מ) <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <input type="number"
+                                   name="wall"
+                                   id="id_item_wall"
+                                   class="form-control"
+                                   placeholder="עובי קיר (מ''מ)"
+                                   data-bs-toggle="tooltip"
+                                   title="עובי קיר עבור המשקוף במילימטרים">
+                        </div>
+                        <div class="col-md-4 field-door">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="כיוון פתיחת הדלת (פנימה או החוצה מהחדר)">
+                                כיוון פתיחה <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <select name="direction"
+                                    id="id_item_direction"
+                                    class="form-select"
+                                    data-bs-toggle="tooltip"
+                                    title="כיוון פתיחת הדלת">
+                                <option value="">---------</option>
+                                <option value="IN" data-description="פתיחה פנימה לחדר">פנימה</option>
+                                <option value="OUT" data-description="פתיחה החוצה מהחדר">החוצה</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 field-door">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="יד פתיחת הדלת (שמאל או ימין במבט מצד הפתיחה)">
+                                צד פתיחה <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <select name="opening"
+                                    id="id_item_opening"
+                                    class="form-select"
+                                    data-bs-toggle="tooltip"
+                                    title="יד פתיחה">
+                                <option value="">---------</option>
+                                <option value="LEFT" data-description="צירים בצד שמאל במבט מצד הפתיחה">שמאל (L)</option>
+                                <option value="RIGHT" data-description="צירים בצד ימין במבט מצד הפתיחה">ימין (R)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 field-door">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="חיתוך תחתון נוסף במילימטרים עבור ריצוף או שטיח">
+                                חיתוך / קיצור נוסף <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <input type="text"
+                                   name="addition_cut"
+                                   id="id_item_addition_cut"
+                                   class="form-control"
+                                   placeholder="רווח נוסף"
+                                   data-bs-toggle="tooltip"
+                                   title="חיתוך תחתון נוסף (מ''מ)">
+                        </div>
+                        <div class="col-md-4 field-place">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="מיקום ההתקנה (חדר, קומה, דירה)">
+                                מיקום <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <input type="text"
+                                   name="place"
+                                   id="id_item_place"
+                                   class="form-control"
+                                   placeholder="מיקום"
+                                   data-bs-toggle="tooltip"
+                                   title="מיקום ההתקנה (חדר, קומה)">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="הערות והנחיות מיוחדות לפריט זה">
+                                הערה <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <textarea name="comment"
+                                      id="id_item_comment"
+                                      class="form-control"
+                                      rows="1"
+                                      placeholder="הערה"
+                                      data-bs-toggle="tooltip"
+                                      title="הערה ספציפית לפריט"></textarea>
+                        </div>
+                        <div class="col-12 border-top pt-3 field-door">
+                            <h6 class="fw-bold text-primary"
+                                data-bs-toggle="tooltip"
+                                title="הגדרת גבהים חריגים של מנעול וצירים במילימטרים">
+                                פרמטרים הנדסיים (גובה עיבודים) <i class="bi bi-info-circle help-hint-icon"></i>
+                            </h6>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label extra-small"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה מרכז מנעול חריג מהרצפה (מ''מ)">גובה מנעול</label>
+                                    <input type="number"
+                                           step="0.01"
+                                           name="custom_lock_height"
+                                           id="id_item_lock"
+                                           class="form-control form-control-sm"
+                                           placeholder="מנעול"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה מרכז מנעול חריג (מ''מ)">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label extra-small"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 1 חריג מהרצפה (מ''מ)">ציר 1</label>
+                                    <input type="number"
+                                           step="0.01"
+                                           name="custom_hinge1"
+                                           id="id_item_h1"
+                                           class="form-control form-control-sm"
+                                           placeholder="ציר 1"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 1 חריג (מ''מ)">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label extra-small"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 2 חריג מהרצפה (מ''מ)">ציר 2</label>
+                                    <input type="number"
+                                           step="0.01"
+                                           name="custom_hinge2"
+                                           id="id_item_h2"
+                                           class="form-control form-control-sm"
+                                           placeholder="ציר 2"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 2 חריג (מ''מ)">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label extra-small"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 3 חריג מהרצפה (מ''מ)">ציר 3</label>
+                                    <input type="number"
+                                           step="0.01"
+                                           name="custom_hinge3"
+                                           id="id_item_h3"
+                                           class="form-control form-control-sm"
+                                           placeholder="ציר 3"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 3 חריג (מ''מ)">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label extra-small"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 4 חריג מהרצפה (מ''מ)">ציר 4</label>
+                                    <input type="number"
+                                           step="0.01"
+                                           name="custom_hinge4"
+                                           id="id_item_h4"
+                                           class="form-control form-control-sm"
+                                           placeholder="ציר 4"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 4 חריג (מ''מ)">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label extra-small"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 5 חריג מהרצפה (מ''מ)">ציר 5</label>
+                                    <input type="number"
+                                           step="0.01"
+                                           name="custom_hinge5"
+                                           id="id_item_h5"
+                                           class="form-control form-control-sm"
+                                           placeholder="ציר 5"
+                                           data-bs-toggle="tooltip"
+                                           title="גובה ציר 5 חריג (מ''מ)">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 border-top pt-3">
+                            <label class="form-label fw-bold"
+                                   data-bs-toggle="tooltip"
+                                   title="העלאת שרטוט הנדסי (PDF / תמונה) עבור פריט זה">
+                                שרטוט ידני / קובץ <i class="bi bi-info-circle help-hint-icon"></i>
+                            </label>
+                            <div id="currentSketchDisplay" class="mb-2 d-none">
+                                <span class="badge bg-info text-dark me-2">קובץ קיים</span>
+                                <a href="#"
+                                   target="_blank"
+                                   id="sketchLink"
+                                   class="small"
+                                   data-bs-toggle="tooltip"
+                                   title="צפייה בקובץ שרטוט">צפה בקובץ</a>
+                            </div>
+                            <input type="file"
+                                   name="sketch"
+                                   id="id_item_sketch"
+                                   class="form-control"
+                                   data-bs-toggle="tooltip"
+                                   title="בחירת קובץ שרטוט (PDF, JPEG, PNG)">
+                            <small class="text-muted">ניתן להעלות PDF, JPEG, PNG וכדומה</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-light"
+                            data-bs-dismiss="modal"
+                            data-bs-toggle="tooltip"
+                            title="ביטול ללא שמירה">ביטול</button>
+                    <button type="submit"
+                            class="btn btn-primary px-4"
+                            data-bs-toggle="tooltip"
+                            title="שמירת שינויים בפריט">שמור שינויים</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

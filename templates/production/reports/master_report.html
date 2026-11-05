@@ -1,0 +1,17 @@
+{% extends "production/reports/base_report.html" %}
+{% block title %}מאסטר דו''ח ייצור - הזמנה {{ order.order_number }}{% endblock %}
+{% block print_button_text %}הדפס את כל הדו''חות{% endblock %}
+{% block content %}
+    {% for section in sections %}
+        <div class="page mb-4 {% if section.is_portrait %}portrait{% else %}landscape{% endif %}">
+            {% include section.include_template with order_spec=section.order_spec groups_data=section.groups_data enriched_frames_items=section.enriched_frames_items enriched_doors_items=section.enriched_doors_items spec_items=section.spec_items panel_groups=section.panel_groups frame_groups=section.frame_groups hardware_summary=section.hardware_summary facings_data=section.facings_data batches_label=section.batches_label stage_label=stage_label report_label=section.report_label station=section.station order_qr=section.order_qr %}
+        </div>
+    {% empty %}
+        <div class="page text-center py-5">
+            <div class="alert alert-warning d-inline-block px-5">
+                <h4>אין דוחות זמינים להדפסה</h4>
+                <p class="mb-0">לא נמצאו תחנות ייצור פעילות עבור הזמנה זו.</p>
+            </div>
+        </div>
+    {% endfor %}
+{% endblock %}

@@ -1,0 +1,1903 @@
+{% extends "base.html" %}
+{% block page_title %}הזמנה: {{ order.order_number }}
+    <span class="badge bg-secondary"
+          data-bs-toggle="tooltip"
+          title="סטטוס נוכחי של ההזמנה: {{ order.get_status_display }}">{{ order.get_status_display }}</span>
+{% endblock %}
+{% block content %}
+    <div class="mb-4 align-items-end">
+        <div class="d-flex align-items-center mb-2">
+            <h2 class="h3 mb-0 mx-3 fw-bolder">{{ order.customer }}</h2>
+            {% if order.status != 'CANCELED' %}
+                <a href="{% url 'order-edit-header' order.pk %}"
+                   class="btn btn-sm btn-outline-primary ms-3"
+                   data-bs-toggle="tooltip"
+                   title="עריכת פרטי הזמנה">
+                    <i class="bi bi-pencil"></i>
+                </a>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-primary ms-3"
+                    data-bs-toggle="modal"
+                    data-bs-target="#groupModal"
+                    title="הוספת קבוצת דלתות חדשה להזמנה">
+                <i class="bi bi-plus-lg me-2"></i>הוספת דלתות
+            </button>
+            <button class="btn btn-sm btn-outline-warning ms-2 btn-open-load-spec"
+                    data-group-id=""
+                    title="הוספת קבוצה ממפרט שמור">
+                <i class="bi bi-box-arrow-in-down me-2"></i>טעינת מפרט שמור
+            </button>
+        </div>
+        <div class="row">
+            <div class="mb-3 col-1"
+                 data-bs-toggle="tooltip"
+                 title="סדרת הדלתות הראשית בהזמנה">
+                <label class="text-muted small d-block">סדרה</label>
+                <span class="fw-medium">{{ order.series.name|default:"-" }}</span>
+            </div>
+            <div class="mb-3 col-2"
+                 data-bs-toggle="tooltip"
+                 title="חזית או גימור ראשי שנבחר עבור ההזמנה">
+                <label class="text-muted small d-block">חזית / גימור</label>
+                <span class="fw-medium">{{ order.front.name|default:"-" }}</span>
+            </div>
+            <div class="mb-3 col-1"
+                 data-bs-toggle="tooltip"
+                 title="דגם ידית נבחר עבור ההזמנה">
+                <label class="text-muted small d-block">ידית</label>
+                <span class="fw-medium">{{ order.handle.name|default:"-" }}</span>
+            </div>
+            <div class="mb-3 col-1"
+                 data-bs-toggle="tooltip"
+                 title="גוון צבע ראשי עבור כנפי הדלתות">
+                <label class="text-muted small d-block">גוון בכנפיים</label>
+                <span class="fw-medium">{{ order.color_panel_outside|default:"-" }}
+                    {% if order.color_panel_inside and order.color_panel_inside != order.color_panel_outside %}
+                        / {{ order.color_panel_inside }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="mb-3 col-1"
+                 data-bs-toggle="tooltip"
+                 title="גוון צבע ראשי עבור המשקופים">
+                <label class="text-muted small d-block">גוון במשקופים</label>
+                <span class="fw-medium">{{ order.color_frames|default:"-" }}</span>
+            </div>
+            <div class="mb-3 col-1"></div>
+            <div class="mb-3 col-1"
+                 data-bs-toggle="tooltip"
+                 title="תאריך יצירת ההזמנה במערכת">
+                <label class="text-muted small d-block">ירידה לייצור</label>
+                <span class="fw-normal">{{ order.production_start_date|date:"d/m/y" }}</span>
+            </div>
+            <div class="mb-3 col-1"
+                 data-bs-toggle="tooltip"
+                 title="תאריך יעד סופי לסיום ייצור">
+                <label class="text-muted small d-block">סיום ייצור</label>
+                <span class="fw-normal">{{ order.completion_date|date:"d/m/y" }}</span>
+            </div>
+            <div class="mb-3 col-1"
+                 data-bs-toggle="tooltip"
+                 title="תאריך מתוכנן לצביעת הפריטים">
+                <label class="text-muted small d-block">סיום צבע</label>
+                <span class="fw-normal">{{ order.painting_completion_date|date:"d/m/y" }}</span>
+            </div>
+        </div>
+    </div>
+    <!-- Action Toolbar & Primary Process CTAs -->
+    <div class="mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2 p-2 bg-light rounded border shadow-sm">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <!-- 1. ЗАПУСК В ПРОИЗВОДСТВО И ВАЛИДАЦИЯ -->
+            {% if order.can_start_production %}
+                {% if order.status == 'PHASE1_READY' %}
+                    <a href="{% url 'production:order-transfer-to-production' order.pk %}"
+                       class="btn btn-warning fw-bold shadow-sm">
+                        <i class="bi bi-arrow-right-circle me-1"></i> העבר לשלב ב' (הזנת מידות)
+                    </a>
+                {% else %}
+                    <button type="button"
+                            class="btn btn-primary fw-bold shadow-sm"
+                            onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
+                        <i class="bi bi-play-circle me-1"></i> העבר לייצור (אצווה חדשה)
+                    </button>
+                {% endif %}
+                <a href="{% url 'production:order-check-validation' order.pk %}"
+                   class="btn btn-outline-info"
+                   data-bs-toggle="tooltip"
+                   title="בדיקת תקינות הנתונים של ההזמנה">
+                    <i class="bi bi-list-task me-1"></i> בדיקת תקינות
+                </a>
+            {% endif %}
+            <!-- ========================================== -->
+            <!-- 2. ЗАВЕРШЕНИЕ ЭТАПОВ                      -->
+            <!-- Скрываем, если есть группы в статусе NEW   -->
+            <!-- ========================================== -->
+            {% if not order.can_start_production %}
+                {% if order.status == 'PHASE1_PRODUCTION' %}
+                    <a href="{% url 'production:order-complete-phase1' order.pk %}"
+                       class="btn btn-success fw-bold shadow-sm"
+                       data-bs-toggle="tooltip"
+                       title="סיום שלב א' של ההזמנה">
+                        <i class="bi bi-check-circle me-1"></i> סיום שלב א'
+                    </a>
+                {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' or order.status == 'PARTIALLY_READY' %}
+                    <a href="{% url 'production:order-complete-production' order.pk %}"
+                       class="btn btn-success fw-bold shadow-sm"
+                       data-bs-toggle="tooltip"
+                       title="סיום תהליך הייצור והעברה למוכן למשלוח">
+                        <i class="bi bi-check-all me-1"></i> סיום ייצור
+                    </a>
+                {% endif %}
+            {% endif %}
+            <!-- 3. ФОРМА РАЗМЕРОВ (טופס מידות) -->
+            <a href="{% url 'order-measurements' order.pk %}"
+               class="btn btn-outline-primary shadow-sm"
+               data-bs-toggle="tooltip"
+               title="צפייה ועריכת מידות הפריטים">
+                <i class="bi bi-rulers me-1"></i> טופס מידות
+            </a>
+            <!-- 4. ОТЧЕТЫ И ЧПУ (Модальное окно) -->
+            {% if order.status != 'NEW' and order.status != 'CANCELED' %}
+                <button type="button"
+                        class="btn btn-dark fw-bold shadow-sm ms-2"
+                        data-bs-toggle="modal"
+                        data-bs-target="#reportsModal"
+                        title="הדפסת דוחות, מדבקות והורדת קבצי מכונה">
+                    <i class="bi bi-printer me-1"></i> דוחות וייצור קבצים
+                </button>
+            {% endif %}
+        </div>
+        <!-- Dev Tools -->
+        {% if is_admin_user %}
+            <div class="dropdown">
+                <button class="btn btn-outline-warning btn-sm dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown">
+                    <i class="bi bi-tools me-1"></i>Dev Tools
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    <li><a class="dropdown-item"
+   href="{% url 'production:order-rebuild-batch-spec' order.pk %}"><i class="bi bi-cpu me-2 text-warning"></i>Rebuild Spec</a></li>
+                    <li><a class="dropdown-item"
+   href="{% url 'production:spec-json-preview' order.pk %}"
+   target="_blank"><i class="bi bi-filetype-json me-2 text-info"></i>צפייה ב-JSON Spec</a></li>
+                    {% if order.status != 'NEW' %}
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li><a class="dropdown-item text-warning"
+   href="{% url 'order-reset-to-new' order.pk %}"
+   onclick="return confirm('בטוח?')"><i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                            to NEW</a>
+                        </li>
+                        <li><a class="dropdown-item text-danger"
+   href="{% url 'order-cancel' order.pk %}"
+   onclick="return confirm('בטוח?')"><i class="bi bi-x-circle me-2"></i>ביטול הזמנה</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+    <div class="row">
+        <div class="col-lg-10 mb-4">
+            {% if groups %}
+                <!-- Панель управления: Свернуть все / Развернуть все -->
+                <div class="d-flex justify-content-between align-items-center mb-3 px-1">
+                    <span class="text-muted small fw-semibold">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
+                    <div class="btn-group btn-group-sm shadow-sm" role="group">
+                        <button type="button"
+                                class="btn btn-outline-secondary"
+                                id="btnExpandAllGroups"
+                                data-bs-toggle="tooltip"
+                                title="פתח את כל הקבוצות">
+                            <i class="bi bi-plus-lg me-1"></i>פתח הכל
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary"
+                                id="btnCollapseAllGroups"
+                                data-bs-toggle="tooltip"
+                                title="סגור את כל הקבוצות">
+                            <i class="bi bi-dash-lg me-1"></i>סגור הכל
+                        </button>
+                    </div>
+                </div>
+            {% endif %}
+            <div class="accordion d-flex flex-column gap-3" id="groupsAccordion">
+                {% for group in groups %}
+                    {% with items=group.items.all %}
+                        <div class="card shadow-sm border-0 group-accordion-item"
+                             data-group-id="{{ group.id }}">
+                            <!-- Компактная шапка (видна всегда, в свернутом виде оставляет только модель и диапазон) -->
+                            <div class="card-header bg-white border-0 py-2 px-3 d-flex justify-content-between align-items-center cursor-pointer"
+                                 role="button"
+                                 data-bs-toggle="collapse"
+                                 data-bs-target="#groupCollapse-{{ group.id }}"
+                                 aria-expanded="true"
+                                 aria-controls="groupCollapse-{{ group.id }}">
+                                <div class="d-flex align-items-center gap-3">
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle fs-6 px-3">
+                                        <i class="bi bi-door-closed me-1"></i>
+                                        {% if items|length > 1 %}
+                                            דלתות {{ items.0.mark }}-{{ items.last.mark }}
+                                        {% elif items|length == 1 %}
+                                            דלת {{ items.0.mark }}
+                                        {% else %}
+                                            ללא דלתות
+                                        {% endif %}
+                                    </span>
+                                    <h5 class="mb-0 fw-bold text-dark">
+                                        {{ group.product.name|default:"דגם לא נבחר" }}
+                                        {% if group.product.code %}
+                                            <small class="text-muted fw-normal fs-6">({{ group.product.code }})</small>
+                                        {% endif %}
+                                    </h5>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-light text-secondary border">{{ group.quantity }} יח'</span>
+                                    <i class="bi bi-chevron-down fs-5 text-secondary collapse-arrow"></i>
+                                </div>
+                            </div>
+                            <!-- Тело карточки (полное содержимое группы) -->
+                            <div id="groupCollapse-{{ group.id }}"
+                                 class="collapse show group-collapse-body"
+                                 data-bs-parent="">
+                                <div class="card-body p-0 border-top">{% include "orders/includes/group_card.html" %}</div>
+                            </div>
+                        </div>
+                    {% endwith %}
+                {% empty %}
+                    <div class="card shadow-sm border-0 m-1">
+                        <div class="card-body text-center py-5">
+                            <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
+                            <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
+                            <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
+                            <div class="d-flex justify-content-center gap-2 mt-3">
+                                {% if can_edit_order %}
+                                    <button class="btn btn-primary"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#groupModal">
+                                        <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
+                                    </button>
+                                    <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
+                                        <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <!-- Modals -->
+    {% include "orders/includes/group_modal.html" %}
+    {% include "orders/includes/group_customizer_modal.html" %}
+    {% include "orders/includes/edit_item_modal.html" %}
+    {% include "orders/includes/save_spec_modal.html" %}
+    {% include "orders/includes/load_spec_modal.html" %}
+    {% include "orders/includes/reports_modal.html" %}
+{% endblock %}
+{% block extra_js %}
+    <script>
+        /* global bootstrap */
+        const canEdit = "{% if can_edit_order %}true{% else %}false{% endif %}" === "true";
+        const orderSeriesId = "{{ order.series_id|default:'' }}";
+        const orderFrontId = "{{ order.front_id|default:'' }}";
+        const productTypeConfig = {};
+        {% for pt in product_types %}
+            productTypeConfig["{{ pt.id }}"] = {
+                has_door: Boolean({{ pt.has_door|yesno:"1,0" }}),
+                has_frame: Boolean({{ pt.has_frame|yesno:"1,0" }})
+            };
+        {% endfor %}
+
+        function setColorTBD(fieldId) {
+            const el = document.getElementById(fieldId);
+            if (el) {
+                el.value = 'לפי בחירת לקוח';
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+        }
+
+        $(document).ready(function () {
+            const $saveSpecGroupName = $('#saveSpecGroupName');
+            const $saveSpecGroupDetails = $('#saveSpecGroupDetails');
+            const $saveSpecGroupQty = $('#saveSpecGroupQty');
+            const $saveSpecNameInput = $('#saveSpecNameInput');
+            const $saveSpecDescInput = $('#saveSpecDescInput');
+            const $saveSpecForm = $('#saveSpecForm');
+            const $csrfTokenInput = $('input[name="csrfmiddlewaretoken"]');
+            const $loadSpecTargetGroupId = $('#loadSpecTargetGroupId');
+            const $loadSpecTargetBadge = $('#loadSpecTargetBadge');
+            const $specLoadingIndicator = $('#specLoadingIndicator');
+            const $specCardsGrid = $('#specCardsGrid');
+            const $specEmptyState = $('#specEmptyState');
+            const $groupModal = $('#groupModal');
+            const $editHeaderForm = $('#editHeaderForm');
+            const $deleteOrderForm = $('#deleteOrderForm');
+
+            $('.btn-toggle-items').on('click', function () {
+                const $btn = $(this);
+                const groupId = $btn.data('group-id');
+                const $allRows = $('.item-row-' + groupId);
+                const $hiddenRows = $allRows.filter('.d-none');
+
+                if ($hiddenRows.length) {
+                    $hiddenRows.removeClass('d-none');
+                    $btn.text('הצג פחות');
+                } else {
+                    $allRows.each(function (index) {
+                        if (index >= 4) $(this).addClass('d-none');
+                    });
+                    const count = $allRows.length - 4;
+                    $btn.text('הצג עוד... (' + count + ')');
+                }
+            });
+
+            $('.btn-edit-item').on('click', function () {
+                const $btn = $(this);
+                const itemId = $btn.data('item-id');
+                const typeId = $btn.data('type-id');
+
+                const mark = $btn.data('item-mark');
+                const width = $btn.data('width');
+                const height = $btn.data('height');
+                const wall = $btn.data('wall');
+                const direction = $btn.data('direction');
+                const opening = $btn.data('opening');
+                const additionCut = $btn.data('addition-cut');
+                const place = $btn.data('place');
+                const comment = $btn.data('comment');
+                const sketchUrl = $btn.data('sketch-url');
+
+                const lock = $btn.data('lock');
+                const h1 = $btn.data('h1');
+                const h2 = $btn.data('h2');
+                const h3 = $btn.data('h3');
+                const h4 = $btn.data('h4');
+                const h5 = $btn.data('h5');
+
+                $('#editItemForm').attr('action', '/orders/items/' + itemId + '/edit/');
+                $('#modalItemMarkDisplay').text(mark);
+                $('#id_item_mark').val(mark);
+                $('#id_item_width').val(width);
+                $('#id_item_height').val(height);
+                $('#id_item_wall').val(wall);
+                $('#id_item_direction').val(direction);
+                $('#id_item_opening').val(opening);
+                $('#id_item_addition_cut').val(additionCut);
+                $('#id_item_place').val(place);
+                $('#id_item_comment').val(comment);
+
+                $('#id_item_lock').val(lock);
+                $('#id_item_h1').val(h1);
+                $('#id_item_h2').val(h2);
+                $('#id_item_h3').val(h3);
+                $('#id_item_h4').val(h4);
+                $('#id_item_h5').val(h5);
+
+                if (sketchUrl) {
+                    $('#sketchLink').attr('href', sketchUrl);
+                    $('#currentSketchDisplay').removeClass('d-none');
+                } else {
+                    $('#currentSketchDisplay').addClass('d-none');
+                }
+
+                const config = productTypeConfig[typeId] || {has_door: true, has_frame: true};
+                const $fieldWall = $('.field-wall');
+                const $fieldDoor = $('.field-door');
+                const $fieldDims = $('.field-dims');
+                const $fieldPlace = $('.field-place');
+
+                $fieldWall.toggle(config.has_frame);
+                $fieldDoor.toggle(config.has_door);
+
+                const showDims = config.has_door || config.has_frame;
+                $fieldDims.toggle(showDims);
+                $fieldPlace.toggle(showDims);
+            });
+
+            $('#groupModal input, #groupModal select, #groupModal textarea').each(function () {
+                const $el = $(this);
+                if ($el.is(':checkbox') || $el.is(':radio')) {
+                    $el.addClass('form-check-input');
+                } else if ($el.is('select')) {
+                    $el.addClass('form-select');
+                } else {
+                    $el.addClass('form-control');
+                }
+            });
+
+            $(document).on('click', '[data-bs-target="#groupModal"]', function () {
+                const $btn = $(this);
+                const isEdit = $btn.hasClass('btn-edit-group');
+                const $modal = $('#groupModal');
+                const $form = $('#groupForm');
+                const $label = $('#groupModalLabel');
+                const $submitBtn = $('#groupModalSubmitBtn');
+                const $customizeBtn = $('#groupModalCustomizeBtn');
+
+                $modal.data('mode', isEdit ? 'edit' : 'add');
+
+                // 1. Корректная установка текста кнопки Submit в зависимости от режима
+                if (isEdit) {
+                    $label.text('עריכת קבוצה');
+                    $submitBtn.text('שמור שינויים'); // Исправлено: при редактировании всегда "שמור שינויים"
+                    $form.attr('action', $btn.attr('data-edit-url'));
+
+                    $form[0].reset();
+
+                    const canEditGroup = $btn.attr('data-can-edit') !== 'false';
+                    const isPanelTbd = $btn.attr('data-panel-tbd') === 'true';
+                    const isFrameTbd = $btn.attr('data-frame-tbd') === 'true';
+
+                    // 3. Кнопка перехода к кастомизаторам зависит от прав редактирования (canEditGroup)
+                    if (canEditGroup) {
+                        $customizeBtn.removeClass('d-none').prop('disabled', false);
+                    } else {
+                        $customizeBtn.addClass('d-none');
+                    }
+
+                    $modal.find('input[name="quantity"]').val($btn.attr('data-quantity'));
+                    $modal.find('textarea[name="comments"]').val($btn.attr('data-comments'));
+                    $modal.find('input[name="is_split_installation"]').prop('checked', $btn.attr('data-is-split') === 'true');
+
+                    const panelPaint = $btn.attr('data-panel-paint-option') || 'MAIN_COLOR';
+                    $modal.find('select[name="panel_paint_option"]').val(panelPaint).trigger('change');
+
+                    const isDiffSides = $btn.attr('data-is-diff-sides') === 'true';
+                    $modal.find('input[name="is_door_inside_different_color"]').prop('checked', isDiffSides).trigger('change');
+
+                    $modal.find('input[name="color_panel_outside"]').val($btn.attr('data-color-panel-outside') || '');
+                    $modal.find('input[name="color_panel_inside"]').val($btn.attr('data-color-panel-inside') || '');
+
+                    const framePaint = $btn.attr('data-frame-paint-option') || 'NO_PAINT';
+                    $modal.find('select[name="frame_paint_option"]').val(framePaint).trigger('change');
+                    $modal.find('input[name="color_frames"]').val($btn.attr('data-color-frames') || '');
+
+                    const productId = $btn.attr('data-product-id');
+                    const productName = $btn.attr('data-product-name');
+                    const productCode = $btn.attr('data-product-code');
+                    if (productId) {
+                        const $productSelect = $modal.find('select[name="product"]');
+                        if ($productSelect.find('option[value="' + productId + '"]').length === 0) {
+                            $productSelect.append('<option value="' + productId + '">' + productName + '</option>');
+                        }
+                        $productSelect.val(productId);
+                        $modal.find('.product-info-display').html('<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ' + productName + ' (' + productCode + ')</strong>');
+                    }
+
+                    $modal.find('select[name="product_family"]').attr('data-initial-value', $btn.attr('data-product-family'));
+                    $modal.find('select[name="product_type"]').val($btn.attr('data-product-type')).trigger('change');
+
+                    $modal.find('select[name="front"]').attr('data-initial-value', $btn.attr('data-front'));
+                    $modal.find('select[name="basic_color_frames"]').attr('data-initial-value', $btn.attr('data-basic-color-frames'));
+                    $modal.find('select[name="series"]').val($btn.attr('data-series')).trigger('change');
+
+                    const structuralSelectors = 'select[name="product_type"], select[name="product_family"], select[name="series"], select[name="front"], select[name="basic_color_frames"], select[name="product"], input[name="quantity"], input[name="is_split_installation"]';
+
+                    if (!canEditGroup) {
+                        // 1. Блокируем структурные поля и базовый цвет коробки
+                        $modal.find(structuralSelectors).prop('disabled', true);
+
+                        // 2. Открываем поля краски и цветов (даже если есть флаги TBD, делаем их доступными)
+                        $modal.find('select[name="panel_paint_option"], input[name="is_door_inside_different_color"], input[name="color_panel_outside"], input[name="color_panel_inside"], select[name="frame_paint_option"], input[name="color_frames"]').prop('disabled', false);
+
+                        // Добавляем предупреждающий баннер в модалку
+                        if ($modal.find('.alert-grace-period').length === 0) {
+                            $modal.find('.modal-body').prepend(`
+                    <div class="alert alert-warning alert-grace-period mb-2 p-1" role="alert">
+                        <i class="bi bi-lock-fill me-2"></i> הקבוצה נעולה לעריכה כללית (עבר תאריך הייצור). ניתן לערוך <strong>נתוני צביעה בלבד</strong>.
+                    </div>
+                `);
+                        }
+                    } else {
+                        // Разблокируем всё, если группа полностью доступна
+                        $modal.find('input, select, textarea').prop('disabled', false);
+                        $modal.find('.alert-grace-period').remove();
+                    }
+                } else {
+                    $label.text('הוספת קבוצת דלתות');
+                    $submitBtn.text('הוסף קבוצה'); // При добавлении всегда "הוסף קבוצה"
+                    $customizeBtn.removeClass('d-none');
+                    $form.attr('action', "{% url 'group-add' order.pk %}");
+                    $form[0].reset();
+
+                    $modal.find('input, select, textarea').prop('disabled', false);
+                    $modal.find('select').removeAttr('data-initial-value');
+                    $modal.find('.product-info-display').html('<small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
+
+                    if (orderSeriesId) {
+                        $modal.find('select[name="series"]').val(orderSeriesId).trigger('change');
+                    }
+
+                    $modal.find('select[name="panel_paint_option"]').val('MAIN_COLOR').trigger('change');
+                    $modal.find('input[name="is_door_inside_different_color"]').prop('checked', false).trigger('change');
+                    $modal.find('input[name="color_panel_outside"]').val('');
+                    $modal.find('input[name="color_panel_inside"]').val('');
+
+                    $modal.find('select[name="frame_paint_option"]').val('NO_PAINT').trigger('change');
+                    $modal.find('input[name="color_frames"]').val('');
+                }
+            });
+
+// 2. Валидация обязательных полей перед отправкой формы
+            $('#groupForm').on('submit', function (e) {
+                const $modal = $('#groupModal');
+                // Если группа заблокирована по Grace Period, структурные поля disabled, их проверять не нужно
+                const productType = $modal.find('select[name="product_type"]').val();
+                const productFamily = $modal.find('select[name="product_family"]').val();
+                const series = $modal.find('select[name="series"]').val();
+                const front = $modal.find('select[name="front"]').val();
+                const quantity = $modal.find('input[name="quantity"]').val();
+
+                let missingFields = [];
+                if (!productType) missingFields.push('סוג מוצר');
+                if (!productFamily) missingFields.push('משפחת מוצר');
+                if (!series) missingFields.push('סדרה');
+                if (!front) missingFields.push('חזית');
+                if (!quantity || parseInt(quantity) <= 0) missingFields.push('כמות תקינה');
+
+                if (missingFields.length > 0) {
+                    e.preventDefault();
+                    alert('אנא מלא את השדות חובה הבאים: ' + missingFields.join(', '));
+                    return false;
+                }
+            });
+            if ($editHeaderForm.length) {
+                $editHeaderForm.on('submit', function (e) {
+                    if (!confirm('לשמור שינויים?')) {
+                        e.preventDefault();
+                    }
+                });
+            }
+
+            if ($deleteOrderForm.length) {
+                $deleteOrderForm.on('submit', function (e) {
+                    if (!confirm('האם אתה בטוח שברצונך למחוק את ההזמנה? פעולה זו אינה ניתנת לביטול.')) {
+                        e.preventDefault();
+                    }
+                });
+            }
+
+            function getGroupFormState($form) {
+                const $disabled = $form.find(':disabled');
+                $disabled.prop('disabled', false);
+                const state = $form.serialize();
+                $disabled.prop('disabled', true);
+                return state;
+            }
+
+            $(document).on('show.bs.modal', '#groupModal', function () {
+                const $modal = $(this);
+                const $form = $modal.find('form');
+                setTimeout(function () {
+                    $form.data('initial-state', getGroupFormState($form));
+                }, 100);
+            });
+
+            $(document).on('hide.bs.modal', '#groupModal', function (e) {
+                const $modal = $(this);
+                const $form = $modal.find('form');
+                const initialState = $form.data('initial-state');
+                const currentState = getGroupFormState($form);
+
+                if (initialState !== currentState && !$modal.data('force-close')) {
+                    if (!confirm('יש שינויים שלא נשמרו. האם אתה בטוח שברצונך לסגור?')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    }
+                }
+            });
+
+            $(document).on('submit', '#groupModal form', function (e) {
+                const $form = $(this);
+                const $modal = $form.closest('.modal');
+                const initialState = $form.data('initial-state');
+                const currentState = getGroupFormState($form);
+
+                if (initialState !== currentState) {
+                    if (!confirm('לשמור שינויים?')) {
+                        e.preventDefault();
+                        return;
+                    }
+                }
+
+                if ($modal.length) {
+                    $modal.data('force-close', true);
+                }
+
+                $form.find(':disabled').prop('disabled', false);
+            });
+
+            function updateMainListCustomizers(groupId) {
+                fetch('/orders/api/group-customizers/?group_id=' + groupId)
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function (data) {
+                        const items = Array.isArray(data) ? data : (data['results'] || []);
+                        const $tab = $('#custom-' + groupId);
+                        let $container = $tab.find('.row-cols-1');
+
+                        const manageBtnHtml = canEdit ? (
+                            '<div class="mt-4 text-end">' +
+                            '<button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn" data-group-id="' + groupId + '">' +
+                            '<i class="bi bi-gear me-1"></i> ניהול קסטומייזרים' +
+                            '</button></div>'
+                        ) : '';
+
+                        if (items.length === 0) {
+                            $tab.html(
+                                '<div class="row row-cols-1 row-cols-md-2 g-3"></div>' +
+                                '<div class="col-12 text-center text-muted py-4 small">' +
+                                '<i class="bi bi-info-circle me-1"></i> לא יושמו קסטומייזרים לקבוצה זו' +
+                                '</div>' + manageBtnHtml
+                            );
+                            return;
+                        }
+
+                        if ($container.length === 0) {
+                            $tab.html('<div class="row row-cols-1 row-cols-md-2 g-3"></div>' + manageBtnHtml);
+                            $container = $tab.find('.row-cols-1');
+                        }
+
+                        let html = '';
+                        items.forEach(function (cust) {
+                            let paramsHtml = '';
+                            for (let i = 1; i <= 5; i++) {
+                                const label = cust['par' + i + '_label'];
+                                const hint = cust['par' + i + '_hint'] || '';
+                                const val = cust['par' + i];
+                                const options = cust['par' + i + '_options'] || [];
+
+                                if (label) {
+                                    let displayVal = val || '-';
+                                    if (val && options && options.length > 0) {
+                                        const opt = options.find(function (o) {
+                                            return o['key'] === val;
+                                        });
+                                        if (opt) displayVal = opt['label'];
+                                    }
+
+                                    paramsHtml +=
+                                        '<div class="col-6 extra-small" ' + (hint ? 'data-bs-toggle="tooltip" title="' + hint + '"' : '') + '>' +
+                                        '<span class="text-muted">' + label + ':</span> ' +
+                                        '<span class="fw-medium">' + displayVal + '</span>' +
+                                        '</div>';
+                                }
+                            }
+
+                            const reqBadge = (cust['customizer_is_required'] || cust['is_required']) ? '<span class="badge bg-danger-subtle text-danger ms-1">חובה</span>' : '';
+                            html +=
+                                '<div class="col">' +
+                                '<div class="p-2 border rounded bg-white shadow-sm h-100" data-bs-toggle="tooltip" title="' + (cust['customizer_description'] || cust['customizer_name']) + '">' +
+                                '<div class="d-flex align-items-center mb-2">' +
+                                '<div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">' +
+                                '<i class="bi bi-check2-circle"></i>' +
+                                '</div>' +
+                                '<div>' +
+                                '<div class="fw-bold small text-primary">' + cust['customizer_name'] + reqBadge + '</div>' +
+                                '<div class="text-muted extra-small">' + cust['customizer_code'] + '</div>' +
+                                '</div>' +
+                                '</div>' +
+                                '<div class="ps-5"><div class="row g-1">' + paramsHtml + '</div></div>' +
+                                '</div></div>';
+                        });
+                        $container.html(html);
+                        $tab.find('.text-center.text-muted.py-4').remove();
+                        if (window['initTooltips']) window['initTooltips']($tab[0]);
+                    });
+            }
+
+            const $custModal = $('#groupCustomizerModal');
+            const $custSearch = $('#customizerSearch');
+            const $custResults = $('#customizerSearchResults');
+            const $custTableBody = $('#groupCustomizersList');
+
+            function updatePar2Visibility($row) {
+                const $par1 = $row.find('.cust-param-input[data-param="par1"]');
+                const $par2Col = $row.find('.col-md-6[data-param-index="2"]');
+                const $par2Input = $par2Col.find('.cust-param-input');
+
+                if ($par1.length && $par2Col.length) {
+                    const val = $par1.val() || '';
+                    if (val === 'defined' || val.indexOf('DEFINED=') === 0) {
+                        $par2Col.hide();
+                        if ($par2Input.val() !== '') {
+                            $par2Input.val('').trigger('change');
+                        }
+                    } else {
+                        $par2Col.show();
+                    }
+                }
+            }
+
+            function openCustomizerModal(groupId) {
+                const $groupCard = $('.group-card[data-group-id="' + groupId + '"]');
+                if (!$groupCard.length) {
+                    $('#custModalGroupName').text('קבוצה #' + groupId);
+                } else {
+                    $('#custModalGroupName').text($groupCard.data('group-name'));
+                    $('#custModalGroupQty').text($groupCard.data('group-qty'));
+                    $('#custModalGroupDetails').text($groupCard.data('group-details'));
+
+                    $custModal.data('product-id', $groupCard.data('product-id'));
+                    $custModal.data('family-id', $groupCard.data('family-id'));
+                    $custModal.data('type-id', $groupCard.data('type-id'));
+                }
+
+                $custModal.data('group-id', groupId);
+                loadGroupCustomizers(groupId);
+
+                const modalInst = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance($custModal[0]) : null;
+                if (modalInst) {
+                    modalInst.show();
+                }
+            }
+
+            function loadGroupCustomizers(groupId) {
+                $custTableBody.html('<tr><td colspan="3" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>');
+
+                fetch('/orders/api/group-customizers/?group_id=' + groupId)
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function (data) {
+                        let html = '';
+                        const items = Array.isArray(data) ? data : (data['results'] || []);
+                        items.forEach(function (item) {
+                            html += renderCustomizerRow(item);
+                        });
+                        if (items.length === 0) {
+                            html = '<tr><td colspan="3" class="text-center py-4 text-muted">לא נוספו קסטומייזרים לקבוצה זו</td></tr>';
+                        }
+                        $custTableBody.html(html);
+                        $custTableBody.find('tr').each(function () {
+                            updatePar2Visibility($(this));
+                        });
+                        if (window['initTooltips']) window['initTooltips']($custTableBody[0]);
+                    })
+                    .catch(function (err) {
+                        console.error('Error loading group customizers:', err);
+                        $custTableBody.html('<tr><td colspan="3" class="text-center text-danger py-4">שגיאה בטעינת נתונים</td></tr>');
+                    });
+            }
+
+            function renderCustomizerRow(item) {
+                let paramsHtml = '<div class="row g-2">';
+                let hasParams = false;
+                const custIsRequired = item['customizer_is_required'];
+                for (let i = 1; i <= 5; i++) {
+                    const label = item['par' + i + '_label'];
+                    const hint = item['par' + i + '_hint'] || '';
+                    const options = item['par' + i + '_options'] || [];
+                    const currentValue = item['par' + i] || '';
+                    const defaultValue = item['par' + i + '_default_value'] || '';
+                    const isRequired = item['par' + i + '_required'];
+
+                    if (label) {
+                        hasParams = true;
+                        let inputHtml = '';
+                        if (options && options.length > 0) {
+                            inputHtml = '<select class="form-select form-select-sm cust-param-input" data-id="' + item['id'] + '" data-param="par' + i + '">';
+                            if (isRequired) {
+                                inputHtml += '<option value="" ' + ((!currentValue && !defaultValue) ? 'selected' : '') + '>-- נא לבחור --</option>';
+                            }
+                            options.forEach(function (opt) {
+                                const selected = (currentValue === opt['key'] || (!currentValue && defaultValue === opt['key'])) ? 'selected' : '';
+                                inputHtml += '<option value="' + opt['key'] + '" ' + selected + '>' + opt['label'] + '</option>';
+                            });
+                            inputHtml += '</select>';
+                        } else {
+                            const effectiveVal = (currentValue !== null && currentValue !== undefined && currentValue !== '') ? currentValue : (defaultValue || '');
+                            inputHtml = '<input type="text" class="form-control form-control-sm cust-param-input" data-id="' + item['id'] + '" data-param="par' + i + '" value="' + effectiveVal + '" placeholder="' + (hint || (isRequired ? 'שדה חובה' : '')) + '" ' + (hint ? 'data-bs-toggle="tooltip" title="' + hint + '"' : '') + '>';
+                        }
+
+                        paramsHtml +=
+                            '<div class="col-md-6" data-param-index="' + i + '">' +
+                            '<label class="extra-small text-muted mb-0 d-block" ' + (hint ? 'data-bs-toggle="tooltip" title="' + hint + '"' : '') + '>' +
+                            label + ' ' + (isRequired ? '<span class="text-danger fw-bold" title="שדה חובה">*</span>' : '') + ' ' + (hint ? '<i class="bi bi-info-circle help-hint-icon"></i>' : '') +
+                            '</label>' + inputHtml +
+                            '</div>';
+                    }
+                }
+                if (!hasParams) paramsHtml += '<div class="col-12 text-muted extra-small">אין פרמטרים להגדרה</div>';
+                paramsHtml += '</div>';
+
+                const reqBadge = custIsRequired ? '<span class="badge bg-danger-subtle text-danger ms-1">חובה</span>' : '';
+                return '<tr data-item-id="' + item['id'] + '">' +
+                    '<td><div class="fw-bold text-primary" data-bs-toggle="tooltip" title="' + (item['customizer_description'] || item['customizer_name']) + '">' +
+                    item['customizer_name'] + reqBadge + '</div>' +
+                    '<div class="extra-small text-muted">' + item['customizer_code'] + '</div></td>' +
+                    '<td>' + paramsHtml + '</td>' +
+                    '<td class="text-end">' +
+                    '<button class="btn btn-sm btn-outline-danger remove-cust-btn" data-id="' + item['id'] + '" data-bs-toggle="tooltip" title="הסר קסטומייזר זה מהקבוצה">' +
+                    '<i class="bi bi-trash"></i></button></td></tr>';
+            }
+
+            let searchTimeout;
+            $custSearch.on('input', function () {
+                clearTimeout(searchTimeout);
+                const query = $(this).val();
+                if (query.length < 2) {
+                    $custResults.addClass('d-none');
+                    return;
+                }
+
+                searchTimeout = setTimeout(function () {
+                    const productId = $custModal.data('product-id') || '';
+                    const familyId = $custModal.data('family-id') || '';
+                    const typeId = $custModal.data('type-id') || '';
+
+                    let url = '/catalog/api/customizers/?search=' + encodeURIComponent(query);
+                    if (productId) url += '&product_model=' + productId;
+                    if (familyId) url += '&product_family=' + familyId;
+                    if (typeId) url += '&product_type=' + typeId;
+
+                    fetch(url)
+                        .then(function (r) {
+                            return r.json();
+                        })
+                        .then(function (data) {
+                            const results = Array.isArray(data) ? data : (data['results'] || []);
+                            let html = '';
+                            results.forEach(function (c) {
+                                const desc = c['description'] || '';
+                                const descHtml = desc ? '<div class="extra-small text-secondary mt-1">' + desc + '</div>' : '';
+                                html +=
+                                    '<a href="#" class="list-group-item list-group-item-action add-customizer-item" data-id="' + c['id'] + '" data-bs-toggle="tooltip" title="' + (desc || c['name']) + '">' +
+                                    '<div class="d-flex justify-content-between align-items-center">' +
+                                    '<div><div class="fw-bold">' + c['name'] + '</div><small class="text-muted">' + c['code'] + '</small>' + descHtml + '</div>' +
+                                    '<i class="bi bi-plus-circle text-primary"></i></div></a>';
+                            });
+                            if (results.length === 0) {
+                                html = '<div class="list-group-item text-muted">לא נמצאו תוצאות</div>';
+                            }
+                            $custResults.html(html).removeClass('d-none');
+                            if (window['initTooltips']) window['initTooltips']($custResults[0]);
+                        });
+                }, 300);
+            });
+
+            $(document).on('click', '.add-customizer-item', function (e) {
+                e.preventDefault();
+                const custId = $(this).data('id');
+                const groupId = $custModal.data('group-id');
+
+                fetch('/orders/api/group-customizers/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({
+                        group: groupId,
+                        customizer: custId
+                    })
+                })
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function () {
+                        $custSearch.val('');
+                        $custResults.addClass('d-none');
+                        loadGroupCustomizers(groupId);
+                        updateMainListCustomizers(groupId);
+                    });
+            });
+
+            $(document).on('click', '.remove-cust-btn', function () {
+                if (!confirm('להסיר קסטומייזר זה?')) return;
+                const id = $(this).data('id');
+                const groupId = $custModal.data('group-id');
+                fetch('/orders/api/group-customizers/' + id + '/', {
+                    method: 'DELETE',
+                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                }).then(function () {
+                    loadGroupCustomizers(groupId);
+                    updateMainListCustomizers(groupId);
+                });
+            });
+
+            let updateParamTimeout;
+            $(document).on('input change', '.cust-param-input', function () {
+                const $input = $(this);
+                const id = $input.data('id');
+                const paramName = $input.data('param');
+
+                if (paramName === 'par1') {
+                    updatePar2Visibility($input.closest('tr'));
+                }
+                const value = $input.val();
+                const groupId = $custModal.data('group-id');
+
+                clearTimeout(updateParamTimeout);
+                $input.addClass('border-warning');
+
+                updateParamTimeout = setTimeout(function () {
+                    const payload = {};
+                    payload[paramName] = value;
+                    fetch('/orders/api/group-customizers/' + id + '/', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        body: JSON.stringify(payload)
+                    })
+                        .then(function (r) {
+                            if (r.ok) {
+                                $input.removeClass('border-warning').addClass('border-success');
+                                setTimeout(function () {
+                                    $input.removeClass('border-success');
+                                }, 1000);
+                                updateMainListCustomizers(groupId);
+                            }
+                        });
+                }, 1000);
+            });
+
+            $(document).on('click', function (e) {
+                if (!$(e.target).closest('#customizerSearch, #customizerSearchResults').length) {
+                    $custResults.addClass('d-none');
+                }
+            });
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const groupToCustomize = urlParams.get('open_customize');
+            if (groupToCustomize) {
+                openCustomizerModal(groupToCustomize);
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+
+            $(document).on('click', '.open-customizer-btn', function () {
+                const groupId = $(this).data('group-id');
+                if (groupId) openCustomizerModal(groupId);
+            });
+
+            $(document).on('click', 'button:contains("ניהול קסטומייזרים")', function () {
+                if ($(this).hasClass('open-customizer-btn')) return;
+                const $card = $(this).closest('.group-card');
+                const groupId = $card.data('group-id');
+                if (groupId) openCustomizerModal(groupId);
+            });
+
+            $(document).on('change', 'select[name="series"]', function () {
+                const $seriesSelect = $(this);
+                const seriesId = $seriesSelect.val();
+                const $container = $seriesSelect.closest('.modal-body, form, .card-body');
+                const familyId = $container.find('select[name="product_family"]').val();
+
+                updateFronts($container, seriesId);
+                updateFrameColors($container, seriesId, familyId);
+            });
+
+            $(document).on('change', 'select[name="product_family"]', function () {
+                const $familySelect = $(this);
+                const familyId = $familySelect.val();
+                const $container = $familySelect.closest('.modal-body, form, .card-body');
+                const seriesId = $container.find('select[name="series"]').val();
+
+                updateFrameColors($container, seriesId, familyId);
+            });
+
+            function updateFronts($container, seriesId) {
+                const $frontSelect = $container.find('select[name="front"]');
+                if (!$frontSelect.length) return;
+
+                if (!seriesId) {
+                    $frontSelect.html('<option value="">---------</option>').trigger('change');
+                } else {
+                    const currentVal = $frontSelect.val();
+                    fetch('/catalog/api/fronts/?series=' + seriesId)
+                        .then(function (response) {
+                            return response.json();
+                        })
+                        .then(function (data) {
+                            let options = '<option value="">---------</option>';
+                            const fronts = (Array.isArray(data) ? data : data['results']) || [];
+                            fronts.forEach(function (front) {
+                                const desc = front['description'] || '';
+                                const finishType = front['finish_type'] || 'PAINT';
+                                // Сохраняем finish_type прямо в атрибут опции
+                                options += '<option value="' + front['id'] + '" data-finish-type="' + finishType + '" data-description="' + desc + '" title="' + desc + '">' + front['name'] + '</option>';
+                            });
+                            $frontSelect.html(options);
+
+                            const $modalEl = $container.closest('#groupModal');
+                            const isNew = $modalEl.length > 0 && $modalEl.data('mode') === 'add';
+                            const initialVal = $frontSelect.attr('data-initial-value');
+
+                            if (currentVal && fronts.some(function (f) {
+                                return String(f['id']) === String(currentVal);
+                            })) {
+                                $frontSelect.val(currentVal);
+                            } else if (!isNew && initialVal && fronts.some(function (f) {
+                                return String(f['id']) === String(initialVal);
+                            })) {
+                                $frontSelect.val(initialVal);
+                            } else if (isNew && seriesId === orderSeriesId && orderFrontId && fronts.some(function (f) {
+                                return String(f['id']) === String(orderFrontId);
+                            })) {
+                                $frontSelect.val(orderFrontId);
+                            }
+                            $frontSelect.trigger('change');
+                        })
+                        .catch(function (error) {
+                            console.error('Error fetching fronts:', error);
+                        });
+                }
+            }
+
+            function updateFrameColors($container, seriesId, familyId) {
+                const $basicColorFramesSelect = $container.find('select[name="basic_color_frames"]');
+                if (!$basicColorFramesSelect.length) return;
+
+                const $modalEl = $container.closest('#groupModal');
+                const isGroupLocked = $modalEl.length > 0 && $modalEl.find('input[name="quantity"]').is(':disabled');
+
+                if (!seriesId || !familyId || isGroupLocked) {
+                    // Если группа заблокирована, не даем функции включать поле обратно
+                    if (isGroupLocked) {
+                        $basicColorFramesSelect.prop('disabled', true);
+                        if (window.jQuery && $basicColorFramesSelect.data('select2')) {
+                            $basicColorFramesSelect.trigger('change.select2');
+                        }
+                        return;
+                    }
+
+                    $basicColorFramesSelect.prop('disabled', true);
+                    $basicColorFramesSelect.html('<option value="">---------</option>').val('').trigger('change');
+                    return;
+                }
+
+                // ЗДЕСЬ ИСПРАВЛЕНИЕ: объявляем url перед отправкой запроса
+                let url = '/catalog/api/frame-colors/?series=' + seriesId;
+                if (familyId) url += '&family=' + familyId;
+
+                const currentVal = $basicColorFramesSelect.val();
+                const initialVal = $basicColorFramesSelect.attr('data-initial-value');
+                const isNew = $modalEl.length > 0 && $modalEl.data('mode') === 'add';
+
+                fetch(url)
+                    .then(function (response) {
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        let options = '<option value="">---------</option>';
+                        const colors = (Array.isArray(data) ? data : data['results']) || [];
+
+                        if (colors.length === 0) {
+                            $basicColorFramesSelect.prop('disabled', true);
+                            $basicColorFramesSelect.html(options).val('').trigger('change');
+                        } else {
+                            $basicColorFramesSelect.prop('disabled', false);
+                            colors.forEach(function (color) {
+                                const desc = color['sku'] || color['description'] || '';
+                                options += '<option value="' + color['id'] + '" data-description="' + desc + '" title="' + desc + '">' + color['name'] + '</option>';
+                            });
+                            $basicColorFramesSelect.html(options);
+
+                            if (currentVal && colors.some(function (c) {
+                                return String(c['id']) === String(currentVal);
+                            })) {
+                                $basicColorFramesSelect.val(currentVal);
+                            } else if (!isNew && initialVal && colors.some(function (c) {
+                                return String(c['id']) === String(initialVal);
+                            })) {
+                                $basicColorFramesSelect.val(initialVal);
+                            } else if (colors.length > 0) {
+                                $basicColorFramesSelect.val(colors[0]['id']);
+                            }
+                            $basicColorFramesSelect.trigger('change');
+                        }
+                    })
+                    .catch(function (error) {
+                        console.error('Error fetching frame colors:', error);
+                        $basicColorFramesSelect.prop('disabled', true);
+                    });
+            }
+
+            $(document).on('change', 'select[name="product_type"]', function () {
+                const $typeSelect = $(this);
+                const typeId = $typeSelect.val();
+                const $container = $typeSelect.closest('.modal-body, form');
+                const $familySelect = $container.find('select[name="product_family"]');
+
+                if (!typeId) {
+                    $familySelect.html('<option value="">---------</option>').trigger('change');
+                    return;
+                }
+
+                const currentVal = $familySelect.val();
+                const initialVal = $familySelect.attr('data-initial-value');
+
+                fetch('/catalog/api/families/?type=' + typeId)
+                    .then(function (response) {
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        let options = '<option value="">---------</option>';
+                        const families = (Array.isArray(data) ? data : data['results']) || [];
+                        families.forEach(function (family) {
+                            const desc = family['description'] || '';
+                            options += '<option value="' + family['id'] + '" data-description="' + desc + '" title="' + desc + '">' + family['name'] + '</option>';
+                        });
+                        $familySelect.html(options);
+
+                        if (currentVal && families.some(function (f) {
+                            return String(f['id']) === String(currentVal);
+                        })) {
+                            $familySelect.val(currentVal);
+                        } else if (initialVal && families.some(function (f) {
+                            return String(f['id']) === String(initialVal);
+                        })) {
+                            $familySelect.val(initialVal);
+                        }
+
+                        $familySelect.trigger('change');
+                    })
+                    .catch(function (error) {
+                        console.error('Error fetching families:', error);
+                    });
+            });
+
+            // Выделенная функция для обновления модели двери
+            function updateProductModel($container) {
+                const $seriesSelect = $container.find('select[name="series"]');
+                const $familySelect = $container.find('select[name="product_family"]');
+                const $productSelect = $container.find('select[name="product"]');
+                const $splitCheckbox = $container.find('input[name="is_split_installation"]');
+                const $display = $container.find('.product-info-display');
+                const $submitBtn = $container.closest('form').find('button[type="submit"]');
+
+                if (!$seriesSelect.length || !$familySelect.length || !$productSelect.length) return;
+
+                const seriesId = $seriesSelect.val();
+                const familyId = $familySelect.val();
+
+                // Если хотя бы одно поле не выбрано — сбрасываем модель
+                if (!seriesId || !familyId) {
+                    if ($display.length) {
+                        $display.html('<small class="text-muted">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
+                    }
+                    if ($productSelect.val() !== '') {
+                        $productSelect.val('');
+                        if ($productSelect.hasClass('select2-hidden-accessible')) {
+                            $productSelect.trigger('change.select2'); // Безопасное обновление Select2
+                        }
+                    }
+                    if ($splitCheckbox.length) {
+                        $splitCheckbox.prop('disabled', true).prop('checked', false);
+                    }
+                    return;
+                }
+
+                // Запускаем поиск модели
+                fetch('/catalog/api/models/?series=' + seriesId + '&family=' + familyId)
+                    .then(function (response) {
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        const models = (Array.isArray(data) ? data : data['results']) || [];
+
+                        if (models.length > 0) {
+                            const model = models[0];
+                            const desc = model['description'] || '';
+                            const supportsSplit = Boolean(model['supports_split_installation']);
+
+                            // Обновляем визуальную плашку
+                            if ($display.length) {
+                                $display.html('<strong class="text-success-emphasis" data-bs-toggle="tooltip" title="' + (desc || model['name']) + '"><i class="bi bi-check-circle-fill me-1"></i> ' + model['name'] + ' (' + model['code'] + ')</strong>');
+                                if (window['initTooltips']) window['initTooltips']($display[0]);
+                            }
+
+                            // Добавляем опцию в скрытый селект, если ее там нет
+                            if ($productSelect.find('option[value="' + model['id'] + '"]').length === 0) {
+                                $productSelect.append('<option value="' + model['id'] + '" data-description="' + desc + '">' + model['name'] + '</option>');
+                            }
+
+                            // Устанавливаем значение только если оно изменилось
+                            if ($productSelect.val() !== model['id']) {
+                                $productSelect.val(model['id']);
+                                if ($productSelect.hasClass('select2-hidden-accessible')) {
+                                    $productSelect.trigger('change.select2'); // Безопасное обновление
+                                }
+                            }
+                            // --- Управление тумблером на основе флага модели ---
+                            if ($splitCheckbox.length) {
+                                // Проверяем статус заказа (передаем из шаблона, например, order.status)
+                                const orderStatus = "{{ order.status }}";
+                                const canUseSplit = ['NEW', 'PHASE1_PRODUCTION'].includes(orderStatus);
+
+                                if (canUseSplit && supportsSplit) {
+                                    $splitCheckbox.prop('disabled', false).prop('checked', true);
+                                } else {
+                                    $splitCheckbox.prop('disabled', true).prop('checked', false);
+                                }
+                            }
+                            $submitBtn.prop('disabled', false);
+
+                        } else {
+                            // Модель не найдена
+                            if ($display.length) {
+                                $display.html('<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> מוצר לא נמצא לשילוב זה</span>');
+                            }
+                            if ($productSelect.val() !== '') {
+                                $productSelect.val('');
+                                if ($productSelect.hasClass('select2-hidden-accessible')) {
+                                    $productSelect.trigger('change.select2');
+                                }
+                            }
+                            $submitBtn.prop('disabled', true);
+                        }
+                    })
+                    .catch(function (error) {
+                        console.error('Error fetching product model:', error);
+                        $submitBtn.prop('disabled', false); // Не блокируем намертво при ошибке сети
+                    });
+            }
+
+            // Оптимизированный обработчик изменения
+            $(document).on('change', 'select[name="series"], select[name="product_family"]', function (e) {
+                // Если событие вызвано программно самим Select2, ИГНОРИРУЕМ (это решает проблему "замерзания")
+                if (e.namespace === 'select2') return;
+
+                const $container = $(this).closest('.modal-body, form');
+                if (!$container.length) return;
+
+                updateProductModel($container);
+            });
+
+            $('.modal:not(#groupModal)').on('shown.bs.modal', function () {
+                const $modal = $(this);
+                const $seriesSelect = $modal.find('select[name="series"]');
+                const $familySelect = $modal.find('select[name="product_family"]');
+                const $typeSelect = $modal.find('select[name="product_type"]');
+
+                if ($seriesSelect.val()) {
+                    $seriesSelect.trigger('change');
+                } else if ($familySelect.val()) {
+                    $familySelect.trigger('change');
+                } else if ($typeSelect.val()) {
+                    $typeSelect.trigger('change');
+                }
+            });
+
+            if ($editHeaderForm.length) {
+                const $colorPanels = $editHeaderForm.find('input[name="color_panels"]');
+                const $colorFrames = $editHeaderForm.find('input[name="color_frames"]');
+                const $isFramesToPaint = $editHeaderForm.find('input[name="is_frames_to_paint"]');
+
+                function updateHeaderFramesState() {
+                    const isChecked = $isFramesToPaint.is(':checked');
+                    $colorFrames.prop('disabled', !isChecked);
+                    if (isChecked && !$colorFrames.val()) {
+                        $colorFrames.val($colorPanels.val());
+                    }
+                }
+
+                $isFramesToPaint.on('change', updateHeaderFramesState);
+                updateHeaderFramesState();
+
+                $editHeaderForm.on('submit', function () {
+                    $colorFrames.prop('disabled', false);
+                });
+            }
+
+            function setupGroupPaintingLogic($modal) {
+                const $frameSelect = $modal.find('select[name="frame_paint_option"]');
+                const $frameWrap = $modal.find('#group-frame-special-color-wrap');
+
+                const $panelSelect = $modal.find('select[name="panel_paint_option"]');
+                const $panelWrap = $modal.find('#group-panel-special-color-wrap');
+                const $diffWrap = $modal.find('#group-diff-sides-switch-wrap');
+                const $diffToggle = $modal.find('input[name="is_door_inside_different_color"]');
+                const $insideWrap = $modal.find('#group-panel-inside-wrap');
+                const $labelOut = $modal.find('#group-label-panel-out');
+                const $labelIn = $modal.find('#group-panel-inside-wrap label');
+                const $inputOut = $modal.find('input[name="color_panel_outside"]');
+                const $inputIn = $modal.find('input[name="color_panel_inside"]');
+                const $frontSelect = $modal.find('select[name="front"]');
+                const $panelTitle = $panelSelect.closest('.col-md-6').find('.form-label').first();
+
+                function syncColors() {
+                    // 1. Покраска коробки
+                    if ($frameSelect.val() === 'SPECIAL_COLOR') {
+                        $frameWrap.show();
+                    } else {
+                        $frameWrap.hide();
+                    }
+
+                    // 2. Отделка полотна (читаем finish_type напрямую из выбранного option)
+                    const $selectedFront = $frontSelect.find('option:selected');
+                    const finishType = $selectedFront.attr('data-finish-type') || 'PAINT';
+                    const isDiff = $diffToggle.is(':checked');
+
+                    $('#group-no-paint-notice').remove();
+
+                    if (finishType === 'NO_PAINT') {
+                        $panelTitle.html('גימור כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
+                        $panelSelect.hide().val('NO_PAINT');
+                        $panelWrap.hide();
+                        $diffWrap.hide();
+                        $insideWrap.hide();
+                        $inputOut.val('');
+                        $inputIn.val('');
+                        $panelSelect.after('<div id="group-no-paint-notice" class="badge bg-secondary p-2 mt-1">ללא צבע (בסיס)</div>');
+                    } else {
+                        // FORMICA или PAINT: селектор опции всегда активен
+                        $panelSelect.show();
+
+                        if (finishType === 'FORMICA') {
+                            $panelTitle.html('גימור פורמייקה: <i class="bi bi-info-circle help-hint-icon"></i>');
+                            $inputOut.attr('placeholder', 'מספר פורמייקה');
+                            $inputIn.attr('placeholder', 'מספר פורמייקה פנים');
+                            $labelOut.text(isDiff ? 'מספר פורמייקה (חוץ):' : 'מספר פורמייקה:');
+                            $labelIn.text('מספר פורמייקה (פנים):');
+                        } else {
+                            $panelTitle.html('צביעת כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
+                            $inputOut.attr('placeholder', 'קוד צבע');
+                            $inputIn.attr('placeholder', 'קוד צבע פנים');
+                            $labelOut.text(isDiff ? 'גוון כנף חוץ:' : 'גוון כנף (דו-צדדי):');
+                            $labelIn.text('גוון כנף צד פנים:');
+                        }
+
+                        // Поля ввода номера открываются ТОЛЬКО если выбрана спец-отделка (SPECIAL_COLOR)
+                        if ($panelSelect.val() === 'SPECIAL_COLOR') {
+                            $panelWrap.show();
+                            $diffWrap.show();
+                            if (isDiff) {
+                                $insideWrap.show();
+                            } else {
+                                $insideWrap.hide();
+                            }
+                        } else {
+                            // При MAIN_COLOR или NO_PAINT поля ввода скрыты
+                            $panelWrap.hide();
+                            $diffWrap.hide();
+                            $insideWrap.hide();
+                        }
+                    }
+                }
+
+                $frameSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
+                $panelSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
+                $diffToggle.off('change.groupPaint').on('change.groupPaint', syncColors);
+                $frontSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
+
+                $modal.find('#btn-group-copy-door').off('click.groupCopy').on('click.groupCopy', function () {
+                    const outVal = $modal.find('input[name="color_panel_outside"]').val();
+                    $modal.find('input[name="color_frames"]').val(outVal);
+                });
+
+                syncColors();
+            }
+
+            if ($groupModal.length) {
+                setupGroupPaintingLogic($groupModal);
+            }
+
+            $(document).on('click', '.btn-open-save-spec', function (e) {
+                e.preventDefault();
+                const $btn = $(this);
+                const groupId = $btn.data('group-id');
+                const groupName = $btn.data('group-name') || '';
+                const groupDetails = $btn.data('group-details') || '';
+                const groupQty = $btn.data('group-qty') || 1;
+
+                $saveSpecGroupName.text(groupName);
+                $saveSpecGroupDetails.text(groupDetails);
+                $saveSpecGroupQty.text(groupQty + ' דלתות');
+                $saveSpecNameInput.val(groupName ? ('מפרט ' + groupName) : '');
+                $saveSpecDescInput.val('');
+                $saveSpecForm.attr('action', '/orders/groups/' + groupId + '/save-specification/');
+                $saveSpecForm.data('group-id', groupId);
+
+                const modalEl = document.getElementById('saveSpecificationModal');
+                const modal = window.bootstrap ? new window.bootstrap.Modal(modalEl) : null;
+                if (modal) modal.show();
+            });
+
+            $saveSpecForm.on('submit', function (e) {
+                e.preventDefault();
+                const $form = $(this);
+                const url = $form.attr('action');
+                const name = $saveSpecNameInput.val().trim();
+                const description = $saveSpecDescInput.val().trim();
+                const csrfToken = $form.find('input[name="csrfmiddlewaretoken"]').val() || $csrfTokenInput.first().val();
+
+                if (!name) {
+                    alert('נא להזין שם למפרט');
+                    return;
+                }
+
+                const $btn = $('#btnSubmitSaveSpec');
+                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> שומר...');
+
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        name: name,
+                        description: description,
+                        csrfmiddlewaretoken: csrfToken
+                    })
+                })
+                    .then(function (res) {
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
+                        if (data['status'] === 'ok') {
+                            const modalEl = document.getElementById('saveSpecificationModal');
+                            const modal = window.bootstrap ? (window.bootstrap.Modal.getInstance(modalEl) || new window.bootstrap.Modal(modalEl)) : null;
+                            if (modal) modal.hide();
+                            showSuccessNotification('המפרט נשמר בהצלחה!');
+                        } else {
+                            alert(data['message'] || 'שגיאה בשמירת המפרט');
+                        }
+                    })
+                    .catch(function (err) {
+                        $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
+                        console.error('Error saving spec:', err);
+                        alert('שגיאה בשמירת המפרט');
+                    });
+            });
+
+            let currentSpecifications = [];
+
+            function renderSpecificationCards(specs, targetGroupId) {
+                $specCardsGrid.empty();
+
+                if (!specs || specs.length === 0) {
+                    $specEmptyState.removeClass('d-none');
+                    return;
+                }
+                $specEmptyState.addClass('d-none');
+
+                specs.forEach(function (spec) {
+                    let customizersHtml;
+                    if (spec['customizers'] && spec['customizers'].length > 0) {
+                        customizersHtml = spec['customizers'].map(function (c) {
+                            let params = [];
+                            if (c['par1']) params.push(c['par1']);
+                            if (c['par2']) params.push(c['par2']);
+                            if (c['par3']) params.push(c['par3']);
+                            if (c['par4']) params.push(c['par4']);
+                            const paramsStr = params.length ? (' (' + params.join(', ') + ')') : '';
+                            return '<span class="badge bg-secondary-subtle text-secondary border me-1 mb-1">' + c['customizer_name'] + paramsStr + '</span>';
+                        }).join(' ');
+                    } else {
+                        customizersHtml = '<span class="text-muted small">ללא שדרוגים מיוחדים</span>';
+                    }
+
+                    const isSplitBadge = spec['is_split_installation']
+                        ? '<span class="badge bg-info-subtle text-info me-2">התקנה מפוצלת</span>'
+                        : '';
+
+                    let actionButtons;
+                    if (targetGroupId) {
+                        actionButtons =
+                            '<div class="d-flex flex-column gap-2 mt-3">' +
+                            '<button type="button" class="btn btn-primary btn-sm btn-apply-spec" data-spec-id="' + spec['id'] + '" data-spec-name="' + spec['name'] + '">' +
+                            '<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו' +
+                            '</button>' +
+                            '<div class="input-group input-group-sm">' +
+                            '<input type="number" class="form-control spec-create-qty" value="' + (spec['quantity'] || 1) + '" min="1" placeholder="כמות">' +
+                            '<button type="button" class="btn btn-outline-success btn-create-from-spec" data-spec-id="' + spec['id'] + '">' +
+                            '<i class="bi bi-plus-circle me-1"></i>הוסף כקבוצה חדשה' +
+                            '</button>' +
+                            '</div>' +
+                            '</div>';
+                    } else {
+                        actionButtons =
+                            '<div class="d-flex gap-2 mt-3">' +
+                            '<div class="input-group input-group-sm">' +
+                            '<span class="input-group-text">כמות</span>' +
+                            '<input type="number" class="form-control spec-create-qty" value="' + (spec['quantity'] || 1) + '" min="1">' +
+                            '<button type="button" class="btn btn-success btn-create-from-spec" data-spec-id="' + spec['id'] + '">' +
+                            '<i class="bi bi-plus-circle me-1"></i>הוסף להזמנה' +
+                            '</button>' +
+                            '</div>' +
+                            '</div>';
+                    }
+
+                    const descHtml = spec['description'] ? ('<p class="small text-muted mb-2">' + spec['description'] + '</p>') : '';
+                    const panelColorHtml = spec['color_panels'] ? (' (' + spec['color_panels'] + ')') : '';
+                    const frameColorHtml = spec['color_frames'] ? (' (' + spec['color_frames'] + ')') : '';
+                    const createdByHtml = spec['created_by_name'] ? ('ע״י: ' + spec['created_by_name']) : '';
+
+                    const cardHtml =
+                        '<div class="col-md-6 col-xl-4 spec-card-item">' +
+                        '<div class="card h-100 shadow-sm border-0 bg-light">' +
+                        '<div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2">' +
+                        '<div class="text-truncate me-2"><strong class="text-primary fs-6" title="' + spec['name'] + '">' + spec['name'] + '</strong> ' + isSplitBadge + '</div>' +
+                        '<button type="button" class="btn btn-outline-danger btn-sm p-1 py-0 btn-delete-spec" data-spec-id="' + spec['id'] + '" title="מחק מפרט זה"><i class="bi bi-trash"></i></button>' +
+                        '</div>' +
+                        '<div class="card-body py-2">' + descHtml +
+                        '<div class="small mb-2">' +
+                        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">דגם מוצר:</span><span class="fw-bold">' + (spec['product_name'] || '-') + '</span></div>' +
+                        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">סדרה / חזית:</span><span>' + (spec['series_name'] || '-') + ' / ' + (spec['front_name'] || '-') + '</span></div>' +
+                        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">משקוף בסיסי:</span><span>' + (spec['basic_color_frames_name'] || 'סטנדרט') + '</span></div>' +
+                        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">צביעת כנף:</span><span>' + (spec['panel_paint_option_display'] || '-') + panelColorHtml + '</span></div>' +
+                        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">צביעת משקוף:</span><span>' + (spec['frame_paint_option_display'] || '-') + frameColorHtml + '</span></div>' +
+                        '</div>' +
+                        '<div class="mb-2"><div class="text-muted extra-small mb-1">שינויים ושדרוגים (קסטומייזרים):</div><div>' + customizersHtml + '</div></div>' +
+                        actionButtons +
+                        '</div>' +
+                        '<div class="card-footer bg-white border-top-0 py-1 text-muted extra-small d-flex justify-content-between">' +
+                        '<span>נוצר: ' + (spec['created_at_formatted'] || '') + '</span>' +
+                        '<span>' + createdByHtml + '</span>' +
+                        '</div></div></div>';
+
+                    $specCardsGrid.append(cardHtml);
+                });
+            }
+
+            function loadSpecifications(targetGroupId) {
+                $specLoadingIndicator.removeClass('d-none');
+                $specCardsGrid.empty();
+                $specEmptyState.addClass('d-none');
+
+                fetch('/orders/api/specifications/')
+                    .then(function (res) {
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        $specLoadingIndicator.addClass('d-none');
+                        currentSpecifications = Array.isArray(data) ? data : (data['results'] || []);
+                        renderSpecificationCards(currentSpecifications, targetGroupId);
+                    })
+                    .catch(function (err) {
+                        $specLoadingIndicator.addClass('d-none');
+                        console.error('Error fetching specifications:', err);
+                        $specEmptyState.removeClass('d-none');
+                    });
+            }
+
+            $(document).on('click', '.btn-open-load-spec', function (e) {
+                e.preventDefault();
+                const $btn = $(this);
+                const targetGroupId = $btn.data('group-id') || '';
+                const targetGroupName = $btn.data('group-name') || '';
+
+                $loadSpecTargetGroupId.val(targetGroupId);
+                if (targetGroupId) {
+                    $loadSpecTargetBadge
+                        .removeClass('bg-info-subtle text-info border-info')
+                        .addClass('bg-primary-subtle text-primary border-primary')
+                        .html('<i class="bi bi-layers me-1"></i>פעולה עבור קבוצה: <strong>' + (targetGroupName || ('#' + targetGroupId)) + '</strong>');
+                } else {
+                    $loadSpecTargetBadge
+                        .removeClass('bg-primary-subtle text-primary border-primary')
+                        .addClass('bg-info-subtle text-info border-info')
+                        .html('<i class="bi bi-plus-circle me-1"></i>הוספת קבוצה חדשה להזמנה');
+                }
+
+                $('#specSearchInput').val('');
+                loadSpecifications(targetGroupId);
+
+                const modalEl = document.getElementById('loadSpecificationModal');
+                const modal = window.bootstrap ? new window.bootstrap.Modal(modalEl) : null;
+                if (modal) modal.show();
+            });
+
+            $(document).on('input', '#specSearchInput', function () {
+                const q = $(this).val().trim().toLowerCase();
+                const targetGroupId = $loadSpecTargetGroupId.val();
+                if (!q) {
+                    renderSpecificationCards(currentSpecifications, targetGroupId);
+                    return;
+                }
+                const filtered = currentSpecifications.filter(function (spec) {
+                    const str = (spec['name'] + ' ' + (spec['description'] || '') + ' ' + (spec['product_name'] || '') + ' ' + (spec['series_name'] || '') + ' ' + (spec['front_name'] || '')).toLowerCase();
+                    return str.indexOf(q) !== -1;
+                });
+                renderSpecificationCards(filtered, targetGroupId);
+            });
+
+            $(document).on('click', '.btn-apply-spec', function () {
+                const $btn = $(this);
+                const specId = $btn.data('spec-id');
+                const specName = $btn.data('spec-name');
+                const groupId = $loadSpecTargetGroupId.val();
+                const csrfToken = $csrfTokenInput.first().val();
+
+                if (!groupId || !specId) return;
+
+                if (!confirm('האם להחיל את מפרט "' + specName + '" על הקבוצה? פעולה זו תעדכן את הגדרות הקבוצה והשדרוגים.')) {
+                    return;
+                }
+
+                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> מחיל...');
+
+                fetch('/orders/groups/' + groupId + '/apply-specification/' + specId + '/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        csrfmiddlewaretoken: csrfToken
+                    })
+                })
+                    .then(function (res) {
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        if (data['status'] === 'ok') {
+                            window.location.reload();
+                        } else {
+                            alert(data['message'] || 'שגיאה בהחלת המפרט');
+                            $btn.prop('disabled', false).html('<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו');
+                        }
+                    })
+                    .catch(function (err) {
+                        console.error('Error applying spec:', err);
+                        alert('שגיאה בהחלת המפרט');
+                        $btn.prop('disabled', false).html('<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו');
+                    });
+            });
+
+            $(document).on('click', '.btn-create-from-spec', function () {
+                const $btn = $(this);
+                const specId = $btn.data('spec-id');
+                const orderId = '{{ order.pk }}';
+                const csrfToken = $csrfTokenInput.first().val();
+                const $card = $btn.closest('.card');
+                const qty = $card.find('.spec-create-qty').val() || 1;
+
+                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> מוסיף...');
+
+                fetch('/orders/' + orderId + '/groups/create-from-specification/' + specId + '/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        quantity: qty,
+                        csrfmiddlewaretoken: csrfToken
+                    })
+                })
+                    .then(function (res) {
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        if (data['status'] === 'ok') {
+                            window.location.reload();
+                        } else {
+                            alert(data['message'] || 'שגיאה ביצירת קבוצה ממפרט');
+                            $btn.prop('disabled', false).html('<i class="bi bi-plus-circle me-1"></i>הוסף');
+                        }
+                    })
+                    .catch(function (err) {
+                        console.error('Error creating group from spec:', err);
+                        alert('שגיאה ביצירת קבוצה ממפרט');
+                        $btn.prop('disabled', false).html('<i class="bi bi-plus-circle me-1"></i>הוסף');
+                    });
+            });
+
+            $(document).on('click', '.btn-delete-spec', function () {
+                const $btn = $(this);
+                const specId = $btn.data('spec-id');
+                const csrfToken = $csrfTokenInput.first().val();
+
+                if (!confirm('האם אתה בטוח שברצונך למחוק מפרט שמור זה לצמיתות?')) {
+                    return;
+                }
+
+                fetch('/orders/specifications/' + specId + '/delete/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        csrfmiddlewaretoken: csrfToken
+                    })
+                })
+                    .then(function (res) {
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        if (data['status'] === 'ok') {
+                            const targetGroupId = $loadSpecTargetGroupId.val();
+                            loadSpecifications(targetGroupId);
+                        } else {
+                            alert(data['message'] || 'שגיאה במחיקת המפרט');
+                        }
+                    })
+                    .catch(function (err) {
+                        console.error('Error deleting spec:', err);
+                        alert('שגיאה במחיקת המפרט');
+                    });
+            });
+
+            function showSuccessNotification(message) {
+                const toastHtml =
+                    '<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 11000">' +
+                    '<div class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">' +
+                    '<div class="d-flex">' +
+                    '<div class="toast-body"><i class="bi bi-check-circle-fill me-2"></i> ' + message + '</div>' +
+                    '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>' +
+                    '</div></div></div>';
+
+                const $wrapper = $(toastHtml);
+                $('body').append($wrapper);
+
+                const toastEl = $wrapper.find('.toast')[0];
+                if (window.bootstrap && window.bootstrap.Toast) {
+                    const toast = new window.bootstrap.Toast(toastEl, {delay: 3000});
+                    toast.show();
+                    toastEl.addEventListener('hidden.bs.toast', function () {
+                        $wrapper.remove();
+                    });
+                } else {
+                    setTimeout(function () {
+                        $wrapper.remove();
+                        $wrapper.remove();
+                    }, 3500);
+                }
+            }
+
+            // 1. Отрисовка чекбоксов батчей при открытии окна
+            $('#reportsModal').on('show.bs.modal', function () {
+                // order.current_batch - это счетчик, который увеличивается на 1 при каждом запуске.
+                // Если current_batch = 3, значит есть батчи 1 и 2.
+                const currentBatchCounter = parseInt("{{ order.current_batch|default:1 }}", 10);
+                const $batchContainer = $('#batchSelectionContainer');
+
+                if (currentBatchCounter > 1) {
+                    let html = '';
+                    for (let i = 1; i < currentBatchCounter; i++) {
+                        // По умолчанию ставим галочку только на последний запущенный батч
+                        const isChecked = (i === currentBatchCounter - 1) ? 'checked' : '';
+                        html += `
+                            <input type="checkbox" class="btn-check batch-checkbox" name="selected_batches" id="batch_${i}" value="${i}" ${isChecked}>
+                            <label class="btn btn-outline-primary rounded-pill px-3 py-1 fw-bold" for="batch_${i}">
+                                אצווה ${i}
+                            </label>
+                        `;
+                    }
+                    $batchContainer.html(html);
+                    $('.btn-generate-action').prop('disabled', false);
+                } else {
+                    $batchContainer.html('<span class="text-muted small">אין עדיין אצוות בייצור</span>');
+                    // Блокируем кнопки, если технически печатать нечего
+                    $('.btn-generate-action').prop('disabled', true);
+                }
+            });
+
+            // 2. Обработка клика по любой кнопке отчета/файла
+            $(document).on('click', '.btn-generate-action', function (e) {
+                e.preventDefault();
+                const baseUrl = $(this).data('url');
+                const target = $(this).data('target') || '_blank'; // По умолчанию открываем в новой вкладке
+
+                // Собираем все выбранные батчи
+                let selectedBatches = [];
+                $('.batch-checkbox:checked').each(function () {
+                    selectedBatches.push($(this).val());
+                });
+
+                if (selectedBatches.length === 0) {
+                    alert('נא לבחור לפחות אצווה אחת להדפסה.');
+                    return;
+                }
+
+                // Формируем финальный URL, приклеивая каждый чекбокс (например ?batch=1&batch=2)
+                const urlObj = new URL(baseUrl, window.location.origin);
+                selectedBatches.forEach(function (batchNum) {
+                    urlObj.searchParams.append('batch', batchNum);
+                });
+
+                // Переходим
+                if (target === '_self') {
+                    window.location.href = urlObj.toString();
+                } else {
+                    window.open(urlObj.toString(), target);
+                }
+
+                // Скрываем окно после клика
+                $('#reportsModal').modal('hide');
+            });
+
+            // --- Логика сворачивания карточек групп ---
+            const $collapseBodies = $('.group-collapse-body');
+
+// 1. Показ/скрытие свернутой плашки по событиям Bootstrap Collapse
+            $collapseBodies.on('hidden.bs.collapse', function () {
+                const $wrapper = $(this).closest('.group-wrapper');
+                $wrapper.find('.group-collapsed-bar').removeClass('d-none');
+            });
+
+            $collapseBodies.on('show.bs.collapse', function () {
+                const $wrapper = $(this).closest('.group-wrapper');
+                $wrapper.find('.group-collapsed-bar').addClass('d-none');
+            });
+
+// 2. Кнопка «+» (Развернуть все)
+            $('#btnExpandAllGroups').on('click', function () {
+                $collapseBodies.each(function () {
+                    const collapseInst = bootstrap.Collapse.getOrCreateInstance(this, {toggle: false});
+                    collapseInst.show();
+                });
+            });
+
+// 3. Кнопка «−» (Свернуть все)
+            $('#btnCollapseAllGroups').on('click', function () {
+                $collapseBodies.each(function () {
+                    const collapseInst = bootstrap.Collapse.getOrCreateInstance(this, {toggle: false});
+                    collapseInst.hide();
+                });
+            });
+
+        });
+
+        function transferOrderToProduction(btn, url) {
+            if (!confirm('האם להעביר את ההזמנה לתהליך ייצור?')) {
+                return;
+            }
+
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>מעביר לייצור...';
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        if (response.ok && data['status'] === 'ok') {
+                            window.open(data['master_report_url'], '_blank');
+                            window.location.reload();
+                        } else {
+                            const errors = data['errors'] || [data['message'] || 'שגיאה בהעברה לייצור'];
+                            alert('לא ניתן להעביר לייצור:\n• ' + errors.join('\n• '));
+                            btn.disabled = false;
+                            btn.innerHTML = originalHtml;
+                        }
+                    });
+                })
+                .catch(function (err) {
+                    console.error(err);
+                    alert('שגיאת תקשורת עם השרת');
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                });
+        }
+
+    </script>
+    <style>
+        .cursor-pointer {
+            cursor: pointer;
+        }
+
+        .collapse-arrow {
+            transition: transform 0.25s ease-in-out;
+        }
+
+        /* Стрелка переворачивается при сворачивании карточки */
+        [aria-expanded="false"] .collapse-arrow {
+            transform: rotate(-90deg);
+        }
+
+    </style>
+{% endblock %}

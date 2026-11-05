@@ -1,0 +1,249 @@
+:root {
+    --primary-color: #bb2d1b;
+    --info-color: #44D2E4;
+    --secondary-color: #949598;
+    --dark-color: #1D3D44;
+    /*--dark-color: #132A2F;*/
+    --sidebar-width: 260px;
+    --topbar-height: 60px;
+
+}
+
+/* Bootstrap variable overrides via CSS variables where applicable */
+.btn-primary {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+.btn-primary:hover {
+    background-color: #a02617 !important;
+    border-color: #a02617 !important;
+}
+
+.text-primary {
+    color: var(--primary-color) !important;
+}
+
+.bg-primary {
+    background-color: var(--primary-color) !important;
+}
+
+.btn-outline-primary {
+    color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    color: #fff !important;
+}
+
+/* Custom Styles */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f8fafc;
+    color: #1e293b;
+}
+
+.wrapper {
+    display: flex;
+    align-items: stretch;
+    min-height: 100vh;
+}
+
+#sidebar {
+    width: var(--sidebar-width);
+    background: var(--dark-color);
+    color: #fff;
+    transition: all 0.3s;
+    position: fixed;
+    height: 100vh;
+    z-index: 1000;
+}
+
+#sidebar .sidebar-header {
+    padding: 20px;
+    background: #1a1a1a;
+    font-weight: 700;
+    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#sidebar .sidebar-header img {
+    max-height: 40px;
+    width: auto;
+}
+
+#sidebar ul.components {
+    padding: 20px 0;
+}
+
+#sidebar ul li a {
+    padding: 12px 20px;
+    font-size: 0.9rem;
+    display: block;
+    color: var(--secondary-color);
+    text-decoration: none;
+    transition: 0.3s;
+    border-right: 3px solid transparent;
+}
+
+#sidebar ul li a:hover, #sidebar ul li.active > a {
+    color: #fff !important;
+    background: #333 !important;
+    border-right-color: var(--primary-color) !important;
+}
+
+@media (max-width: 768px) {
+    #sidebar {
+        margin-right: calc(-1 * var(--sidebar-width));
+    }
+
+    #sidebar.active {
+        margin-right: 0;
+    }
+
+    #content {
+        width: 100%;
+        margin-right: 0;
+    }
+
+    #content.active {
+        margin-right: var(--sidebar-width);
+    }
+}
+
+#sidebar ul li a i {
+    margin-left: 10px;
+    width: 20px;
+    text-align: center;
+}
+
+#content {
+    width: calc(100% - var(--sidebar-width));
+    margin-right: var(--sidebar-width);
+    transition: all 0.3s;
+}
+
+.top-navbar {
+    height: var(--topbar-height);
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 0 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.main-content {
+    padding: 30px;
+}
+
+.card {
+    border: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid #f1f5f9;
+    padding: 15px 20px;
+    font-weight: 600;
+}
+
+/* Tooltips & Help Hints */
+.tooltip,
+.tooltip * {
+    pointer-events: none !important;
+}
+
+.tooltip {
+    font-size: 0.8125rem;
+    z-index: 1090;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.tooltip-inner {
+    max-width: 320px;
+    padding: 6px 12px;
+    background-color: #1e293b;
+    color: #f8fafc;
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    text-align: right;
+    line-height: 1.45;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tooltip.bs-tooltip-top .tooltip-arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="top"] .tooltip-arrow::before {
+    border-top-color: #1e293b;
+}
+
+.tooltip.bs-tooltip-bottom .tooltip-arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="bottom"] .tooltip-arrow::before {
+    border-bottom-color: #1e293b;
+}
+
+.tooltip.bs-tooltip-start .tooltip-arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="left"] .tooltip-arrow::before,
+.tooltip.bs-tooltip-auto[data-popper-placement^="right"] .tooltip-arrow::before {
+    border-inline-start-color: #1e293b;
+}
+
+.help-hint-icon {
+    cursor: help;
+    color: #64748b;
+    font-size: 0.85rem;
+    transition: color 0.15s ease-in-out, transform 0.15s ease-in-out;
+    display: inline-flex;
+    align-items: center;
+    margin-inline-start: 4px;
+}
+
+.help-hint-icon:hover {
+    color: var(--primary-color);
+    transform: scale(1.15);
+}
+
+.cursor-help {
+    cursor: help !important;
+}
+
+/* Select2 Descriptions */
+.select2-option-desc {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.select2-results__option--highlighted .select2-option-desc {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+
+.row-locked {
+    cursor: not-allowed !important;
+}
+
+/* Фикс отображения Bootstrap 5 form-switch в RTL */
+[dir="rtl"] .form-switch .form-check-input {
+    float: right;
+    margin-right: 0;
+    margin-left: 0.5rem;
+}
+
+/* Фикс чекбоксов и свитчей Bootstrap 5 для RTL */
+[dir="rtl"] .form-check {
+    padding-right: 0;
+    padding-left: 0;
+}
+
+[dir="rtl"] .form-switch {
+    padding-right: 0;
+    padding-left: 0;
+}

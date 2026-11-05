@@ -1,0 +1,20 @@
+{% extends "production/reports/base_report.html" %}
+{% block title %}דו''ח משקופי אלומיניום - הזמנה {{ order.order_number }}{% endblock %}
+{% block body_class %}landscape{% endblock %}
+{% block extra_css %}
+    <style>
+    @page {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+    @media print {
+        @page {
+            size: A4 landscape !important;
+            margin: 10mm;
+        }
+    }
+    </style>
+{% endblock %}
+{% block content %}
+    <div class="page landscape">{% include "production/includes/report_alum_frames.html" %}</div>
+{% endblock %}

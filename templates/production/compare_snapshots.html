@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block page_title %}
+    {% trans "השוואת שינויים: לפני ואחרי שלב ב'" %}
+{% endblock %}
+{% block content %}
+    <div class="container-fluid py-4">
+        <div class="d-flex align-items-center mb-4">
+            <a href="{% url 'order-detail' order.pk %}"
+               class="btn btn-outline-secondary me-3">
+                <i class="bi bi-arrow-right"></i>
+            </a>
+            <h2 class="h4 mb-0">{% trans "השוואת נתונים (Было -> Стало)" %} - {{ order.order_number }}</h2>
+        </div>
+        <div class="alert alert-info border-0 shadow-sm mb-4">
+            <i class="bi bi-info-circle me-2"></i>
+            {% trans "דו''ח זה מציג את השינויים שבוצעו במפרט בין שלב א' לשלב ב'. גבהי מנעולים וצירים מוצגים תמיד." %}
+        </div>
+        {% for res in comparison_results %}
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{% trans "סימון פריט" %}: <span class="badge bg-primary">{{ res.mark }}</span></h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light text-muted small text-uppercase">
+                                <tr>
+                                    <th class="ps-4" style="width: 30%;">{% trans "פרמטר" %}</th>
+                                    <th style="width: 30%;">{% trans "היה (Was)" %}</th>
+                                    <th class="text-center" style="width: 10%;"></th>
+                                    <th style="width: 30%;">{% trans "נהיה (Became)" %}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for change in res.changes %}
+                                    <tr {% if change.changed %}class="table-warning"{% endif %}>
+                                        <td class="ps-4 fw-medium text-dark">{{ change.label }}</td>
+                                        <td class="text-muted">{{ change.old }}</td>
+                                        <td class="text-center">
+                                            <i class="bi bi-arrow-left text-primary"></i>
+                                        </td>
+                                        <td class="fw-bold {% if change.changed %}text-danger{% else %}text-success{% endif %}">{{ change.new }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center py-3 text-muted">{% trans "לא נמצאו שינויים במפרט עבור פריט זה." %}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        {% empty %}
+            <div class="alert alert-warning">{% trans "לא נמצאו נתונים להשוואה." %}</div>
+        {% endfor %}
+    </div>
+{% endblock %}

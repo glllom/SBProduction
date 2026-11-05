@@ -1,181 +1,1201 @@
+import math
+from datetime import date
+
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db import transaction
 
-from apps.catalog.models import Product, Front
-
+from apps.catalog.models import ProductModel, Front
 
 
 class OrderStatus(models.TextChoices):
-    DRAFT = 'DRAFT', 'Draft'
-    MEASUREMENT = 'MEASUREMENT', 'Pending Measurement'
-    IN_PRODUCTION = 'IN_PRODUCTION', 'In Production'
-    READY = 'READY', 'Ready for Ship'
-    COMPLETED = 'COMPLETED', 'Completed'
-    CANCELED = 'CANCELED', 'Canceled'
+    NEW = 'NEW', 'חדש'
+    IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
+    PHASE1_PRODUCTION = 'PHASE1_PRODUCTION', 'ייצור שלב א (משקופים)'
+    PHASE1_READY = 'PHASE1_READY', 'שלב א מוכן (ממתין להמשך)'
+    PHASE2_PRODUCTION = 'PHASE2_PRODUCTION', 'ייצור שלב ב'
+    COMPLETION_PRODUCTION = 'COMPLETION_PRODUCTION', 'ייצור השלמות'
+    PARTIALLY_READY = 'PARTIALLY_READY', 'מוכן חלקית (ממתין להשלמות)'
+    COMPLETED = 'COMPLETED', 'ההזמנה מוכנה'
+    CANCELED = 'CANCELED', 'בוטל'
 
 
-class OpeningDirection(models.TextChoices):
-    LEFT = 'LEFT', 'Left'
-    RIGHT = 'RIGHT', 'Right'
+class OpeningSide(models.TextChoices):
+    LEFT = 'L', 'L'
+    RIGHT = 'R', 'R'
 
 
 class OpeningType(models.TextChoices):
-    OUTWARD = 'OUTWARD', 'Outward'
-    INWARD = 'INWARD', 'Inward'
+    IN = 'IN', 'פנימה'
+    OUT = 'OUT', 'החוצה'
 
 
 # ==========================================
-# 1. ЗАКАЗ (ORDER)
+# 1. ORDER
 # ==========================================
+
 
 class Order(models.Model):
-    """Manufacturing order header."""
-    order_number = models.CharField('Order Number', max_length=50, unique=True)
+    # --- Identifiers and base data ---
+    order_number = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+        verbose_name="מספר הזמנה",
+        help_text="מספר ייחודי (למשל ORD-2026-001)",
+    )
+    customer = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="לקוח",
+    )
     status = models.CharField(
-        'Status',
-        max_length=20,
-        choices=OrderStatus,
-        default=OrderStatus.DRAFT
+        max_length=30,
+        choices=OrderStatus.choices,
+        default=OrderStatus.NEW,
+        db_index=True,
+        verbose_name="סטטוס",
     )
 
-    # Global order parameters (deadlines, global notes)
-    created_at = models.DateTimeField('Created At', auto_now_add=True)
-    updated_at = models.DateTimeField('Updated At', auto_now=True)
-    note = models.TextField('General Order Note', blank=True)
+    # --- Даты этапов ---
+    production_start_date = models.DateField(
+        null=True, blank=True, verbose_name="ירידה לייצור",
+        help_text="Дата первого запуска заказа в производство"
+    )
+    completion_date = models.DateField(
+        null=True, blank=True, verbose_name="סיום ייצור",
+        help_text="Плановая дата окончания производства в цеху"
+    )
+    painting_completion_date = models.DateField(
+        null=True, blank=True, verbose_name="סיום צבע",
+        help_text="Плановая дата окончания покраски"
+    )
+
+    # --- Engineering / Specific order properties ---
+    series = models.ForeignKey(
+        'catalog.Series',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="סדרה"
+    )
+    front = models.ForeignKey(
+        'catalog.Front',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="חזית / גימור"
+    )
+    handle = models.ForeignKey(
+        'catalog.Handle',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="ידית"
+    )
+    is_frames_to_paint = models.BooleanField(
+        default=False,
+        verbose_name="לצבוע משקופים?",
+    )
+
+    is_door_inside_different_color = models.BooleanField(
+        default=False,
+        verbose_name="צד שני צבע אחר",
+    )
+
+    color_panel_outside = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע כנף בחוץ ",
+    )
+    color_panel_inside = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע כנף בפנים ",
+    )
+
+    color_frames = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקופים",
+    )
+
+    # --- Comments and System fields ---
+    comments = models.TextField(
+        blank=True, null=True, verbose_name="הערות"
+    )
+    press_notes = models.TextField(
+        'הערות למכבש (Пресс)',
+        blank=True,
+        default=''
+    )
+    frames_notes = models.TextField(
+        'הערות למשקופים (Коробки)',
+        blank=True,
+        default=''
+    )
+    warehouse_notes = models.TextField(
+        'הערות למחסן (Склад / Комплектация)',
+        blank=True,
+        default='',
+        help_text='הוראות מיוחדות לליקוט (למשל: הלקוח מביא ידיות משלו)'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name="נוצר במערכת"
+    )
+
+    current_batch = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Tracks the latest released production batch number"
+    )
+
+    # --- Specification Cache and Validation ---
+    phase1_spec_cache = models.JSONField(null=True, blank=True, verbose_name="מטמון מפרט שלב א")
+    phase2_spec_cache = models.JSONField(null=True, blank=True, verbose_name="מטמון מפרט שלב ב")
 
     class Meta:
-        verbose_name = 'Order'
-        verbose_name_plural = 'Orders'
+        db_table = "orders"
+        verbose_name = "הזמנה"
+        verbose_name_plural = "הזמנות"
+        ordering = ["-id"]
 
     def __str__(self):
-        return f"Order #{self.order_number} [{self.get_status_display()}]"
+        return f"הזמנה מס' {self.order_number} ({self.customer or 'ללא לקוח'})"
 
-    def get_next_position_number(self):
-        """Возвращает следующий сквозной номер позиции внутри заказа."""
-        last_item = OrderItem.objects.filter(
-            group__order=self
-        ).order_by('-position_number').first()
+    def is_editable_by(self, user) -> bool:
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser or getattr(user, 'role', None) == 'ADMIN':
+            return True
+        return self.status in [OrderStatus.NEW, OrderStatus.PHASE1_READY]
 
-        return (last_item.position_number + 1) if last_item else 1
+    def save(self, *args, **kwargs):
+        from apps.orders.utils import add_israeli_working_days
+
+        base_date = self.created_at.date() if self.created_at else date.today()
+        if not self.completion_date:
+            self.completion_date = add_israeli_working_days(base_date, 10)
+        if not self.painting_completion_date:
+            self.painting_completion_date = add_israeli_working_days(base_date, 20)
+
+        super().save(*args, **kwargs)
+
+    @property
+    def has_split_installation(self):
+        return self.groups.filter(is_split_installation=True).exclude(
+            production_state=OrderItemsGroup.ProductionState.CANCELED
+        ).exists()
+
+    def get_production_stations(self):
+        """
+        Returns all unique production stations for all items in this order,
+        considering their routes and customizers.
+        Also, filters are based on order status for phased production.
+        """
+        from apps.production.models import ProductionRoute
+        all_stations = []
+        seen_ids = set()
+
+        # Prefetch groups and their customizers for efficiency
+        groups = self.groups.all().prefetch_related('customizers__customizer', 'product__product_family__product_type')
+
+        for group in groups:
+            group_stations = ProductionRoute.get_stations_for_group(group)
+            for s in group_stations:
+                if s.id not in seen_ids:
+                    # Filter for staged production
+                    if self.status == OrderStatus.PHASE1_PRODUCTION:
+                        if not s.is_phase1:
+                            continue
+                    elif self.status == OrderStatus.PHASE2_PRODUCTION:
+                        if s.is_phase1:
+                            continue
+
+                    all_stations.append(s)
+                    seen_ids.add(s.id)
+
+        return all_stations
+
+    @property
+    def available_frames(self):
+        if self.series:
+            return self.series.available_frames
+        from apps.catalog.models import Material
+        return Material.objects.all().order_by('name')
+
+    @property
+    def can_start_production(self) -> bool:
+        """True, если есть группы для запуска (новые батчи) или заказ ждет перехода в фазу 2."""
+
+        # 1. Отмененный заказ мертв, в нем ничего запускать нельзя
+        if self.status == OrderStatus.CANCELED:
+            return False
+
+        # 2. Если заказ висит между фазами, нам нужна кнопка "Перевести в фазу 2"
+        if self.status == OrderStatus.PHASE1_READY:
+            return True
+
+        # 3. Во ВСЕХ остальных случаях (NEW, IN_PRODUCTION, PHASE2_PRODUCTION,
+        #    COMPLETED, PARTIALLY_READY, COMPLETION_PRODUCTION)
+        #    мы разрешаем запуск, если внутри есть хоть одна группа со статусом NEW.
+        return self.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW).exists()
+
+    @property
+    def production_action_label(self) -> str:
+        """Текст для кнопки запуска."""
+        if self.status == OrderStatus.NEW:
+            return "העבר לייצור"
+        if self.status == OrderStatus.PHASE1_READY:
+            return "העברה לשלב ב"
+        return "העבר לייצור השלמות"
+
+    def get_quantity(self):
+        return sum([gr.quantity for gr in self.groups.all()])
 
 
-# ==========================================
-# 2. ГРУППА ИЗДЕЛИЙ (ORDER Items GROUP)
-# ==========================================
-
-class OrderItemsGroup(models.Model):
-    """
-    Group of items sharing common customizable attributes
-    (e.g., color, engraving, glass/window type, finish).
-    """
+class OrderChangeLog(models.Model):
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
-        related_name='groups',
-        verbose_name='Order'
+        related_name="changelogs",
+        verbose_name="הזמנה"
     )
-    name = models.CharField('Group Name/Label', max_length=100, help_text='e.g., 2nd Floor Doors')
-
-    # Technology / Base Product definition
-    product = models.ForeignKey(
-        Product,
-        on_delete=models.PROTECT,
-        related_name='order_groups',
-        verbose_name='Product Model'
-    )
-    front = models.ForeignKey(
-        Front,
+    user = models.ForeignKey(
+        'accounts.User',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='order_groups',
-        verbose_name='Catalog Front'
+        verbose_name="משתמש"
     )
-
-    # Custom front option
-    is_custom_front = models.BooleanField('Is Custom Front', default=False)
-    custom_front_name = models.CharField('Custom Front Ref', max_length=255, blank=True)
-    quantity = models.PositiveIntegerField('Items Quantity in Group', default=1)
-    # Group parameters (Shared customization)
-    has_window = models.BooleanField('Has Glass/Bathroom Window', default=False)
-    engraving_code = models.CharField('Engraving Pattern / Code', max_length=100, blank=True)
-
-    # Flexible container for less frequent or dynamic group parameters
-    group_custom_params = models.JSONField('Additional Group Parameters', default=dict, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="זמן שינוי")
+    field_name = models.CharField(max_length=100, verbose_name="שדה")
+    old_value = models.TextField(null=True, blank=True, verbose_name="ערך ישן")
+    new_value = models.TextField(null=True, blank=True, verbose_name="ערך חדש")
 
     class Meta:
-        verbose_name = 'Order Items Group'
-        verbose_name_plural = 'Order Items Groups'
+        verbose_name = "יומן שינויים"
+        verbose_name_plural = "יומני שינויים"
+        ordering = ["-timestamp"]
 
     def __str__(self):
-        return f"{self.order.order_number} — Group: {self.name} ({self.product.name})"
+        return f"{self.order.order_number} - {self.field_name}"
+
+
+# ==========================================
+# 2. PRODUCT GROUP (ORDER Items GROUP)
+# ==========================================
+
+class OrderItemsGroup(models.Model):
+    class PaintOption(models.TextChoices):
+        NO_PAINT = 'NO_PAINT', 'לא לצבוע'
+        MAIN_COLOR = 'MAIN_COLOR', 'גוון ראשי'
+        SPECIAL_COLOR = 'SPECIAL_COLOR', 'גוון מיוחד'
+
+    class ProductionState(models.TextChoices):
+        NEW = 'NEW', 'חדש'
+        WAITING = 'WAITING', 'ממתין'
+        IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
+        COMPLETED = 'COMPLETED', 'הושלם'
+        CANCELED = 'CANCELED', 'בוטל'
+
+    # Release wave / batch identifier assigned upon production start
+    batch_number = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Order release wave (1 for initial order, 2+ for subsequent additions)"
+    )
+
+    # Django will automatically create an `order_id` field in the DB
+    order = models.ForeignKey(
+        "Order",
+        on_delete=models.CASCADE,
+        related_name="groups",
+        verbose_name="הזמנה",
+    )
+
+    production_state = models.CharField(
+        max_length=20,
+        choices=ProductionState.choices,
+        default=ProductionState.NEW,
+        db_index=True,
+        verbose_name="סטטוס ייצור של הקבוצה",
+    )
+
+    # Зафиксированная дата запуска батча в производство (не меняется после старта)
+    batch_date = models.DateField(
+        null=True, blank=True,
+        verbose_name="תאריך ירידה לייצור (באץ')",
+        help_text="Зафиксированная дата запуска группы в производство"
+    )
+
+    quantity = models.PositiveIntegerField(
+        default=1,
+        verbose_name="כמות בקבוצה",
+        help_text="מספר פריטים זהים (דלתות) בקבוצה זו",
+    )
+    product = models.ForeignKey(
+        "catalog.ProductModel",
+        on_delete=models.PROTECT,
+        related_name="order_groups",
+        verbose_name="דגם מוצר",
+    )
+    series = models.ForeignKey(
+        'catalog.Series',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="סדרה",
+        help_text="אם ריק - יימשך מההזמנה",
+    )
+    front = models.ForeignKey(
+        'catalog.Front',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="חזית / גימור",
+        help_text="אם ריק - יימשך מההזמנה",
+    )
+    basic_color_frames = models.ForeignKey(
+        'catalog.Material',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקוף בסיסי",
+    )
+
+    panel_paint_option = models.CharField(
+        max_length=20,
+        choices=PaintOption.choices,
+        default=PaintOption.MAIN_COLOR,
+        verbose_name="אופציית צביעת כנף",
+    )
+    is_door_inside_different_color = models.BooleanField(
+        default=False,
+        verbose_name="צדדים שונים (חוץ/פנים)",
+    )
+    color_panel_outside = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע כנף חוץ (מיוחד)",
+    )
+    color_panel_inside = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע כנף פנים (מיוחד)",
+    )
+
+    frame_paint_option = models.CharField(
+        max_length=20,
+        choices=PaintOption.choices,
+        default=PaintOption.NO_PAINT,
+        verbose_name="אופציית צביעת משקוף",
+    )
+    color_frames = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקוף (מיוחד)",
+    )
+
+    is_split_installation = models.BooleanField(
+        default=False,
+        verbose_name="התקנה מפוצלת",
+        help_text="True = משקוף וכנף בתאריכים שונים, False = בו זמנית",
+    )
+
+    comments = models.TextField(
+        blank=True, null=True, verbose_name="הערות"
+    )
+
+    class Meta:
+        db_table = "order_items_groups"
+        verbose_name = "קבוצת פריטי הזמנה"
+        verbose_name_plural = "קבוצות פריטי הזמנה"
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"קבוצה #{self.id} — {self.quantity} יח' (הזמנה ID:{self.order_id})"
+
+    @property
+    def available_frames(self):
+        if self.product:
+            return self.product.available_frames
+        if self.series:
+            return self.series.available_frames
+        if self.order and self.order.series:
+            return self.order.series.available_frames
+        from apps.catalog.models import Material
+        return Material.objects.none()
+
+    def auto_populate_required_customizers(self):
+        """
+        Automatically adds required customizers for the group's product with empty/default values.
+        Required parameters (parX_required=True) are set to empty string.
+        Non-required parameters can take the default value from the customizer (parX_value or '').
+        """
+        if not self.product:
+            return
+        required_customizers = self.product.get_required_customizers()
+        for cust in required_customizers:
+            if not self.customizers.filter(customizer=cust).exists():
+                OrderItemsGroupCustomizer.objects.create(
+                    group=self,
+                    customizer=cust,
+                    par1=cust.par1_value or '',
+                    par2=cust.par2_value or '',
+                    par3=cust.par3_value or '',
+                    par4=cust.par4_value or '',
+                    par5=cust.par5_value or '',
+                )
+
+    # ---------------------------------------------------------
+    # ДИНАМИЧЕСКИЕ СВОЙСТВА (Effective Colors)
+    # ---------------------------------------------------------
+    @property
+    def effective_color_panel_outside(self):
+        if self.panel_paint_option == self.PaintOption.NO_PAINT:
+            return None
+        if self.panel_paint_option == self.PaintOption.SPECIAL_COLOR and self.color_panel_outside:
+            return self.color_panel_outside
+        # Fallback на цвет из шапки заказа
+        return getattr(self.order, 'color_panel_outside', None)
+
+    @property
+    def effective_color_panel_inside(self):
+        if self.panel_paint_option == self.PaintOption.NO_PAINT:
+            return None
+        if self.panel_paint_option == self.PaintOption.SPECIAL_COLOR:
+            if self.is_door_inside_different_color and self.color_panel_inside:
+                return self.color_panel_inside
+            return self.effective_color_panel_outside
+        # Если MAIN_COLOR:
+        # Если в шапке задан внутренний цвет — берем его, иначе наружный
+        order_inside = getattr(self.order, 'color_panel_inside', None)
+        return order_inside or getattr(self.order, 'color_panel_outside', None)
+
+    @property
+    def effective_color_frames(self):
+        if self.frame_paint_option == self.PaintOption.NO_PAINT:
+            return None
+        if self.frame_paint_option == self.PaintOption.SPECIAL_COLOR and self.color_frames:
+            return self.color_frames
+        # Fallback на цвет коробки из шапки заказа
+        return getattr(self.order, 'color_frames', None)
+
+    def is_editable_by(self, user=None) -> bool:
+        """
+        Проверка прав редактирования группы:
+        1. Администраторы могут всегда.
+        2. Если production_state в [NEW, WAITING] -> True.
+        3. Если зафиксированная дата батча совпадает с текущей датой -> True.
+        4. Иначе -> False.
+        """
+
+        # 0. Администраторы имеют полный доступ
+        if user and (getattr(user, 'is_admin_user', False) or getattr(user, 'role', None) == 'ADMIN'):
+            return True
+
+        # 1. Если производственный статус NEW или WAITING — разрешено
+        if self.production_state in [
+            self.ProductionState.NEW,
+            self.ProductionState.WAITING
+        ]:
+            return True
+
+        if not self.batch_date:
+            return False
+
+        # 4. Проверяем, совпадает ли зафиксированная дата батча с сегодняшним днем
+        return self.batch_date == date.today()
 
     def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        super().save(*args, **kwargs)
+        is_new = not self.pk
 
-        # При первичном создании группы автоматически создаем заготовки дверей
-        if is_new and self.quantity > 0:
-            with transaction.atomic():
-                start_number = self.order.get_next_position_number()
-                items_to_create = []
+        # 1. Наследование серии и фронта по умолчанию из заказа
+        if self.order_id:
+            if not self.series and getattr(self.order, "series", None):
+                self.series = self.order.series
+            if not self.front and getattr(self.order, "front", None):
+                self.front = self.order.front
 
-                for i in range(self.quantity):
-                    items_to_create.append(
-                        OrderItem(
-                            group=self,
-                            position_number=start_number + i,
-                            item_label=f"Door #{start_number + i}"
+        # 2. Новая логика цветов: очищаем поля, если выбран не SPECIAL_COLOR
+        if self.panel_paint_option != self.PaintOption.SPECIAL_COLOR:
+            self.color_panel_outside = None
+            self.color_panel_inside = None
+            self.is_door_inside_different_color = False
+        elif not self.is_door_inside_different_color:
+            self.color_panel_inside = None
+
+        if self.frame_paint_option != self.PaintOption.SPECIAL_COLOR:
+            self.color_frames = None
+
+        # --- ШАГ 3: Защита при добавлении групп во время первой фазы ---
+        if is_new and self.order_id and self.order.status == OrderStatus.PHASE1_PRODUCTION:
+            if not self.is_split_installation:
+                self.production_state = self.ProductionState.WAITING
+
+        # --- ШАГ 4: Интеллектуальный возврат статуса в PHASE1_PRODUCTION из PHASE1_READY ---
+        if self.order_id and self.order.status == OrderStatus.PHASE1_READY:
+            if self.is_split_installation and self.production_state == self.ProductionState.NEW:
+                self.order.status = OrderStatus.PHASE1_PRODUCTION
+                self.order.save(update_fields=['status'])
+
+        # 3. Сохранение группы, синхронизация дверей и пересчет позиций
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+
+            # Автозаполнение обязательных кастомизаторов
+            if self.product:
+                self.auto_populate_required_customizers()
+
+                # Синхронизация физических дверей (OrderItem) с количеством в группе
+                if self.quantity is not None:
+                    existing_items = self.items.all().order_by('id')
+                    current_count = existing_items.count()
+
+                    if current_count < self.quantity:
+                        # 1. Находим максимальный существующий номер mark по всему заказу
+                        existing_marks = list(
+                            OrderItem.objects.filter(group__order=self.order)
+                            .exclude(mark="")
+                            .values_list('mark', flat=True)
                         )
-                    )
-                OrderItem.objects.bulk_create(items_to_create)
+
+                        max_mark = 0
+                        for m in existing_marks:
+                            try:
+                                val = int(m)
+                                if val > max_mark:
+                                    max_mark = val
+                            except (ValueError, TypeError):
+                                continue
+
+                        # 2. Безопасное определение дефолтного значения толщины стены
+                        raw_wall = (
+                            self.product.product_family.default_value_for_frame
+                            if self.product and getattr(self.product, 'product_family', None)
+                            else None
+                        )
+
+                        wall_default = None
+                        if raw_wall is not None and str(raw_wall).strip() != '':
+                            try:
+                                wall_default = float(str(raw_wall).strip())
+                            except (ValueError, TypeError):
+                                wall_default = None
+
+                        # Определяем флаги наличия коробки и двери у продукта
+                        product_type = (
+                            self.product.product_family.product_type
+                            if self.product and self.product.product_family
+                            else None
+                        )
+                        has_door = product_type.has_door if product_type else True
+                        has_frame = product_type.has_frame if product_type else True
+
+                        # 3. Создаем недостающие позиции с учетом особенностей типа продукта
+                        items_to_create = []
+                        for i in range(1, (self.quantity - current_count) + 1):
+                            item_kwargs = {
+                                'group': self,
+                                'mark': str(max_mark + i),
+                                'wall': wall_default if has_frame else None,
+                            }
+                            if not has_door:
+                                item_kwargs['direction'] = None
+                                item_kwargs['opening'] = None
+
+                            items_to_create.append(OrderItem(**item_kwargs))
+
+                        OrderItem.objects.bulk_create(items_to_create)
+
+                    elif current_count > self.quantity:
+                        items_to_delete = existing_items[self.quantity:]
+                        OrderItem.objects.filter(id__in=[item.id for item in items_to_delete]).delete()
+
+    def delete(self, *args, **kwargs):
+        order = self.order
+        super().delete(*args, **kwargs)
+        # After deleting the group, recalculate marks for the remaining items in the order
+        from apps.production.services import OrderProductionService
+        OrderProductionService.recalculate_item_marks(order)
+
+    def duplicate(self):
+        """
+        Creates a duplicate of the current group for the same order.
+        Copies group parameters and its customizers.
+        Doors (OrderItem) are created empty via standard OrderItemsGroup.save().
+        """
+        with transaction.atomic():
+            new_group = OrderItemsGroup.objects.create(
+                order=self.order,
+                quantity=self.quantity,
+                product=self.product,
+                series=self.series,
+                front=self.front,
+                basic_color_frames=self.basic_color_frames,
+                panel_paint_option=self.panel_paint_option,
+                color_panel_inside=self.color_panel_inside,
+                color_panel_outside=self.color_panel_outside,
+                frame_paint_option=self.frame_paint_option,
+                color_frames=self.color_frames,
+                is_split_installation=self.is_split_installation,
+                comments=self.comments,
+                production_state=self.ProductionState.NEW,
+                batch_number=None
+            )
+            for cust in self.customizers.all():
+                OrderItemsGroupCustomizer.objects.update_or_create(
+                    group=new_group,
+                    customizer=cust.customizer,
+                    defaults={
+                        'par1': cust.par1,
+                        'par2': cust.par2,
+                        'par3': cust.par3,
+                        'par4': cust.par4,
+                        'par5': cust.par5,
+                    }
+                )
+            return new_group
 
 
-# ==========================================
-# 3. ИЗДЕЛИЕ (ORDER ITEM)
-# ==========================================
-
-class OrderItem(models.Model):
-    """
-    Individual door item inside a group, containing specific measurements
-    filled by the measurer.
-    """
+class OrderItemsGroupCustomizer(models.Model):
     group = models.ForeignKey(
-        OrderItemsGroup,
+        'OrderItemsGroup',
         on_delete=models.CASCADE,
-        related_name='items',
-        verbose_name='Order Group'
+        related_name='customizers',
+        verbose_name='קבוצת פריטים'
     )
-    item_label = models.CharField('Item Tag/Room', max_length=100, blank=True, help_text='e.g., Bathroom, Bedroom 1')
-    # Сквозной порядковый номер двери относительно ВСЕГО заказа
-    position_number = models.PositiveIntegerField(
-        'Item Number in Order',
-        db_index=True
+    customizer = models.ForeignKey(
+        'catalog.Customizer',
+        on_delete=models.CASCADE,
+        verbose_name='קסטומייזר'
     )
-    # Measurer dimensions (Item Parameters)
-    height = models.DecimalField('Height (H), mm', max_digits=7, decimal_places=2, null=True, blank=True)
-    width = models.DecimalField('Width (W), mm', max_digits=7, decimal_places=2, null=True, blank=True)
-    wall_thickness = models.DecimalField('Wall Thickness, mm', max_digits=7, decimal_places=2, null=True, blank=True)
-
-    opening_direction = models.CharField(
-        'Opening Direction',
-        max_length=10,
-        choices=OpeningDirection,
-        blank=True
-    )
-    opening_type = models.CharField(
-        'Opening Type',
-        max_length=10,
-        choices=OpeningType,
-        blank=True
-    )
-
-    note = models.CharField('Measurer / Production Note', max_length=255, blank=True)
+    par1 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 1")
+    par2 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 2")
+    par3 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 3")
+    par4 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 4")
+    par5 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 5")
 
     class Meta:
-        verbose_name = 'Order Item'
-        verbose_name_plural = 'Order Items'
+        verbose_name = 'קסטומייזר לקבוצה'
+        verbose_name_plural = 'קסטומייזרים לקבוצה'
+
+    @property
+    def formatted_parameters(self):
+        result = []
+        for i in range(1, 6):
+            label = getattr(self.customizer, f'par{i}_label', None)
+            if label:
+                val = self.get_parameter_display_value(i)
+                if val:
+                    result.append({
+                        'label': label,
+                        'hint': getattr(self.customizer, f'par{i}_hint', ''),
+                        'value': val
+                    })
+        return result
+    
+    def __str__(self):
+        return f"{self.group} - {self.customizer.name}"
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        product_model = getattr(self.group, 'product', None)
+
+        # Check if the customizer itself is available for the product
+        if product_model and not self.customizer.is_available_for(product_model):
+            errors[
+                'customizer'] = f"Customizer '{self.customizer.name}' is not available for product '{product_model}'."
+
+        for i in range(1, 6):
+            field_name = f"par{i}"
+            value = getattr(self, field_name)
+
+            # Use filtered options for validation
+            options = self.customizer.get_filtered_parameter_options(i, product_model)
+            if options:
+                valid_keys = [opt[0] for opt in options]
+                if value and str(value).strip():
+                    stripped_value = str(value).strip()
+                    if stripped_value not in valid_keys:
+                        # Check if it's an existing SKU but filtered out
+                        all_options = self.customizer.get_parameter_options(i)
+                        all_keys = [opt[0] for opt in all_options]
+                        if stripped_value in all_keys:
+                            errors[
+                                field_name] = f"Selected hardware '{stripped_value}' is incompatible with the product model."
+                        else:
+                            errors[
+                                field_name] = f"Selected value '{stripped_value}' is not a valid option. Allowed: {', '.join(valid_keys)}"
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        # Automatically populate defaults from customizer if empty on creation
+        if not self.pk and self.customizer:
+            for i in range(1, 6):
+                field_name = f'par{i}'
+                current_val = getattr(self, field_name)
+                if current_val is None or current_val == '':
+                    default_val = getattr(self.customizer, f'par{i}_value', None)
+                    if default_val:
+                        setattr(self, field_name, str(default_val))
+
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+
+    def get_parameter_display_value(self, par_number):
+        """
+        Возвращает красивый лейбл (на иврите) для сохраненного значения параметра,
+        если оно задано через опции (key:label или SKU=key:label).
+        Иначе возвращает исходное значение (текст/число).
+        """
+        val = getattr(self, f'par{par_number}', None)
+        if not val:
+            return ""
+
+        val_str = str(val).strip()
+        options = self.customizer.get_parameter_options(par_number)
+
+        for key, label in options:
+            if key == val_str:
+                return label
+
+        return val_str
+
+
+# ==========================================
+# 3. PRODUCT (ORDER ITEM)
+# ==========================================
+
+
+class OrderItem(models.Model):
+    class ItemState(models.TextChoices):
+        ACTIVE = 'ACTIVE', 'פעיל'
+        CANCELED = 'CANCELED', 'בוטל'
+
+    state = models.CharField(
+        max_length=20,
+        choices=ItemState.choices,
+        default=ItemState.ACTIVE,
+        db_index=True,
+        verbose_name="סטטוס פריט"
+    )
+
+    # --- Link to parent group ---
+    group = models.ForeignKey(
+        "OrderItemsGroup",
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="קבוצת מוצרים",
+    )
+
+    mark = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        verbose_name="#",
+    )
+
+    # --- Dimensions (in mm) ---
+    width = models.DecimalField(
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='רוחב (מ""מ)'
+    )
+    height = models.DecimalField(
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='גובה (מ""מ)'
+    )
+    wall = models.DecimalField(
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='עובי קיר / פתח (מ""מ)'
+    )
+
+    # --- Structure and Opening ---
+    direction = models.CharField(
+        max_length=10,
+        choices=OpeningSide.choices,
+        blank=True,
+        null=True,
+        verbose_name="כיוון פתיחה",
+    )
+    opening = models.CharField(
+        max_length=10,
+        choices=OpeningType.choices,
+        blank=True,
+        null=True,
+        verbose_name="צד פתיחה",
+    )
+    bottom_correction = models.DecimalField(
+        max_digits=5,
+        decimal_places=1,
+        blank=True,
+        null=True,
+        default=0,
+        verbose_name="חיתוך / קיצור נוסף",
+    )
+
+    # --- Site location ---
+    place = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="מיקום התקנה (קומה / ציר / חדר)",
+    )
+    comment = models.TextField(
+        blank=True, null=True, verbose_name="הערה למוצר"
+    )
+
+    # --- Engineering customizers (milling heights) ---
+    custom_lock_height = models.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        blank=True,
+        null=True,
+        verbose_name='גובה מנעול מותאם (מ""מ)',
+    )
+    custom_hinge1 = models.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 1 (מ""מ)',
+    )
+    custom_hinge2 = models.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 2 (מ""מ)',
+    )
+    custom_hinge3 = models.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 3 (מ""מ)',
+    )
+    custom_hinge4 = models.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 4 (מ""מ)',
+    )
+    custom_hinge5 = models.DecimalField(
+        max_digits=7,
+        decimal_places=1,
+        blank=True,
+        null=True,
+        verbose_name='גובה ציר 5 (מ""מ)',
+    )
+    sketch = models.FileField(
+        upload_to='order_sketches/%Y/%m/',
+        blank=True,
+        null=True,
+        verbose_name='שרטוט ידני / קובץ',
+        help_text='ניתן להעלות PDF, JPEG, PNG וכדומה'
+    )
+
+    class Meta:
+        db_table = "order_items"
+        verbose_name = "פריט הזמנה"
+        verbose_name_plural = "פריטי הזמנה"
+        ordering = ["id"]
 
     def __str__(self):
-        dimensions = f"{self.height}x{self.width}mm" if self.height and self.width else "No measurements"
-        return f"{self.group.name} - {self.item_label or 'Item'} ({dimensions})"
+        return f"פריט #{self.id} (קבוצה מס' {self.group_id})"
+
+    @staticmethod
+    def format_decimal(value):
+        if value is None:
+            return ""
+        # Truncate to 1 decimal place (already done in save, but just in case)
+        val_float = float(value)
+        if val_float == int(val_float):
+            return str(int(val_float))
+        return "{:.1f}".format(val_float)
+
+    @property
+    def h_fmt(self):
+        return self.format_decimal(self.height)
+
+    @property
+    def w_fmt(self):
+        return self.format_decimal(self.width)
+
+    @property
+    def wall_fmt(self):
+        return self.format_decimal(self.wall)
+
+    def save(self, *args, **kwargs):
+
+        # Truncate all decimal fields to 1 decimal place
+        decimal_fields = [
+            'width', 'height', 'wall', 'custom_lock_height',
+            'custom_hinge1', 'custom_hinge2', 'custom_hinge3',
+            'custom_hinge4', 'custom_hinge5', 'bottom_correction'
+        ]
+        for field in decimal_fields:
+            val = getattr(self, field)
+            if val is not None:
+                f_val = float(val)
+                truncated = math.floor(f_val * 10) / 10.0
+                setattr(self, field, truncated)
+
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+
+
+# ==========================================
+# 4. GROUP SPECIFICATION (PRESET / TEMPLATE)
+# ==========================================
+
+class GroupSpecification(models.Model):
+    name = models.CharField(
+        max_length=255,
+        verbose_name="שם המפרט",
+        help_text="שם מזהה למפרט השמור (למשל: דלתות קומה טיפוסית)",
+    )
+    description = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="תיאור",
+    )
+    product = models.ForeignKey(
+        "catalog.ProductModel",
+        on_delete=models.PROTECT,
+        related_name="saved_specifications",
+        verbose_name="דגם מוצר",
+    )
+    series = models.ForeignKey(
+        'catalog.Series',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="סדרה",
+    )
+    front = models.ForeignKey(
+        'catalog.Front',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="חזית / גימור",
+    )
+    basic_color_frames = models.ForeignKey(
+        'catalog.Material',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקוף בסיסי",
+    )
+    panel_paint_option = models.CharField(
+        max_length=20,
+        choices=OrderItemsGroup.PaintOption.choices,
+        default=OrderItemsGroup.PaintOption.MAIN_COLOR,
+        verbose_name="אופציית צביעת פנל",
+    )
+    color_panels = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע פנלים (כנף)",
+    )
+    frame_paint_option = models.CharField(
+        max_length=20,
+        choices=OrderItemsGroup.PaintOption.choices,
+        default=OrderItemsGroup.PaintOption.NO_PAINT,
+        verbose_name="אופציית צביעת משקוף",
+    )
+    color_frames = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="צבע משקופים",
+    )
+    is_split_installation = models.BooleanField(
+        default=False,
+        verbose_name="התקנה מפוצלת",
+    )
+    quantity = models.PositiveIntegerField(
+        default=1,
+        verbose_name="כמות דלתות ברירת מחדל",
+    )
+    comments = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="הערות",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="נוצר במערכת",
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="נוצר ע\"י",
+    )
+
+    class Meta:
+        db_table = "group_specifications"
+        verbose_name = "מפרט קבוצה שמור"
+        verbose_name_plural = "מפרטי קבוצות שמורים"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.product.name})"
+
+    @classmethod
+    def create_from_group(cls, group, name, description='', user=None):
+        with transaction.atomic():
+            spec = cls.objects.create(
+                name=name,
+                description=description,
+                product=group.product,
+                series=group.series,
+                front=group.front,
+                basic_color_frames=group.basic_color_frames,
+                panel_paint_option=group.panel_paint_option,
+                color_panels=group.color_panel_outside,
+                frame_paint_option=group.frame_paint_option,
+                color_frames=group.color_frames,
+                is_split_installation=group.is_split_installation,
+                quantity=group.quantity,
+                comments=group.comments,
+                created_by=user if user and user.is_authenticated else None,
+            )
+            for cust in group.customizers.all():
+                GroupSpecificationCustomizer.objects.create(
+                    specification=spec,
+                    customizer=cust.customizer,
+                    par1=cust.par1,
+                    par2=cust.par2,
+                    par3=cust.par3,
+                    par4=cust.par4,
+                    par5=cust.par5,
+                )
+            return spec
+
+    def apply_to_group(self, group, update_quantity=False, new_quantity=None):
+        with transaction.atomic():
+            group.product = self.product
+            group.series = self.series
+            group.front = self.front
+            group.basic_color_frames = self.basic_color_frames
+            group.panel_paint_option = self.panel_paint_option
+            group.color_panel_outside = self.color_panels
+            group.frame_paint_option = self.frame_paint_option
+            group.color_frames = self.color_frames
+            group.is_split_installation = self.is_split_installation
+            if self.comments:
+                group.comments = self.comments
+            if update_quantity and new_quantity:
+                group.quantity = new_quantity
+            group.save()
+
+            group.customizers.all().delete()
+            for cust in self.customizers.all():
+                OrderItemsGroupCustomizer.objects.create(
+                    group=group,
+                    customizer=cust.customizer,
+                    par1=cust.par1,
+                    par2=cust.par2,
+                    par3=cust.par3,
+                    par4=cust.par4,
+                    par5=cust.par5,
+                )
+            return group
+
+    def create_order_group(self, order, quantity=None):
+        with transaction.atomic():
+            qty = quantity if (quantity is not None and quantity > 0) else self.quantity
+            new_group = OrderItemsGroup.objects.create(
+                order=order,
+                quantity=qty,
+                product=self.product,
+                series=self.series,
+                front=self.front,
+                basic_color_frames=self.basic_color_frames,
+                panel_paint_option=self.panel_paint_option,
+                color_panels=self.color_panels,
+                frame_paint_option=self.frame_paint_option,
+                color_frames=self.color_frames,
+                is_split_installation=self.is_split_installation,
+                comments=self.comments,
+            )
+            for cust in self.customizers.all():
+                OrderItemsGroupCustomizer.objects.create(
+                    group=new_group,
+                    customizer=cust.customizer,
+                    par1=cust.par1,
+                    par2=cust.par2,
+                    par3=cust.par3,
+                    par4=cust.par4,
+                    par5=cust.par5,
+                )
+            return new_group
+
+
+class GroupSpecificationCustomizer(models.Model):
+    specification = models.ForeignKey(
+        GroupSpecification,
+        on_delete=models.CASCADE,
+        related_name="customizers",
+        verbose_name="מפרט",
+    )
+    customizer = models.ForeignKey(
+        'catalog.Customizer',
+        on_delete=models.CASCADE,
+        verbose_name="קסטומייזר",
+    )
+    par1 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 1")
+    par2 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 2")
+    par3 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 3")
+    par4 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 4")
+    par5 = models.CharField(max_length=255, blank=True, null=True, verbose_name="5")
+
+    class Meta:
+        db_table = "group_specification_customizers"
+        verbose_name = "קסטומייזר למפרט"
+        verbose_name_plural = "קסטומייזרים למפרט"
+
+    def __str__(self):
+        return f"{self.specification.name} - {self.customizer.name}"
+
+
+class OrderComponentSelection(models.Model):
+    order = models.ForeignKey(
+        'orders.Order',
+        on_delete=models.CASCADE,
+        related_name='component_selections',
+        verbose_name='הזמנה'
+    )
+    common_name = models.CharField('שם קבוצה (Common Name)', max_length=255, db_index=True)
+    selected_hardware = models.ForeignKey(
+        'catalog.Hardware',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='פרזול שנבחר'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'בחירת רכיב להזמנה'
+        verbose_name_plural = 'בחירות רכיבים להזמנות'
+        unique_together = ('order', 'common_name')
+
+    def __str__(self):
+        return f"{self.order.order_number} - {self.common_name}: {self.selected_hardware}"

@@ -1,0 +1,53 @@
+<div class="modal fade"
+     id="loadSpecificationModal"
+     tabindex="-1"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-box-arrow-in-down me-2"></i>טעינת מפרט שמור
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="loadSpecTargetGroupId" value="">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-7">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                            <input type="text"
+                                   id="specSearchInput"
+                                   class="form-control"
+                                   placeholder="חיפוש מפרט לפי שם, סדרה, דגם או תיאור...">
+                        </div>
+                    </div>
+                    <div class="col-md-5 d-flex align-items-center justify-content-end"
+                         id="loadSpecTargetInfo">
+                        <span class="badge bg-info-subtle text-info border border-info px-3 py-2 fs-6"
+                              id="loadSpecTargetBadge">הוספת קבוצה חדשה להזמנה</span>
+                    </div>
+                </div>
+                <div id="specificationsListContainer"
+                     style="max-height: 550px;
+                            overflow-y: auto">
+                    <div class="text-center py-5 text-muted" id="specLoadingIndicator">
+                        <div class="spinner-border text-primary mb-2" role="status"></div>
+                        <div>טוען מפרטים שמורים...</div>
+                    </div>
+                    <div class="row g-3" id="specCardsGrid">
+                        <!-- JS will populate cards -->
+                    </div>
+                    <div class="text-center py-5 text-muted d-none" id="specEmptyState">
+                        <i class="bi bi-bookmark-x fs-1 d-block mb-2 text-secondary"></i>
+                        <h6>לא נמצאו מפרטים שמורים</h6>
+                        <p class="small">ניתן לשמור מפרט מכל קבוצה קיימת דרך תפריט הפעולות של הקבוצה ("לשמור מפרט").</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+            </div>
+        </div>
+    </div>
+</div>
