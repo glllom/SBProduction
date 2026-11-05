@@ -7,3 +7,5 @@ holidays
 pydantic
 django-qrcode
 django-json-widget
+qrcode[pil]
+pillow
