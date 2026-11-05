@@ -1408,8 +1408,8 @@ class ProductionDataService:
                 elif c_out:
                     covering_names = c_out
             else:
-                covering_names = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'covering' and _bom_name(b)][
-                                     0] or ''
+                coverings = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'covering' and _bom_name(b)]
+                covering_names = coverings[0] if coverings else ''
 
             raw_components = base_names + filling_names
             comp_title = "  |  ".join(dict.fromkeys(filter(None, raw_components))) or _get(item, 'product_name', '')

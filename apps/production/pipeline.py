@@ -129,27 +129,31 @@ class BaseItemStep(SpecStep):
         spec.comment = item.comment or ""
         spec.addition_cut = float(item.bottom_correction) if item.bottom_correction else None
 
-        # 1. Проверка габаритов
+        # 0. Определяем наличие двери и коробки у изделия
+        has_frame = product.has_frame if product else True
+        has_door = product.has_door if product else True
+
         h = float(item.height or 0)
         w = float(item.width or 0)
         wall = float(item.wall or 0)
 
-        if h <= 0:
-            context.add_error("לא הוזן גובה תקין")
-        if w <= 0:
-            context.add_error("לא הוזן רוחב תקין")
+        # 1. Проверка габаритов (только если есть полотно или коробка)
+        # Если это облицовка/панели (нет ни двери, ни коробки) — стандартные W/H проема не требуются
+        if has_door or has_frame:
+            if h <= 0:
+                context.add_error("לא הוזן גובה תקין")
+            if w <= 0:
+                context.add_error("לא הוזן רוחב תקין")
 
         spec.height = h
         spec.width = w
         spec.wall = wall
 
         # 2. Проверка коробки
-        has_frame = product.has_frame if product else True
         if has_frame and wall <= 0:
             context.add_error("לא הוזן עובי קיר למשקוף")
 
         # 3. Проверка параметров открывания
-        has_door = product.has_door if product else True
         if has_door:
             if not item.opening:
                 context.add_error("לא נבחר כיוון פתיחה (פנימה/החוצה)")
@@ -689,6 +693,11 @@ class PanelDimensionStep(SpecStep):
         if not product or not product.product_family:
             return
 
+        if not getattr(product, 'has_door', True):
+            spec.panel_dimensions = []
+            spec.press_dimensions = []
+            return
+        
         pf = product.product_family
         h = float(item.height or 0)
         w = float(item.width or 0)

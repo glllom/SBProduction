@@ -124,7 +124,6 @@ class StationTrackingService:
         items = list(group.items.all().select_related('group', 'group__order'))
         return cls.initialize_items_progress(items, phase='phase2')
 
-
     @classmethod
     @transaction.atomic
     def process_barcode_scan(
@@ -349,7 +348,6 @@ class StationTrackingService:
                 'completion_date': g.order.completion_date,
                 'pending_qty': g.pending_qty,
                 'total_qty': g.total_qty,
-                'is_urgent': getattr(g.order, 'is_urgent', False),
             })
         return backlog
 
@@ -407,4 +405,77 @@ class StationTrackingService:
 
         backlog.sort(key=lambda x: (x['target_date'] is None, x['target_date'], x['order_number']))
         return backlog
-    
+
+    @classmethod
+    def get_station_batch_summary(cls, station_code: str) -> List[Dict[str, Any]]:
+        """
+        Возвращает очередь для конкретного участка (станка),
+        сгруппированную по заказам и батчам с точным количеством дверей,
+        маршрутизированных именно на этот станок.
+        """
+        station = ProductionStation.objects.filter(code__iexact=station_code).first()
+        if not station:
+            return []
+
+        qs = (
+            ItemStationProgress.objects.filter(
+                station=station,
+                status=StationStatus.PENDING
+            )
+            .values(
+                'item__group__order__id',
+                'item__group__order__order_number',
+                'item__group__order__customer',
+                'item__group__order__completion_date',
+                'item__group__batch_number',
+            )
+            .annotate(
+                pending_count=Count('id')
+            )
+            .order_by(
+                'item__group__order__completion_date',
+                'item__group__order__order_number'
+            )
+        )
+
+        results = []
+        for row in qs:
+            b_num = row['item__group__batch_number'] or 1
+            o_num = row['item__group__order__order_number']
+            results.append({
+                'order_id': row['item__group__order__id'],
+                'order_number': o_num,
+                'batch_number': b_num,
+                'display_order_batch': f"{o_num} [{b_num}]",  # <-- Готовый стандарт для шаблонов
+                'customer': row['item__group__order__customer'] or '',
+                'completion_date': row['item__group__order__completion_date'],
+                'doors_count': row['pending_count'],
+                'station_code': station.code,
+            })
+        return results
+
+    @classmethod
+    @transaction.atomic
+    def complete_multiple_batches(
+            cls,
+            items_to_complete: List[Dict[str, Any]],
+            user=None,
+            source: str = 'DASHBOARD_BATCH_SUBMIT'
+    ) -> int:
+        """
+        Пакетно закрывает несколько заказов/батчей на конкретных станциях.
+        items_to_complete: [{'order_number': '...', 'station_code': '...', 'batch_number': 1}, ...]
+        """
+        total_doors_completed = 0
+        for entry in items_to_complete:
+            success, msg, payload = cls._complete_batch_station(
+                order_number=entry['order_number'],
+                station_code=entry['station_code'],
+                batch_number=entry.get('batch_number'),
+                user=user,
+                source=source
+            )
+            if success:
+                total_doors_completed += payload.get('completed_count', 0)
+
+        return total_doors_completed

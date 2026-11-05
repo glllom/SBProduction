@@ -180,29 +180,93 @@
     </div>
     <div class="row">
         <div class="col-lg-10 mb-4">
-            {% for group in groups %}
-                {% include "orders/includes/group_card.html" %}
-            {% empty %}
-                <div class="card shadow-sm border-0 m-1">
-                    <div class="card-body text-center py-5">
-                        <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
-                        <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
-                        <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
-                        <div class="d-flex justify-content-center gap-2 mt-3">
-                            {% if can_edit_order %}
-                                <button class="btn btn-primary"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#groupModal">
-                                    <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
-                                </button>
-                                <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
-                                    <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
-                                </button>
-                            {% endif %}
-                        </div>
+            {% if groups %}
+                <!-- Панель управления: Свернуть все / Развернуть все -->
+                <div class="d-flex justify-content-between align-items-center mb-3 px-1">
+                    <span class="text-muted small fw-semibold">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
+                    <div class="btn-group btn-group-sm shadow-sm" role="group">
+                        <button type="button"
+                                class="btn btn-outline-secondary"
+                                id="btnExpandAllGroups"
+                                data-bs-toggle="tooltip"
+                                title="פתח את כל הקבוצות">
+                            <i class="bi bi-plus-lg me-1"></i>פתח הכל
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary"
+                                id="btnCollapseAllGroups"
+                                data-bs-toggle="tooltip"
+                                title="סגור את כל הקבוצות">
+                            <i class="bi bi-dash-lg me-1"></i>סגור הכל
+                        </button>
                     </div>
                 </div>
-            {% endfor %}
+            {% endif %}
+            <div class="accordion d-flex flex-column gap-3" id="groupsAccordion">
+                {% for group in groups %}
+                    {% with items=group.items.all %}
+                        <div class="card shadow-sm border-0 group-accordion-item"
+                             data-group-id="{{ group.id }}">
+                            <!-- Компактная шапка (видна всегда, в свернутом виде оставляет только модель и диапазон) -->
+                            <div class="card-header bg-white border-0 py-2 px-3 d-flex justify-content-between align-items-center cursor-pointer"
+                                 role="button"
+                                 data-bs-toggle="collapse"
+                                 data-bs-target="#groupCollapse-{{ group.id }}"
+                                 aria-expanded="true"
+                                 aria-controls="groupCollapse-{{ group.id }}">
+                                <div class="d-flex align-items-center gap-3">
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle fs-6 px-3">
+                                        <i class="bi bi-door-closed me-1"></i>
+                                        {% if items|length > 1 %}
+                                            דלתות {{ items.0.mark }}-{{ items.last.mark }}
+                                        {% elif items|length == 1 %}
+                                            דלת {{ items.0.mark }}
+                                        {% else %}
+                                            ללא דלתות
+                                        {% endif %}
+                                    </span>
+                                    <h5 class="mb-0 fw-bold text-dark">
+                                        {{ group.product.name|default:"דגם לא נבחר" }}
+                                        {% if group.product.code %}
+                                            <small class="text-muted fw-normal fs-6">({{ group.product.code }})</small>
+                                        {% endif %}
+                                    </h5>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-light text-secondary border">{{ group.quantity }} יח'</span>
+                                    <i class="bi bi-chevron-down fs-5 text-secondary collapse-arrow"></i>
+                                </div>
+                            </div>
+                            <!-- Тело карточки (полное содержимое группы) -->
+                            <div id="groupCollapse-{{ group.id }}"
+                                 class="collapse show group-collapse-body"
+                                 data-bs-parent="">
+                                <div class="card-body p-0 border-top">{% include "orders/includes/group_card.html" %}</div>
+                            </div>
+                        </div>
+                    {% endwith %}
+                {% empty %}
+                    <div class="card shadow-sm border-0 m-1">
+                        <div class="card-body text-center py-5">
+                            <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
+                            <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
+                            <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
+                            <div class="d-flex justify-content-center gap-2 mt-3">
+                                {% if can_edit_order %}
+                                    <button class="btn btn-primary"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#groupModal">
+                                        <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
+                                    </button>
+                                    <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
+                                        <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
     <!-- Modals -->
@@ -1750,6 +1814,35 @@
                 $('#reportsModal').modal('hide');
             });
 
+            // --- Логика сворачивания карточек групп ---
+            const $collapseBodies = $('.group-collapse-body');
+
+// 1. Показ/скрытие свернутой плашки по событиям Bootstrap Collapse
+            $collapseBodies.on('hidden.bs.collapse', function () {
+                const $wrapper = $(this).closest('.group-wrapper');
+                $wrapper.find('.group-collapsed-bar').removeClass('d-none');
+            });
+
+            $collapseBodies.on('show.bs.collapse', function () {
+                const $wrapper = $(this).closest('.group-wrapper');
+                $wrapper.find('.group-collapsed-bar').addClass('d-none');
+            });
+
+// 2. Кнопка «+» (Развернуть все)
+            $('#btnExpandAllGroups').on('click', function () {
+                $collapseBodies.each(function () {
+                    const collapseInst = bootstrap.Collapse.getOrCreateInstance(this, {toggle: false});
+                    collapseInst.show();
+                });
+            });
+
+// 3. Кнопка «−» (Свернуть все)
+            $('#btnCollapseAllGroups').on('click', function () {
+                $collapseBodies.each(function () {
+                    const collapseInst = bootstrap.Collapse.getOrCreateInstance(this, {toggle: false});
+                    collapseInst.hide();
+                });
+            });
 
         });
 
@@ -1792,4 +1885,19 @@
         }
 
     </script>
+    <style>
+        .cursor-pointer {
+            cursor: pointer;
+        }
+
+        .collapse-arrow {
+            transition: transform 0.25s ease-in-out;
+        }
+
+        /* Стрелка переворачивается при сворачивании карточки */
+        [aria-expanded="false"] .collapse-arrow {
+            transform: rotate(-90deg);
+        }
+
+    </style>
 {% endblock %}

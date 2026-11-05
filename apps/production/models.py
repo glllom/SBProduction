@@ -270,8 +270,8 @@ class ProductionStation(models.Model):
         # 4-9: Reserved for future label/special types
         REPORT = 10, 'דו"ח תחנה רגיל (10: Отчёт)'
 
-    name = models.CharField('שם התחנה', max_length=255)
-    code = models.CharField('קוד תחנה', max_length=50, blank=True)
+    name = models.CharField('שם התחנה', max_length=255, unique=True)
+    code = models.CharField('קוד תחנה', max_length=50, blank=True, unique=True)
     label = models.CharField('תווית לכפתור', max_length=100, blank=True, help_text='הטקסט שיופיע על הכפתור')
     hint = models.CharField('רמז/תיאור קצר', max_length=255, blank=True, help_text='יופיע כ-tooltip')
     description = models.TextField('תיאור מפורט', blank=True)

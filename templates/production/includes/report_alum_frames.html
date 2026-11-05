@@ -68,8 +68,13 @@
                                 {% for spec in frame_group.list %}
                                     {# Промежуточная строка с названиями замка и петель при смене фурнитуры #}
                                     {% if spec.show_hardware_subhead %}
-                                        <tr class="table-light border-top border-bottom border-dark border-2">
-                                            <th style="width: 6%;">#</th>
+                                        {% if not forloop.first %}
+                                            <tr>
+                                                <td colspan="6" style="height: 1px;" class="bg-dark"></td>
+                                            </tr>
+                                        {% endif %}
+                                        <tr class="table-secondary border-top border-bottom border-danger">
+                                            <th class="bg-danger" style="width: 6%;">#</th>
                                             <th style="width: 15%;">מידות</th>
                                             <th style="width: 10%;">פתיחה</th>
                                             <th style="width: 17%;">
@@ -109,7 +114,7 @@
                             <div class="mt-1">
                                 {% for cmz in spec.frames_report_customizers %}
                                     <div class="fw-bold text-primary">
-                                        {{ cmz.name }}
+                                        {{ cmz.name | default:"--" }}
                                         {% if cmz.params %}
                                             <span class="fw-normal text-dark">
                                                 ({% for p in cmz.params %}
@@ -123,6 +128,8 @@
                             </div>
                         {% endfor %}
                     </div>
+                {% else %}
+                    <p class="fs-6 m-0 p-0">---</p>
                 {% endif %}
                 </td>
             {% endif %}

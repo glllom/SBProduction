@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}מעקב תחנות ייצור - SB Production{% endblock %}
+{% block page_title %}מעקב תחנות ייצור{% endblock %}
+{% block content %}
+    <div class="container-fluid py-3" dir="rtl">
+        <!-- Верхняя панель: Заголовок и печать -->
+        <div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
+            <div>
+                <h4 class="mb-0 fw-bold">רצפת ייצור - דיווח יומי לפי תחנות</h4>
+                <span class="text-muted small">סימון הזמנות שבוצעו בתחנה והדפסת דפי עבודה</span>
+            </div>
+            <div class="d-flex gap-2">
+                <!-- Печать только текущей выбранной вкладки -->
+                <button type="button"
+                        onclick="window.print()"
+                        class="btn btn-outline-secondary shadow-sm">
+                    <i class="bi bi-printer ms-1"></i> הדפס תחנה נוכחית
+                </button>
+                <!-- Пакетная печать всех активных станций сразу -->
+                <a href="{% url 'production:tracking_print_all' %}"
+                   target="_blank"
+                   class="btn btn-primary shadow-sm fw-bold">
+                    <i class="bi bi-printer-fill ms-1"></i> הדפס דוחות לכל התחנות
+                </a>
+            </div>
+        </div>
+        <!-- Вкладки станций (скрыты при печати) -->
+        <ul class="nav nav-pills mb-4 gap-2 border-bottom pb-3 d-print-none">
+            {% for item in stations_data %}
+                <li class="nav-item">
+                    <a class="nav-link {% if item.station.code == selected_station.code %}active fw-bold shadow-sm{% else %}bg-light text-dark{% endif %}"
+                       href="?station={{ item.station.code }}">
+                        {{ item.station.name }}
+                        {% if item.pending_orders_count > 0 %}
+                            <span class="badge {% if item.station.code == selected_station.code %}bg-light text-primary{% else %}bg-secondary text-white{% endif %} me-1">
+                                {{ item.pending_orders_count }}
+                            </span>
+                        {% endif %}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+        <!-- Шапка для печатного листа A4 -->
+        <div class="d-none d-print-block mb-4 border-bottom pb-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <h3>תחנת ייצור: <strong>{{ selected_station.name }} ({{ selected_station.code }})</strong></h3>
+                <div>תאריך הדפסה: {% now "d/m/Y H:i" %}</div>
+            </div>
+        </div>
+        <!-- ФОРМА С КНОПКОЙ SUBMIT -->
+        <form method="post" id="trackingForm">
+            {% csrf_token %}
+            <input type="hidden" name="station_code" value="{{ selected_station.code }}">
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="trackingTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 70px;" class="text-center d-print-none">
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           id="selectAllCheckbox"
+                                           title="בחר הכל"
+                                           style="cursor: pointer">
+                                </th>
+                                <th class="d-none d-print-table-cell text-center" style="width: 50px;">V</th>
+                                <th>הזמנה [מנה]</th>
+                                <th>שם לקוח</th>
+                                <th class="text-center">דלתות בתחנה זו</th>
+                                <th>תאריך יעד</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in backlog %}
+                                <tr id="row-{{ row.order_number }}-{{ row.batch_number }}">
+                                    <td class="text-center d-print-none">
+                                        <input class="form-check-input item-checkbox"
+                                               type="checkbox"
+                                               name="completed_batches"
+                                               value="{{ row.order_number }}:{{ row.batch_number }}"
+                                               style="width: 1.4rem;
+                                                      height: 1.4rem;
+                                                      cursor: pointer">
+                                    </td>
+                                    <td class="d-none d-print-table-cell text-center">
+                                        <div style="width: 18px;
+                                                    height: 18px;
+                                                    border: 1px solid #000;
+                                                    margin: auto"></div>
+                                    </td>
+                                    <td>
+                                        <strong class="fs-6 text-primary">{{ row.display_order_batch }}</strong>
+                                    </td>
+                                    <td>{{ row.customer|default:"-" }}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-primary-subtle text-primary fs-6 px-3">{{ row.doors_count }} יח'</span>
+                                    </td>
+                                    <td>
+                                        {% if row.completion_date %}
+                                            <span>{{ row.completion_date|date:"d/m/Y" }}</span>
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center py-5 text-muted">
+                                        <i class="bi bi-check-circle fs-2 text-success d-block mb-2"></i>
+                                        אין הזמנות פתוחות בתחנה זו כרגע.
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Нижняя панель действий (Submit) -->
+            {% if backlog %}
+                <div class="d-flex justify-content-between align-items-center bg-white p-3 rounded shadow-sm border d-print-none">
+                    <div>
+                        <span class="text-muted">נבחרו לסימון:</span>
+                        <strong id="selectedCounter" class="text-primary fs-6">0</strong> הזמנות
+                    </div>
+                    <button type="submit"
+                            class="btn btn-primary px-4 fw-bold shadow-sm"
+                            id="submitBtn"
+                            disabled>
+                        <i class="bi bi-check2-circle ms-1"></i> שמור דיווח תחנה
+                    </button>
+                </div>
+            {% endif %}
+        </form>
+    </div>
+    <style>
+        .selected-row {
+            background-color: #f0fdf4 !important;
+        }
+
+        @media print {
+            body {
+                font-size: 13pt;
+            }
+
+            .table {
+                width: 100% !important;
+                border: 1px solid #000;
+            }
+
+            th, td {
+                border: 1px solid #333 !important;
+                padding: 8px !important;
+            }
+        }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const selectAll = document.getElementById('selectAllCheckbox');
+            const checkboxes = document.querySelectorAll('.item-checkbox');
+            const submitBtn = document.getElementById('submitBtn');
+            const counter = document.getElementById('selectedCounter');
+
+            function updateState() {
+                let count = 0;
+                checkboxes.forEach(cb => {
+                    const tr = cb.closest('tr');
+                    if (cb.checked) {
+                        count++;
+                        tr.classList.add('selected-row');
+                    } else {
+                        tr.classList.remove('selected-row');
+                    }
+                });
+
+                if (counter) counter.innerText = count;
+                if (submitBtn) submitBtn.disabled = (count === 0);
+            }
+
+            if (selectAll) {
+                selectAll.addEventListener('change', function () {
+                    checkboxes.forEach(cb => {
+                        cb.checked = this.checked;
+                    });
+                    updateState();
+                });
+            }
+
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', updateState);
+            });
+        });
+    </script>
+{% endblock %}

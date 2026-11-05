@@ -34,4 +34,8 @@ urlpatterns = [
 
     path('stations/<str:station_code>/sheet/', views.station_backlog_sheet_print, name='station-sheet-print'),
     path('stations/<str:station_code>/control/', views.station_control_view, name='station-control'),
+
+    path('tracking/', views.StationTrackingDashboardView.as_view(), name='station_tracking_dashboard'),
+    path('tracking/toggle-batch/', views.ToggleBatchStationAjaxView.as_view(), name='toggle_batch_station_ajax'),
+    path('tracking/print-all/', views.StationsBatchDailyPrintView.as_view(), name='tracking_print_all'),
 ]

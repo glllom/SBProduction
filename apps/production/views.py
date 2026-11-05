@@ -4,13 +4,16 @@ from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from django.views.generic import TemplateView
 
 from apps.catalog.models import Hardware
 from apps.orders.models import (
@@ -1521,3 +1524,130 @@ def station_control_view(request, station_code):
         'backlog': backlog,
         'today': timezone.now(),
     })
+
+
+class StationTrackingDashboardView(LoginRequiredMixin, TemplateView):
+    template_name = 'production/tracking_dashboard.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        stations = ProductionStation.objects.filter(active=True).order_by('id')
+
+        selected_code = self.request.GET.get('station')
+        selected_station = None
+        if selected_code:
+            selected_station = stations.filter(code__iexact=selected_code).first()
+        if not selected_station and stations.exists():
+            selected_station = stations.first()
+
+        stations_data = []
+        for st in stations:
+            backlog = StationTrackingService.get_station_batch_summary(st.code)
+            stations_data.append({
+                'station': st,
+                'pending_orders_count': len(backlog),
+            })
+
+        active_backlog = []
+        if selected_station:
+            active_backlog = StationTrackingService.get_station_batch_summary(selected_station.code)
+
+        context.update({
+            'stations_data': stations_data,
+            'selected_station': selected_station,
+            'backlog': active_backlog,
+        })
+        return context
+
+    def post(self, request, *args, **kwargs):
+        station_code = request.POST.get('station_code')
+        # Получаем массив отмеченных строк в формате "order_number:batch_number"
+        selected_items = request.POST.getlist('completed_batches')
+
+        if selected_items and station_code:
+            to_process = []
+            for item_str in selected_items:
+                parts = item_str.split(':')
+                if len(parts) == 2:
+                    o_num, b_num = parts[0], parts[1]
+                    to_process.append({
+                        'order_number': o_num,
+                        'batch_number': int(b_num) if b_num.isdigit() else 1,
+                        'station_code': station_code
+                    })
+
+            if to_process:
+                total_doors = StationTrackingService.complete_multiple_batches(
+                    items_to_complete=to_process,
+                    user=request.user,
+                    source='DASHBOARD_BATCH_SUBMIT'
+                )
+                messages.success(
+                    request,
+                    f"עודכנו בהצלחה {len(to_process)} הזמנות/מנות (סה\"כ {total_doors} דלתות) בתחנה זו."
+                )
+
+        # Перенаправляем на эту же вкладку станции
+        redirect_url = request.path
+        if station_code:
+            redirect_url += f"?station={station_code}"
+        return redirect(redirect_url)
+
+
+class ToggleBatchStationAjaxView(LoginRequiredMixin, View):
+    """
+    AJAX-обработчик для закрытия/отметки порции дверей конкретного заказа на станке.
+    """
+
+    def post(self, request, *args, **kwargs):
+        order_number = request.POST.get('order_number')
+        station_code = request.POST.get('station_code')
+        batch_number = request.POST.get('batch_number')
+
+        if not order_number or not station_code:
+            return JsonResponse({'success': False, 'message': 'Missing parameters'}, status=400)
+
+        batch_num = int(batch_number) if batch_number and str(batch_number).isdigit() else None
+
+        success, msg, payload = StationTrackingService._complete_batch_station(
+            order_number=order_number,
+            station_code=station_code,
+            batch_number=batch_num,
+            user=request.user,
+            source='DASHBOARD_UI'
+        )
+
+        return JsonResponse({
+            'success': success,
+            'message': msg,
+            'completed_count': payload.get('completed_count', 0) if success else 0
+        })
+
+
+class StationsBatchDailyPrintView(LoginRequiredMixin, TemplateView):
+    """
+    Формирует единый документ для печати списков по всем активным участкам.
+    Пустые станции автоматически пропускаются.
+    """
+    template_name = 'production/reports/daily_stations_sheets.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        stations = ProductionStation.objects.filter(active=True).order_by('id')
+
+        printable_sheets = []
+        for st in stations:
+            backlog = StationTrackingService.get_station_batch_summary(st.code)
+            # Пропускаем станции без работы
+            if not backlog:
+                continue
+
+            printable_sheets.append({
+                'station': st,
+                'backlog': backlog,
+                'total_orders': len(backlog),
+                'total_doors': sum(item.get('doors_count', 0) for item in backlog),
+            })
+
+        context['sheets'] = printable_sheets
+        return context
