@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from apps.catalog.models import ProductModel
+from apps.catalog.models import ProductModel, ProductFamily, Front, Customizer, Hardware
 from apps.orders.models import Order, OrderItem
 
 
@@ -987,3 +987,146 @@ class StationScanAuditLog(models.Model):
     def __str__(self):
         status_flag = "OK" if self.is_success else "ERR"
         return f"[{status_flag}] {self.raw_payload} ({self.created_at:%d.%m %H:%M})"
+
+
+class PerimeterRoutingFile(models.Model):
+    # File name scanned by the CNC barcode reader
+    file_name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="Имя файла",
+    )
+    # Short human-readable description for operators
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Описание",
+    )
+    # Machine-specific flag defining edge geometry
+    edge_shape = models.BooleanField(
+        default=False,
+        verbose_name="Форма кромки (edge_shape)",
+    )
+    # Associated door models for type 1 stickers
+    door_models = models.ManyToManyField(
+        "catalog.ProductFamily",
+        blank=True,
+        related_name="perimeter_routings",
+        verbose_name="Product Family",
+    )
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Файл обгонки"
+        verbose_name_plural = "Файлы обгонки"
+
+    def __str__(self):
+        if self.description:
+            return f"{self.file_name} ({self.description})"
+        return self.file_name
+
+
+class HardwareMacroFile(models.Model):
+    # Macro or program file name recognized by the CNC machine
+    file_name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="Имя файла / макроса",
+    )
+    # Short human-readable description for operators
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Описание",
+    )
+    # Locks, hinges, and other hardware using this macro
+    hardware = models.ManyToManyField(
+        "catalog.Hardware",  # Replace with your actual hardware model name
+        blank=True,
+        related_name="macro_files",
+        verbose_name="Фурнитура",
+    )
+    # Door families where this specific macro applies
+    door_families = models.ManyToManyField(
+        "catalog.ProductFamily",
+        blank=True,
+        related_name="hardware_macro_files",
+        verbose_name="Семейства дверей",
+    )
+
+    class Meta:
+        ordering = ["file_name"]
+        verbose_name = "Файл макроса фурнитуры"
+        verbose_name_plural = "Файлы макросов фурнитуры"
+
+    def __str__(self):
+        if self.description:
+            return f"{self.file_name} ({self.description})"
+        return self.file_name
+
+
+from django.db import models
+
+
+class CustomizerMacroFile(models.Model):
+    # Strict 1:1 relation to the customizer (e.g. specific window cutout)
+    customizer = models.OneToOneField(
+        "catalog.Customizer",  # Replace with your actual Customizer model name
+        on_delete=models.CASCADE,
+        related_name="macro_file",
+        verbose_name="Кастомизатор",
+    )
+    # CNC program file name
+    file_name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="Имя файла / макроса",
+    )
+    # Short human-readable description for operators
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Описание",
+    )
+
+    class Meta:
+        ordering = ["file_name"]
+        verbose_name = "Файл кастомизатора"
+        verbose_name_plural = "Файлы кастомизаторов"
+
+    def __str__(self):
+        if self.description:
+            return f"{self.file_name} ({self.description})"
+        return self.file_name
+
+
+class FrontEngravingFile(models.Model):
+    # Strict 1:1 relation to the door front / pattern
+    front = models.OneToOneField(
+        "catalog.Front",
+        on_delete=models.CASCADE,
+        related_name="engraving_file",
+        verbose_name="Фронт / Узор",
+    )
+    # CNC program file name for engraving
+    file_name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="Имя файла / макроса",
+    )
+    # Short human-readable description for operators
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Описание",
+    )
+
+    class Meta:
+        ordering = ["file_name"]
+        verbose_name = "Файл гравировки фронта"
+        verbose_name_plural = "Файлы гравировок фронтов"
+
+    def __str__(self):
+        if self.description:
+            return f"{self.file_name} ({self.description})"
+        return self.file_name
