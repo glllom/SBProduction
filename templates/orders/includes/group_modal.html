@@ -1,7 +1,7 @@
 <div class="modal fade" id="groupModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header">
+        <div class="modal-content">
+            <div class="modal-header border-bottom">
                 <h5 class="modal-title fw-bold" id="groupModalLabel">הוספת קבוצת דלתות</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -11,7 +11,7 @@
                     <div class="row g-3">
                         <!-- Row 1: Product Type & Product Family -->
                         <div class="col-md-6">
-                            <label class="form-label fw-bold"
+                            <label class="form-label fw-semibold"
                                    data-bs-toggle="tooltip"
                                    title="{{ group_form.product_type.help_text|default:'סוג המוצר' }}">
                                 סוג מוצר <i class="bi bi-info-circle help-hint-icon"></i>
@@ -19,7 +19,7 @@
                             {{ group_form.product_type }}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-bold"
+                            <label class="form-label fw-semibold"
                                    data-bs-toggle="tooltip"
                                    title="{{ group_form.product_family.help_text|default:'משפחת המוצרים' }}">
                                 משפחת מוצרים <i class="bi bi-info-circle help-hint-icon"></i>
@@ -28,7 +28,7 @@
                         </div>
                         <!-- Row 2: Series, Front & Basic Color -->
                         <div class="col-md-4">
-                            <label class="form-label fw-bold"
+                            <label class="form-label fw-semibold"
                                    data-bs-toggle="tooltip"
                                    title="{{ group_form.series.help_text|default:'סדרת הדלתות לקבוצה זו' }}">
                                 סדרה <i class="bi bi-info-circle help-hint-icon"></i>
@@ -36,7 +36,7 @@
                             {{ group_form.series }}
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold"
+                            <label class="form-label fw-semibold"
                                    data-bs-toggle="tooltip"
                                    title="{{ group_form.front.help_text|default:'חזית או גימור הכנף' }}">
                                 חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
@@ -44,7 +44,7 @@
                             {{ group_form.front }}
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold"
+                            <label class="form-label fw-semibold"
                                    data-bs-toggle="tooltip"
                                    title="{{ group_form.basic_color_frames.help_text|default:'צבע משקוף בסיסי לקבוצה זו' }}">
                                 צבע משקוף (בסיס) <i class="bi bi-info-circle help-hint-icon"></i>
@@ -53,7 +53,7 @@
                         </div>
                         <!-- Row 3: Info & Quantity -->
                         <div class="col-md-10">
-                            <label class="form-label fw-bold"
+                            <label class="form-label fw-semibold"
                                    data-bs-toggle="tooltip"
                                    title="דגם המוצר שנמצא במערכת לפי הסדרה והמשפחה">
                                 מוצר שנמצא <i class="bi bi-info-circle help-hint-icon"></i>
@@ -65,7 +65,7 @@
                             <div class="d-none">{{ group_form.product }}</div>
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label fw-bold"
+                            <label class="form-label fw-semibold"
                                    data-bs-toggle="tooltip"
                                    title="{{ group_form.quantity.help_text|default:'כמות פריטים זהים בקבוצה' }}">
                                 כמות <i class="bi bi-info-circle help-hint-icon"></i>
@@ -74,8 +74,8 @@
                         </div>
                         <!-- Row 4: הגדרות צבע וגמר לקבוצה -->
                         <div class="col-12">
-                            <div class="card border bg-light shadow-none">
-                                <div class="card-header bg-white py-1 px-3 fw-bold small text-muted">
+                            <div class="card bg-body-tertiary">
+                                <div class="card-header bg-body py-2 px-3 fw-semibold small text-muted">
                                     הגדרות צבע וגמר
                                     לקבוצה
                                 </div>
@@ -83,7 +83,7 @@
                                     <div class="row g-3">
                                         <!-- משקוף -->
                                         <div class="col-md-6 border-start">
-                                            <label class="form-label fw-bold mb-1">
+                                            <label class="form-label fw-semibold mb-1">
                                                 צביעת משקוף: <i class="bi bi-info-circle help-hint-icon"></i>
                                             </label>
                                             {{ group_form.frame_paint_option }}
@@ -108,7 +108,7 @@
                                         <!-- כנף -->
                                         <div class="col-md-6">
                                             <div class="d-flex justify-content-between align-items-center mb-1">
-                                                <label class="form-label fw-bold mb-0">
+                                                <label class="form-label fw-semibold mb-0">
                                                     צביעת כנף: <i class="bi bi-info-circle help-hint-icon"></i>
                                                 </label>
                                                 <div id="group-diff-sides-switch-wrap" style="display: none;">
@@ -167,14 +167,14 @@
                             </div>
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label fw-bold small text-muted mb-1">הערות לקבוצה:</label>
+                            <label class="form-label fw-semibold small text-muted mb-1">הערות לקבוצה:</label>
                             {{ group_form.comments }}
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button"
-                            class="btn btn-light"
+                            class="btn btn-outline-secondary"
                             data-bs-dismiss="modal"
                             data-bs-toggle="tooltip"
                             title="סגירה ללא הוספה">ביטול</button>
@@ -182,11 +182,11 @@
                             name="action"
                             value="customize"
                             id="groupModalCustomizeBtn"
-                            class="btn btn-outline-primary px-4"
+                            class="btn btn-outline-primary px-4 fw-semibold"
                             data-bs-toggle="tooltip"
                             title="הוספה ומעבר ישיר להגדרת שינויים ושדרוגים">שינוי\שדרוג</button>
                     <button type="submit"
-                            class="btn btn-primary px-4"
+                            class="btn btn-primary px-4 fw-semibold"
                             id="groupModalSubmitBtn"
                             data-bs-toggle="tooltip"
                             title="שמירת הקבוצה">הוסף קבוצה</button>

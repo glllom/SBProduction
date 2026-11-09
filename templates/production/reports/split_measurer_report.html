@@ -110,7 +110,7 @@
             <button onclick="window.close()" class="btn btn-secondary">סגור</button>
         </div>
         <div class="page">
-            <div style="display: flex; justify-content: space-between;">
+            <div class="d-flex justify-content-between align-items-start border-bottom pb-2 mb-3">
                 <h4 class="my-1">דו''ח מדידה לאחר שלב א' (משקופים)</h4>
                 <div>
                     <p class="fs-5">הזמנה:<span class="fw-bold">{{ order.order_number }}</span></p>
@@ -130,7 +130,7 @@
                     {% for frame_group in frame_list %}
                         {% with first_item=frame_group.list.0 %}
                             <div class="group-section">
-                                <div class="group-header bg-light px-2 border">
+                                <div class="group-header bg-light px-2 py-2 border rounded-top">
                                     <div class="row g-1">
                                         <div class="col">
                                             <h4 class="">
@@ -147,7 +147,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <table class="table table-sm table-bordered mt-0">
+                                <table class="table table-sm table-bordered align-middle mt-0">
                                     <thead>
                                         <tr class="table-secondary">
                                             <th style="width: 13%;">מיקום</th>

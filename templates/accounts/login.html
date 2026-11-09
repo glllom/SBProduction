@@ -2,25 +2,23 @@
 {% load static %}
 {% block title %}כניסה | SB Production ERP{% endblock %}
 {% block content %}
-    <div class="row justify-content-center align-items-center"
-         style="min-height: 80vh">
-        <div class="col-md-4">
-            <div class="card shadow border-0">
-                <div class="card-body p-5">
+    <div class="row justify-content-center align-items-center py-5">
+        <div class="col-12 col-sm-8 col-md-6 col-lg-4">
+            <div class="card border shadow-sm rounded-4">
+                <div class="card-body p-4 p-md-5">
                     <div class="text-center mb-4">
                         <img src="{% static 'logo.svg' %}"
                              alt="SB Production Logo"
-                             style="height: 80px;
-                                    width: auto"
+                             height="80"
                              class="mb-3">
                         <h3 class="fw-bold mt-2">SB Production</h3>
-                        <p class="text-muted">היכנס לחשבון שלך</p>
+                        <p class="text-body-secondary mb-0">היכנס לחשבון שלך</p>
                     </div>
                     <form method="post">
                         {% csrf_token %}
                         <div class="mb-3">
                             <label for="id_username"
-                                   class="form-label"
+                                   class="form-label fw-semibold"
                                    data-bs-toggle="tooltip"
                                    title="הזן את שם המשתמש שלך">
                                 שם משתמש <i class="bi bi-info-circle help-hint-icon"></i>
@@ -31,14 +29,14 @@
                                    maxlength="150"
                                    required
                                    id="id_username"
-                                   class="form-control"
+                                   class="form-control form-control-lg"
                                    placeholder="שם משתמש"
                                    data-bs-toggle="tooltip"
                                    title="שם המשתמש במערכת">
                         </div>
                         <div class="mb-4">
                             <label for="id_password"
-                                   class="form-label"
+                                   class="form-label fw-semibold"
                                    data-bs-toggle="tooltip"
                                    title="הזן את סיסמת הכניסה שלך">
                                 סיסמה <i class="bi bi-info-circle help-hint-icon"></i>
@@ -47,7 +45,7 @@
                                    name="password"
                                    required
                                    id="id_password"
-                                   class="form-control"
+                                   class="form-control form-control-lg"
                                    placeholder="סיסמה"
                                    data-bs-toggle="tooltip"
                                    title="סיסמת כניסה למערכת">
@@ -58,13 +56,13 @@
                             </div>
                         {% endif %}
                         <button type="submit"
-                                class="btn btn-primary w-100 py-2 fw-semibold"
+                                class="btn btn-primary btn-lg w-100 fw-semibold"
                                 data-bs-toggle="tooltip"
                                 title="כניסה למערכת SB Production">כניסה</button>
                     </form>
                 </div>
             </div>
-            <div class="text-center mt-4 text-muted">
+            <div class="text-center mt-4 text-body-secondary">
                 <small>&copy; 2026 SB Production ERP System</small>
             </div>
         </div>

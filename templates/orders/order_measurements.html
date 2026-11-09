@@ -11,21 +11,30 @@
 {% endblock %}
 {% block content %}
     <div class="container mt-3" dir="rtl">
+        <div class="sb-page-header d-print-none align-items-center gap-3 mb-4">
+            <span class="sb-stat-icon sb-accent flex-shrink-0">
+                <i class="bi bi-rulers"></i>
+            </span>
+            <div>
+                <h2 class="sb-page-title">טופס מידות: {{ order.order_number }}</h2>
+                <p class="sb-page-subtitle mb-0">לקוח: {{ order.customer }}</p>
+            </div>
+        </div>
         <div class="print-header d-none d-print-block mb-4">
             <h2 class="h3 fw-bold">טופס מידות: {{ order.order_number }}</h2>
             <p class="mb-0">לקוח: {{ order.customer }}</p>
             <hr>
         </div>
         {% for group in groups %}
-            <div class="card mb-4 border-excel shadow-none">
-                <div class="card-header bg-light border-bottom py-2 d-flex justify-content-between align-items-center">
-                    <div>
+            <div class="card mb-4 overflow-hidden">
+                <div class="card-header bg-body-tertiary border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
                         <h5 class="mb-0 fw-bold text-dark d-inline"
                             data-bs-toggle="tooltip"
                             title="{{ group.product.description|default:group.product.name }}">{{ group.product.name }}</h5>
-                        <span class="text-muted small ms-2">
+                        <span class="d-inline-flex flex-wrap gap-1">
                             {% for gc in group.customizers.all %}
-                                <span class="badge bg-white text-dark border me-1"
+                                <span class="badge rounded-pill bg-body text-body border fw-normal"
                                       data-bs-toggle="tooltip"
                                       title="{{ gc.customizer.description|default:gc.customizer.name }}">
                                     {{ gc.customizer.name }}{% if gc.customizer.par1_value %}:
@@ -35,14 +44,14 @@
     </span>
     </div>
     {% if forloop.first %}
-        <div class="no-print">
-            <button class="btn btn-sm btn-light border"
+        <div class="no-print d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary"
                     onclick="exportToExcel()"
                     data-bs-toggle="tooltip"
                     title="ייצוא כל טבלאות המידות לקובץ Excel / CSV">
                 <i class="bi bi-download"></i>
             </button>
-            <button class="btn btn-sm btn-light border"
+            <button class="btn btn-sm btn-outline-secondary"
                     onclick="window.print()"
                     data-bs-toggle="tooltip"
                     title="הדפסת טופס מידות">
@@ -52,8 +61,8 @@
     {% endif %}
     </div>
     <div class="table-responsive">
-        <table class="table table-bordered mb-0 align-middle text-center excel-table">
-            <thead class="table-secondary small">
+        <table class="table table-hover align-middle text-center mb-0 excel-table">
+            <thead class="table-light small">
                 <tr>
                     <th style="width: 40px"
                         data-bs-toggle="tooltip"
@@ -129,12 +138,9 @@
                         <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
                         <td class="no-print text-nowrap">
                             {% if order.sketch or item.sketch %}
-                                <a href="
-
-
-												{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
+                                <a href="{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
                                    target="_blank"
-                                   class="btn btn-sm btn-primary py-0"
+                                   class="btn btn-sm btn-outline-primary py-0"
                                    data-bs-toggle="tooltip"
                                    title="צפה בשרטוט עבור פריט זה">
                                     <i class="bi bi-file-earmark-image"></i>

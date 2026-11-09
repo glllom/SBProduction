@@ -17,26 +17,28 @@
                 <div class="col-6 wood-card-header-col">
                     <p class="card-title fw-bold mb-2 fs-4">{{ grp.product_name }}</p>
                     <!-- 2. Серая плашка: Цвет и הלבשה -->
-                    <div class="bg-light">
-                        <p>{{ grp.frames_caption }}</p>
-                        <p>{{ grp.door_casing }}</p>
-                        <p>מנעול: <strong>{{ grp.lock_name|default:"ללא" }} </strong><span class="fs-5"> {{ grp.lock_height| floatformat }}</span></p>
-                        <p>
+                    <div class="bg-body-tertiary p-2 rounded-3">
+                        <p class="mb-1">{{ grp.frames_caption }}</p>
+                        <p class="mb-1">{{ grp.door_casing }}</p>
+                        <p class="mb-1">מנעול: <strong>{{ grp.lock_name|default:"ללא" }} </strong><span class="fs-5"> {{ grp.lock_height| floatformat }}</span></p>
+                        <p class="mb-0">
                             צירים: <strong>{{ grp.hinge_name|default:"ללא" }} </strong><span class="fs-5"> {{ grp.hinge_heights_display }}</span>
                         </p>
                     </div>
-                    <div class="col-6 wood-card-rows-col">
-                        <div class="card-rows-container">
-                            {% for row in grp.grouped_rows %}
-                                <div class="">
-                                    <p dir="rtl" class="fs-5 fw-bold">{{ row.dimension_display }}</p>
-                                </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    <!-- Нижняя черная разделительная линия -->
-                    <div class="card-bottom-divider"></div>
                 </div>
+                <div class="col-6 wood-card-rows-col">
+                    <div class="card-rows-container">
+                        {% for row in grp.grouped_rows %}
+                            <div>
+                                <p dir="rtl" class="fs-5 fw-bold mb-1">{{ row.dimension_display }}</p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <!-- Нижняя черная разделительная линия -->
+            <div class="card-bottom-divider"></div>
+        </div>
     {% empty %}
         <div class="alert alert-warning text-center">לא נמצאו משקופי עץ עבור הזמנה זו.</div>
     {% endfor %}

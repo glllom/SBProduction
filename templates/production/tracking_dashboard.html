@@ -2,44 +2,75 @@
 {% block title %}מעקב תחנות ייצור - SB Production{% endblock %}
 {% block page_title %}מעקב תחנות ייצור{% endblock %}
 {% block content %}
-    <div class="container-fluid py-3" dir="rtl">
-        <!-- Верхняя панель: Заголовок и печать -->
-        <div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
-            <div>
-                <h4 class="mb-0 fw-bold">רצפת ייצור - דיווח יומי לפי תחנות</h4>
-                <span class="text-muted small">סימון הזמנות שבוצעו בתחנה והדפסת דפי עבודה</span>
+    <div class="container-fluid py-4" dir="rtl">
+        <!-- Шапка: заголовок и печать -->
+        <div class="sb-page-header mb-4 d-print-none">
+            <div class="d-flex align-items-center gap-3">
+                <div class="sb-stat-icon sb-accent">
+                    <i class="bi bi-diagram-3"></i>
+                </div>
+                <div>
+                    <h4 class="sb-page-title">רצפת ייצור - דיווח יומי לפי תחנות</h4>
+                    <div class="sb-page-subtitle">סימון הזמנות שבוצעו בתחנה והדפסת דפי עבודה</div>
+                </div>
             </div>
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap gap-2">
                 <!-- Печать только текущей выбранной вкладки -->
                 <button type="button"
                         onclick="window.print()"
-                        class="btn btn-outline-secondary shadow-sm">
+                        class="btn btn-outline-secondary">
                     <i class="bi bi-printer ms-1"></i> הדפס תחנה נוכחית
                 </button>
                 <!-- Пакетная печать всех активных станций сразу -->
                 <a href="{% url 'production:tracking_print_all' %}"
                    target="_blank"
-                   class="btn btn-primary shadow-sm fw-bold">
+                   class="btn btn-primary fw-bold">
                     <i class="bi bi-printer-fill ms-1"></i> הדפס דוחות לכל התחנות
                 </a>
             </div>
         </div>
-        <!-- Вкладки станций (скрыты при печати) -->
-        <ul class="nav nav-pills mb-4 gap-2 border-bottom pb-3 d-print-none">
-            {% for item in stations_data %}
-                <li class="nav-item">
-                    <a class="nav-link {% if item.station.code == selected_station.code %}active fw-bold shadow-sm{% else %}bg-light text-dark{% endif %}"
-                       href="?station={{ item.station.code }}">
-                        {{ item.station.name }}
-                        {% if item.pending_orders_count > 0 %}
-                            <span class="badge {% if item.station.code == selected_station.code %}bg-light text-primary{% else %}bg-secondary text-white{% endif %} me-1">
-                                {{ item.pending_orders_count }}
-                            </span>
-                        {% endif %}
-                    </a>
-                </li>
-            {% endfor %}
-        </ul>
+        <!-- Station Carousel / Navigation Ribbon (hidden on print) -->
+        <div class="d-flex align-items-center gap-2 mb-4 pb-3 border-bottom d-print-none">
+            <!-- Scroll Right / Previous in RTL -->
+            <button type="button"
+                    class="btn btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 shadow-sm"
+                    id="stationScrollPrev"
+                    style="width: 38px;
+                           height: 38px"
+                    title="הקודם">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <!-- Scrollable button container -->
+            <div class="stations-carousel flex-grow-1 overflow-x-auto"
+                 id="stationsContainer">
+                <ul class="nav nav-pills flex-nowrap gap-2 py-1" id="stationsNav">
+                    {% for item in stations_data %}
+                        <li class="nav-item flex-shrink-0">
+                            <a class="nav-link text-nowrap d-flex align-items-center gap-2 {% if item.station.code == selected_station.code %}active fw-bold shadow-sm{% else %}bg-body-tertiary text-body border{% endif %}"
+                               href="?station={{ item.station.code }}"
+                               data-station-code="{{ item.station.code }}"
+                               data-pending="{{ item.pending_orders_count|default:0 }}">
+                                {{ item.station.name }}
+                                {% if item.pending_orders_count > 0 %}
+                                    <span class="badge rounded-pill {% if item.station.code == selected_station.code %}text-bg-light text-primary{% else %}text-bg-secondary{% endif %}">
+                                        {{ item.pending_orders_count }}
+                                    </span>
+                                {% endif %}
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <!-- Scroll Left / Next in RTL -->
+            <button type="button"
+                    class="btn btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 shadow-sm"
+                    id="stationScrollNext"
+                    style="width: 38px;
+                           height: 38px"
+                    title="הבא">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+        </div>
         <!-- Шапка для печатного листа A4 -->
         <div class="d-none d-print-block mb-4 border-bottom pb-2">
             <div class="d-flex justify-content-between align-items-center">
@@ -51,7 +82,9 @@
         <form method="post" id="trackingForm">
             {% csrf_token %}
             <input type="hidden" name="station_code" value="{{ selected_station.code }}">
-            <div class="card shadow-sm border-0 mb-3">
+            <!-- Целевая станция после сохранения -->
+            <input type="hidden" name="next_station" id="nextStationInput" value="">
+            <div class="card border rounded-4 overflow-hidden mb-3">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0" id="trackingTable">
                         <thead class="table-light">
@@ -93,20 +126,20 @@
                                     </td>
                                     <td>{{ row.customer|default:"-" }}</td>
                                     <td class="text-center">
-                                        <span class="badge bg-primary-subtle text-primary fs-6 px-3">{{ row.doors_count }} יח'</span>
+                                        <span class="badge text-bg-primary-subtle text-primary-emphasis fs-6 px-3 rounded-pill">{{ row.doors_count }} יח'</span>
                                     </td>
                                     <td>
                                         {% if row.completion_date %}
                                             <span>{{ row.completion_date|date:"d/m/Y" }}</span>
                                         {% else %}
-                                            -
+                                            <span class="text-muted">-</span>
                                         {% endif %}
                                     </td>
                                 </tr>
                             {% empty %}
                                 <tr>
-                                    <td colspan="5" class="text-center py-5 text-muted">
-                                        <i class="bi bi-check-circle fs-2 text-success d-block mb-2"></i>
+                                    <td colspan="6" class="sb-empty">
+                                        <i class="bi bi-check-circle text-success d-block mb-2"></i>
                                         אין הזמנות פתוחות בתחנה זו כרגע.
                                     </td>
                                 </tr>
@@ -117,13 +150,13 @@
             </div>
             <!-- Нижняя панель действий (Submit) -->
             {% if backlog %}
-                <div class="d-flex justify-content-between align-items-center bg-white p-3 rounded shadow-sm border d-print-none">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 bg-body border rounded-4 p-3 d-print-none">
                     <div>
                         <span class="text-muted">נבחרו לסימון:</span>
                         <strong id="selectedCounter" class="text-primary fs-6">0</strong> הזמנות
                     </div>
                     <button type="submit"
-                            class="btn btn-primary px-4 fw-bold shadow-sm"
+                            class="btn btn-primary px-4 fw-bold"
                             id="submitBtn"
                             disabled>
                         <i class="bi bi-check2-circle ms-1"></i> שמור דיווח תחנה
@@ -151,6 +184,17 @@
                 border: 1px solid #333 !important;
                 padding: 8px !important;
             }
+        }
+
+        /* Hide scrollbars while preserving smooth touch and programmatic scroll */
+        .stations-carousel {
+            scroll-behavior: smooth;
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
+        }
+
+        .stations-carousel::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
         }
     </style>
     <script>
@@ -189,5 +233,72 @@
                 cb.addEventListener('change', updateState);
             });
         });
+        // Station carousel navigation
+        const stationsContainer = document.getElementById('stationsContainer');
+        const btnPrev = document.getElementById('stationScrollPrev');
+        const btnNext = document.getElementById('stationScrollNext');
+
+        if (stationsContainer) {
+            // Scroll step (~70% of visible container width)
+            const getStep = () => Math.max(stationsContainer.clientWidth * 0.7, 200);
+
+            // In RTL layout: Next = scroll left, Prev = scroll right
+            if (btnNext) {
+                btnNext.addEventListener('click', () => {
+                    stationsContainer.scrollBy({left: -getStep(), behavior: 'smooth'});
+                });
+            }
+
+            if (btnPrev) {
+                btnPrev.addEventListener('click', () => {
+                    stationsContainer.scrollBy({left: getStep(), behavior: 'smooth'});
+                });
+            }
+
+            // Automatically center the currently active station tab on load
+            const activeTab = stationsContainer.querySelector('.nav-link.active');
+            if (activeTab) {
+                activeTab.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
+            }
+        }
+
+        // Определение следующей вкладки (с заказами или просто следующей)
+        function resolveNextStationCode() {
+            const links = Array.from(document.querySelectorAll('#stationsNav .nav-link'));
+            if (!links.length) return '';
+
+            const currentIndex = links.findIndex(a => a.classList.contains('active'));
+            if (currentIndex === -1) return '';
+
+            const total = links.length;
+
+            // 1. Ищем вперед по кругу станцию с pending > 0
+            for (let i = 1; i < total; i++) {
+                const idx = (currentIndex + i) % total;
+                const pending = parseInt(links[idx].dataset.pending || '0', 10);
+                if (pending > 0) {
+                    return links[idx].dataset.stationCode;
+                }
+            }
+
+            // 2. Если все остальные станции пустые — переходим просто на следующую по порядку
+            const nextIndex = (currentIndex + 1) % total;
+            return links[nextIndex].dataset.stationCode;
+        }
+
+        const trackingForm = document.getElementById('trackingForm');
+        const nextStationInput = document.getElementById('nextStationInput');
+
+        if (trackingForm) {
+            trackingForm.addEventListener('submit', () => {
+                const nextCode = resolveNextStationCode();
+                if (nextCode) {
+                    if (nextStationInput) nextStationInput.value = nextCode;
+                    // Обновляем query-параметр в URL формы
+                    trackingForm.action = `?station=${encodeURIComponent(nextCode)}`;
+                }
+            });
+        }
+        
     </script>
 {% endblock %}

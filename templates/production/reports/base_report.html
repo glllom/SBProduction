@@ -18,11 +18,11 @@
         {% block extra_css %}{% endblock %}
     </head>
     <body class="{% block body_class %}{% endblock %}">
-        <div class="no-print">
-            <button onclick="window.print()" class="btn btn-primary">
+        <div class="no-print d-flex flex-wrap align-items-center gap-2 p-3 mb-4 bg-body-tertiary border-bottom">
+            <button onclick="window.print()" class="btn btn-primary fw-bold">
                 <i class="bi bi-printer-fill me-1"></i>{% block print_button_text %}הדפס דו''ח{% endblock %}
             </button>
-            <button onclick="window.close()" class="btn btn-secondary">
+            <button onclick="window.close()" class="btn btn-outline-secondary">
                 <i class="bi bi-x-circle me-1"></i>{% block cancel_button_text %}ביטול / סגור{% endblock %}
             </button>
             {% block extra_buttons %}{% endblock %}

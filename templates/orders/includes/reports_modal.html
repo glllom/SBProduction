@@ -1,8 +1,8 @@
 {% load static %}<!-- Reports & Production Modal -->
 <div class="modal fade" id="reportsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-light">
+        <div class="modal-content">
+            <div class="modal-header border-bottom">
                 <h5 class="modal-title fw-bold">
                     <i class="bi bi-printer me-2 text-dark"></i>הדפסת דוחות וייצור קבצים
                 </h5>
@@ -13,7 +13,7 @@
             </div>
             <div class="modal-body">
                 <!-- Шаг 1: Выбор батчей -->
-                <div class="mb-4 p-3 bg-light rounded border">
+                <div class="mb-4 p-3 bg-body-tertiary rounded-3 border">
                     <h6 class="fw-bold text-secondary mb-3">1. בחירת אצוות (Batches) לביצוע</h6>
                     <!-- Сюда JS вставит чекбоксы с номерами партий -->
                     <div class="d-flex flex-wrap gap-2" id="batchSelectionContainer"></div>
@@ -23,8 +23,8 @@
                 <div class="row g-3">
                     <!-- Отчеты -->
                     <div class="col-md-4">
-                        <div class="card h-100 border shadow-sm">
-                            <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
+                        <div class="card h-100">
+                            <div class="card-header bg-body-tertiary border-bottom-0 pt-3 pb-2">
                                 <h6 class="fw-bold text-primary mb-0">
                                     <i class="bi bi-file-earmark-text me-1"></i>דוחות
                                     ייצור
@@ -114,8 +114,8 @@
                     </div>
                     <!-- ЧПУ -->
                     <div class="col-md-4">
-                        <div class="card h-100 border shadow-sm">
-                            <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
+                        <div class="card h-100">
+                            <div class="card-header bg-body-tertiary border-bottom-0 pt-3 pb-2">
                                 <h6 class="fw-bold text-success mb-0">
                                     <i class="bi bi-cpu me-1"></i>קבצי מכונות (CNC)
                                 </h6>
@@ -136,9 +136,9 @@
                     </div>
                     <!-- Наклейки и склад -->
                     <div class="col-md-4">
-                        <div class="card h-100 border shadow-sm">
-                            <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
-                                <h6 class="fw-bold text-dark mb-0"><i class="bi bi-tags me-1"></i>מדבקות ומחסן</h6>
+                        <div class="card h-100">
+                            <div class="card-header bg-body-tertiary border-bottom-0 pt-3 pb-2">
+                                <h6 class="fw-bold mb-0"><i class="bi bi-tags me-1"></i>מדבקות ומחסן</h6>
                             </div>
                             <div class="card-body d-flex flex-column gap-2">
                                 {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' %}

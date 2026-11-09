@@ -29,6 +29,9 @@ ALLOWED_HOSTS = ['*']
 
 # Application definition
 INSTALLED_APPS = [
+    'unfold',
+    'unfold.contrib.filters',
+    'unfold.contrib.forms',
     'django.contrib.admin',
     'django.contrib.auth',
     'django_json_widget',
@@ -116,6 +119,17 @@ USE_TZ = True
 LOCALE_PATHS = [
     BASE_DIR / 'locale',
 ]
+
+UNFOLD = {
+    'SITE_TITLE': 'SBProduction',
+    'SITE_HEADER': 'ניהול SBProduction',
+    'SITE_SUBHEADER': 'ניהול ייצור ומוצרים',
+    'SITE_SYMBOL': 'precision_manufacturing',
+    'SHOW_HISTORY': True,
+    'SHOW_VIEW_ON_SITE': False,
+    'SHOW_BACK_BUTTON': True,
+    'ENVIRONMENT': 'SBProduction',
+}
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/

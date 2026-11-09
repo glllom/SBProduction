@@ -3,10 +3,16 @@
 {% endif %}
 {% endblock %}
 {% block content %}
+    <div class="sb-page-header align-items-center gap-3 mb-4">
+        <span class="sb-stat-icon sb-accent flex-shrink-0">
+            <i class="bi bi-receipt"></i>
+        </span>
+        <h2 class="sb-page-title">{% if form.instance.pk %}עריכת הזמנה {{ form.instance.order_number }}{% else %}יצירת הזמנה{% endif %}</h2>
+    </div>
     <div class="row justify-content-center">
         <div class="col-md-9 col-lg-8">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-light">
+            <div class="card">
+                <div class="card-header bg-body-tertiary">
                     <h5 class="mb-0">מידע בסיסי על ההזמנה</h5>
                 </div>
                 <div class="card-body p-4">
@@ -15,14 +21,14 @@
                         <!-- Номер заказа и Имя клиента -->
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
-                                <label class="form-label fw-bold"
+                                <label class="form-label fw-semibold"
                                        data-bs-toggle="tooltip"
                                        title="{{ form.order_number.help_text|default:'מספר הזמנה ייחודי במערכת' }}">
                                     מספר הזמנה <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
                                 {% if form.order_number.field.disabled or form.order_number.field.widget.attrs.readonly %}
                                     <input type="text"
-                                           class="form-control bg-light text-muted"
+                                           class="form-control bg-body-tertiary text-muted"
                                            value="{{ form.instance.order_number }}"
                                            readonly
                                            disabled>
@@ -37,7 +43,7 @@
                                 {% endif %}
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold"
+                                <label class="form-label fw-semibold"
                                        data-bs-toggle="tooltip"
                                        title="{{ form.customer.help_text|default:'שם הלקוח או הפרויקט' }}">
                                     שם הלקוח <i class="bi bi-info-circle help-hint-icon"></i>
@@ -51,7 +57,7 @@
                         <!-- Серия, Хромировка/Хранилище (Front), Ручка -->
                         <div class="row g-3 mb-4">
                             <div class="col-md-4">
-                                <label class="form-label fw-bold"
+                                <label class="form-label fw-semibold"
                                        data-bs-toggle="tooltip"
                                        title="{{ form.series.help_text|default:'סדרת הדלתות (פרופיל / מבנה)' }}">
                                     סדרה <i class="bi bi-info-circle help-hint-icon"></i>
@@ -62,7 +68,7 @@
                                 {% endif %}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold"
+                                <label class="form-label fw-semibold"
                                        data-bs-toggle="tooltip"
                                        title="{{ form.front.help_text|default:'חזית או גימור הכנף' }}">
                                     חזית / גימור <i class="bi bi-info-circle help-hint-icon"></i>
@@ -73,8 +79,8 @@
                                 {% endif %}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold"
-                                       data-bs-toggle="Tooltip"
+                                <label class="form-label fw-semibold"
+                                       data-bs-toggle="tooltip"
                                        title="{{ form.handle.help_text|default:'דגם ידית נבחר' }}">
                                     ידית <i class="bi bi-info-circle help-hint-icon"></i>
                                 </label>
@@ -85,7 +91,7 @@
                             </div>
                         </div>
                         <!-- Блок отделки и покраски -->
-                        <div class="card mb-4 border bg-light shadow-none">
+                        <div class="card mb-4 bg-body-tertiary">
                             <div class="card-body p-3">
                                 <div class="row g-3">
                                     <!-- 1. Покраска коробок -->
@@ -181,11 +187,11 @@
 
 
 									{% if form.instance.pk %}{% url 'order-detail' form.instance.pk %}{% else %}{% url 'order-list' %}{% endif %}"
-                               class="btn btn-light"
+                               class="btn btn-outline-secondary"
                                data-bs-toggle="tooltip"
                                title="ביטול וחזרה">ביטול</a>
                             <button type="submit"
-                                    class="btn btn-primary px-4"
+                                    class="btn btn-primary px-4 fw-semibold"
                                     data-bs-toggle="tooltip"
                                     title="שמירת ההזמנה">
                                 {% if form.instance.pk %}שמור שינויים{% else %}צור הזמנה{% endif %}
@@ -420,6 +426,5 @@
             // 6. Инициализация при открытии формы
             syncOrderFormUI();
         });
-    </script>
     </script>
 {% endblock %}

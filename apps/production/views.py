@@ -1531,7 +1531,7 @@ class StationTrackingDashboardView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        stations = ProductionStation.objects.filter(active=True).order_by('id')
+        stations = ProductionStation.objects.filter(active=True).order_by('order', 'id')
 
         selected_code = self.request.GET.get('station')
         selected_station = None
@@ -1587,11 +1587,13 @@ class StationTrackingDashboardView(LoginRequiredMixin, TemplateView):
                     f"עודכנו בהצלחה {len(to_process)} הזמנות/מנות (סה\"כ {total_doors} דלתות) בתחנה זו."
                 )
 
-        # Перенаправляем на эту же вкладку станции
-        redirect_url = request.path
-        if station_code:
-            redirect_url += f"?station={station_code}"
-        return redirect(redirect_url)
+        # Определение целевой станции для перехода после сохранения
+        next_station = (
+                request.POST.get("next_station")
+                or request.GET.get("station")
+                or station_code
+        )
+        return redirect(f"{request.path}?station={next_station}")
 
 
 class ToggleBatchStationAjaxView(LoginRequiredMixin, View):
@@ -1633,7 +1635,7 @@ class StationsBatchDailyPrintView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        stations = ProductionStation.objects.filter(active=True).order_by('id')
+        stations = ProductionStation.objects.filter(active=True).order_by('order', 'id')
 
         printable_sheets = []
         for st in stations:
