@@ -1,4 +1,4 @@
-<div class="card shadow-sm border-0 mb-4 group-card"
+<div class="card mb-4 group-card"
      data-group-id="{{ group.id }}"
      data-group-name="{{ group.product.name }}"
      data-group-qty="{{ group.quantity }}"
@@ -6,26 +6,23 @@
      data-family-id="{{ group.product.product_family.id }}"
      data-type-id="{{ group.product.product_family.product_type.id }}"
      data-group-details="{{ group.product.product_family.name }} / {{ group.series.name }}">
-    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
+    <div class="card-header bg-body border-bottom d-flex justify-content-between align-items-center py-3">
         <div>
             <h5 class="mb-0 fw-bold text-primary d-flex align-items-center flex-wrap gap-2">
                 {{ group.product.name }}
                 {% if group.is_split_installation %}
-                    <span class="badge bg-info-subtle text-info" style="font-size: 0.75rem">התקנה מפוצלת (שלב א)</span>
+                    <span class="badge rounded-pill bg-info-subtle text-info-emphasis border border-info-subtle">התקנה מפוצלת (שלב א)</span>
                 {% endif %}
                 {% if group.production_state == 'WAITING' %}
-                    <span class="badge bg-warning-subtle text-warning border border-warning"
-                          style="font-size: 0.75rem">
+                    <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border border-warning-subtle">
                         <i class="bi bi-hourglass-split me-1"></i>ממתין
                     </span>
                 {% elif group.production_state == 'IN_PRODUCTION' %}
-                    <span class="badge bg-primary-subtle text-primary border border-primary"
-                          style="font-size: 0.75rem">
+                    <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle">
                         <i class="bi bi-gear-wide-connected me-1"></i>בייצור
                     </span>
                 {% elif group.production_state == 'COMPLETED' %}
-                    <span class="badge bg-success-subtle text-success border border-success"
-                          style="font-size: 0.75rem">
+                    <span class="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle">
                         <i class="bi bi-check2-all me-1"></i>הושלם
                     </span>
                 {% endif %}
@@ -47,10 +44,12 @@
                 </form>
             {% endif %}
             <div class="dropdown">
-                <button class="btn btn-light btn-sm" type="button" data-bs-toggle="dropdown">
+                <button class="btn btn-outline-secondary btn-sm"
+                        type="button"
+                        data-bs-toggle="dropdown">
                     <i class="bi bi-three-dots-vertical"></i>
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                <ul class="dropdown-menu dropdown-menu-end">
                     {% if group.production_state == 'NEW' or group.production_state == 'WAITING' %}
                         <!-- 1. Изменить -->
                         <li>
@@ -225,7 +224,7 @@
     </div>
     <div class="card-body p-0">
         <!-- Nav tabs -->
-        <ul class="nav nav-tabs nav-fill border-0 bg-light" role="tablist">
+        <ul class="nav nav-tabs nav-fill bg-body-tertiary" role="tablist">
             <li class="nav-item"
                 data-bs-toggle="tooltip"
                 title="צפייה ברשימת הדלתות והמידות בקבוצה">
@@ -258,22 +257,13 @@
         <div class="tab-content">
             <div id="doors-{{ group.id }}" class="tab-pane active">
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0 align-middle">
-                        <thead class="small text-muted bg-white">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light small text-muted">
                             <tr>
-                                <th class="ps-2"
-                                    style="width: 5%"
-                                    data-bs-toggle="tooltip"
-                                    title="סימון פריט">#</th>
-                                <th class=""
-                                    style="width: 9%"
-                                    data-bs-toggle="tooltip"
-                                    title="מיקום ההתקנה">מיקום</th>
-                                <th class=""
-                                    style="width: 12%"
-                                    data-bs-toggle="tooltip"
-                                    title="מידות רוחב × גובה (מ''מ)">מידות</th>
-                                <th class="" style="width: 5%;"></th>
+                                <th class="ps-3" data-bs-toggle="tooltip" title="סימון פריט">#</th>
+                                <th data-bs-toggle="tooltip" title="מיקום ההתקנה">מיקום</th>
+                                <th data-bs-toggle="tooltip" title="מידות רוחב × גובה (מ''מ)">מידות</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -296,7 +286,7 @@
                             {% endfor %}
                             {% if group.items.count > 5 %}
                                 <tr id="toggle-row-{{ group.id }}">
-                                    <td colspan="4" class="text-center py-1 bg-light">
+                                    <td colspan="4" class="text-center py-1 bg-body-tertiary">
                                         <button class="btn btn-sm btn-link text-decoration-none btn-toggle-items"
                                                 data-group-id="{{ group.id }}"
                                                 data-bs-toggle="tooltip"
@@ -314,7 +304,7 @@
                 <div class="row row-cols-1 row-cols-md-2 g-3">
                     {% for cust in group.customizers.all %}
                         <div class="col">
-                            <div class="p-2 border rounded bg-white shadow-sm h-100"
+                            <div class="p-3 border rounded-3 bg-body h-100"
                                  data-bs-toggle="tooltip"
                                  title="{{ cust.customizer.description|default:cust.customizer.name }}">
                                 <div class="d-flex align-items-center mb-2">

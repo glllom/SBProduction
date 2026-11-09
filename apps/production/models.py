@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from apps.catalog.models import ProductModel
+from apps.catalog.models import ProductModel, ProductFamily, Front, Customizer, Hardware
 from apps.orders.models import Order, OrderItem
 
 
@@ -55,15 +55,15 @@ class BOM(models.Model):
 
     # --- Materials Sections ---
     covering = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
-                                 verbose_name='כיסוי (Covering)')
+                                 verbose_name='כיסוי')
     covering_consumption = models.CharField('צריכת כיסוי', max_length=255, default='1', blank=True)
 
     base = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
-                             verbose_name='בסיס (Base)')
+                             verbose_name='בסיס')
     base_consumption = models.CharField('צריכת בסיס', max_length=255, default='1', blank=True)
 
     filling = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
-                                verbose_name='מילוי (Filling)')
+                                verbose_name='מילוי')
     filling_consumption = models.CharField('צריכת מילוי', max_length=255, default='1', blank=True)
 
     panel_frame = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True,
@@ -89,11 +89,11 @@ class BOM(models.Model):
     )
 
     casing = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
-                               verbose_name='הלבשה (Casing)')
+                               verbose_name='הלבשה')
     casing_consumption = models.CharField('צריכת הלבשה', max_length=255, default='1', blank=True)
 
     frame = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
-                              verbose_name='משקוף (Frame)')
+                              verbose_name='משקוף')
     frame_consumption = models.CharField('צריכת משקוף', max_length=255, default='1', blank=True)
 
     profile1 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
@@ -130,16 +130,16 @@ class BOM(models.Model):
 
     # --- Hardware Sections ---
     lock = models.ForeignKey('catalog.Hardware', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
-                             verbose_name='מנעול (Lock)')
+                             verbose_name='מנעול')
     hinges = models.ForeignKey('catalog.Hardware', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
-                               verbose_name='צירים (Hinges)')
+                               verbose_name='צירים')
     additional = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+',
-                                        verbose_name='תוספות (Additional)')
+                                        verbose_name='תוספות')
     required_customizers = models.ManyToManyField(
         'catalog.Customizer',
         blank=True,
         related_name='required_for_boms',
-        verbose_name='קסטומייזרים חובה'
+        verbose_name='התאמות אישיות חובה'
     )
 
     cut_coefficients = models.JSONField(
@@ -170,7 +170,7 @@ class LockStandardHeight(models.Model):
     locks = models.ManyToManyField(
         'catalog.Hardware',
         related_name='lock_heights',
-        verbose_name='מנעולים (Locks)'
+        verbose_name='מנעולים'
     )
     base_door_height = models.DecimalField(
         'גובה דלת בסיסי',
@@ -185,7 +185,7 @@ class LockStandardHeight(models.Model):
         help_text='מיקום המנעול בגובה הבסיסי'
     )
     step = models.DecimalField(
-        'צעד (Step)',
+        'צעד',
         max_digits=7,
         decimal_places=2,
         default=0,
@@ -209,7 +209,7 @@ class HingeStandardHeight(models.Model):
     hinges = models.ManyToManyField(
         'catalog.Hardware',
         related_name='hinge_heights',
-        verbose_name='צירים (Hinges)'
+        verbose_name='צירים'
     )
     min_height = models.DecimalField(
         'גובה מינימלי',
@@ -259,22 +259,31 @@ class ProductionStation(models.Model):
     class TargetMachine(models.TextChoices):
         NONE = '', 'ללא שיוך למכונה'
         ESSEPIGI = 'ESSEPIGI', 'Essepigi'
-        ACCORD_STD = 'ACCORD_STD', 'Accord (Standard)'
-        ACCORD_CUSTOM = 'ACCORD_CUSTOM', 'Accord (Custom)'
+        ACCORD_STD = 'ACCORD_STD', 'Accord (סטנדרטי)'
+        ACCORD_CUSTOM = 'ACCORD_CUSTOM', 'Accord (מותאם אישית)'
 
     class SpecType(models.IntegerChoices):
-        NONE = 0, 'ללא מפרט (0: Нет)'
-        LABEL_PRE_CLEANING = 1, 'מדבקה 0: כרסום מקדים (1: Наклейка 0)'
-        LABEL_CLEANING = 2, 'מדבקה 1: כרסום סופי (2: Наклейка 1)'
-        LABEL_FINISHING = 3, 'מדבקה 2: פרזול ומנעול (3: Наклейка 2)'
+        NONE = 0, 'ללא מפרט'
+        LABEL_PRE_CLEANING = 1, 'מדבקה 0: כרסום מקדים'
+        LABEL_CLEANING = 2, 'מדבקה 1: כרסום סופי'
+        LABEL_FINISHING = 3, 'מדבקה 2: פרזול ומנעול'
         # 4-9: Reserved for future label/special types
-        REPORT = 10, 'דו"ח תחנה רגיל (10: Отчёт)'
+        REPORT = 10, 'דו"ח תחנה רגיל'
 
     name = models.CharField('שם התחנה', max_length=255, unique=True)
-    code = models.CharField('קוד תחנה', max_length=50, blank=True, unique=True)
+    code = models.CharField('קוד תחנה', max_length=50, blank=False, unique=True)
     label = models.CharField('תווית לכפתור', max_length=100, blank=True, help_text='הטקסט שיופיע על הכפתור')
     hint = models.CharField('רמז/תיאור קצר', max_length=255, blank=True, help_text='יופיע כ-tooltip')
     description = models.TextField('תיאור מפורט', blank=True)
+    order = models.PositiveIntegerField(
+        'סדר תצוגה',
+        default=0,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = ['order', 'id']
+
     target_machine = models.CharField(
         'מכונת CNC משויכת',
         max_length=32,
@@ -538,17 +547,17 @@ class OrderSpecificationSnapshot(models.Model):
 class DoorLabel(models.Model):
     # Label types
     class LabelType(models.IntegerChoices):
-        PRE_ROUGHING = 0, 'Черновая обгонка (до вкладного канта)'
-        ROUGHING = 1, 'Стандартная обгонка'
-        FINISHING = 2, 'Фурнитура и замки'
+        PRE_ROUGHING = 0, 'ניתוב היקפי ראשוני (לפני קנט פנימי)'
+        ROUGHING = 1, 'ניתוב היקפי סטנדרטי'
+        FINISHING = 2, 'פרזול ומנעולים'
 
     class LeafRole(models.IntegerChoices):
-        SINGLE = 0, 'Одинарная'
-        ACTIVE = 1, 'Активная (доминантная)'
-        PASSIVE = 2, 'Пассивная (вторичная)'
+        SINGLE = 0, 'בודדת'
+        ACTIVE = 1, 'פעילה (דומיננטית)'
+        PASSIVE = 2, 'פסיבית (משנית)'
 
     leaf_role = models.PositiveSmallIntegerField(
-        'Тип створки',
+        'סוג כנף',
         choices=LeafRole.choices,
         default=LeafRole.SINGLE,
         db_index=True
@@ -557,55 +566,104 @@ class DoorLabel(models.Model):
     # Target CNC machines
     class TargetMachine(models.TextChoices):
         ESSEPIGI = 'ESSEPIGI', 'Essepigi'
-        ACCORD_STD = 'ACCORD_STD', 'Accord (Библиотека)'
-        ACCORD_CUSTOM = 'ACCORD_CUSTOM', 'Accord (Ручной проект)'
+        ACCORD_STD = 'ACCORD_STD', 'Accord (ספרייה)'
+        ACCORD_CUSTOM = 'ACCORD_CUSTOM', 'Accord (פרויקט ידני)'
 
     order = models.ForeignKey(
-        Order, on_delete=models.CASCADE, related_name='door_labels'
+        Order, on_delete=models.CASCADE, related_name='door_labels', verbose_name='הזמנה'
     )
     order_item = models.ForeignKey(
-        OrderItem, on_delete=models.CASCADE, related_name='labels'
+        OrderItem, on_delete=models.CASCADE, related_name='labels', verbose_name='פריט הזמנה'
     )
 
     # Context & Counters
-    order_number = models.CharField(max_length=64, db_index=True)
-    client_name = models.CharField(max_length=255, blank=True, default='')
-    item_mark = models.CharField(max_length=32)
-    total_items = models.PositiveIntegerField(default=1)
-    label_type = models.IntegerField(choices=LabelType.choices, default=LabelType.ROUGHING)
-    print_count = models.PositiveIntegerField(default=0)
-    last_printed_at = models.DateTimeField(null=True, blank=True)
+    order_number = models.CharField('מספר הזמנה', max_length=64, db_index=True)
+    client_name = models.CharField('שם לקוח', max_length=255, blank=True, default='')
+    item_mark = models.CharField('סימון פריט', max_length=32)
+    total_items = models.PositiveIntegerField('סך הפריטים', default=1)
+    label_type = models.IntegerField('סוג מדבקה', choices=LabelType.choices, default=LabelType.ROUGHING)
+    print_count = models.PositiveIntegerField('מספר הדפסות', default=0)
+    last_printed_at = models.DateTimeField('הודפס לאחרונה', null=True, blank=True)
 
     # Geometry & Specs
-    width = models.FloatField(null=True, blank=True)
-    height = models.FloatField(null=True, blank=True)
-    thickness = models.FloatField(null=True, blank=True)
-    direction = models.CharField(max_length=32, blank=True, default='')
-    opening = models.CharField(max_length=32, blank=True, default='')
-    edge_type = models.CharField(max_length=64, blank=True, default='')
-    is_paint = models.BooleanField(default=False)
+    width = models.FloatField('רוחב', null=True, blank=True)
+    height = models.FloatField('גובה', null=True, blank=True)
+    thickness = models.FloatField('עובי', null=True, blank=True)
+    direction = models.CharField('כיוון', max_length=32, blank=True, default='')
+    opening = models.CharField('פתיחה', max_length=32, blank=True, default='')
+    edge_type = models.CharField('סוג קנט', max_length=64, blank=True, default='')
+    is_paint = models.BooleanField('צביעה', default=False)
 
     # Hardware & Addons
-    lock_name = models.CharField(max_length=128, blank=True, default='')
-    lock_height = models.FloatField(null=True, blank=True)
-    hinge_name = models.CharField(max_length=128, blank=True, default='')
-    hinge_1 = models.FloatField(null=True, blank=True)
-    hinge_2 = models.FloatField(null=True, blank=True)
-    hinge_3 = models.FloatField(null=True, blank=True)
-    hinge_4 = models.FloatField(null=True, blank=True)
-    hinge_5 = models.FloatField(null=True, blank=True)
-    addons_summary = models.TextField(blank=True, default='')
-    icon_filename = models.CharField(max_length=128, blank=True, default='')
-    comment = models.TextField(blank=True, default='')
+    lock_name = models.CharField('שם מנעול', max_length=128, blank=True, default='')
+    lock_height = models.FloatField('גובה מנעול', null=True, blank=True)
+    hinge_name = models.CharField('שם ציר', max_length=128, blank=True, default='')
+    hinge_1 = models.FloatField('ציר 1', null=True, blank=True)
+    hinge_2 = models.FloatField('ציר 2', null=True, blank=True)
+    hinge_3 = models.FloatField('ציר 3', null=True, blank=True)
+    hinge_4 = models.FloatField('ציר 4', null=True, blank=True)
+    hinge_5 = models.FloatField('ציר 5', null=True, blank=True)
+    addons_summary = models.TextField('סיכום תוספות', blank=True, default='')
+    icon_filename = models.CharField('שם קובץ אייקון', max_length=128, blank=True, default='')
+    comment = models.TextField('הערה', blank=True, default='')
 
     # CNC & Payload
     target_machine = models.CharField(
-        max_length=32, choices=TargetMachine.choices, default=TargetMachine.ACCORD_STD
+        'מכונת CNC משויכת', max_length=32, choices=TargetMachine.choices, default=TargetMachine.ACCORD_STD
     )
-    qr_payload = models.TextField(blank=True, default='')
-    created_at = models.DateTimeField(auto_now_add=True)
+    qr_payload = models.TextField('מטען QR', blank=True, default='')
+    created_at = models.DateTimeField('זמן יצירה', auto_now_add=True)
+
+    # CNC programs and parameters
+    cnc_program = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="תוכנית עיבוד היקפי (CNC)",
+    )
+    edge_shape = models.BooleanField(
+        default=False,
+        verbose_name="צורת קנט (edge_shape)",
+    )
+    lock_program = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="תוכנית מנעול (CNC)",
+    )
+    hinge_program = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="תוכנית צירים (CNC)",
+    )
+    front_program = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="תוכנית חריטה/חזית (CNC)",
+    )
+    customizer_programs = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="תוכניות קסטומייזרים",
+    )
+
+    # Granular customizer programs (up to 10 for label templates)
+    cmz_prg_1 = models.CharField(max_length=100, blank=True, default="")
+    cmz_prg_2 = models.CharField(max_length=100, blank=True, default="")
+    cmz_prg_3 = models.CharField(max_length=100, blank=True, default="")
+    cmz_prg_4 = models.CharField(max_length=100, blank=True, default="")
+    cmz_prg_5 = models.CharField(max_length=100, blank=True, default="")
+    cmz_prg_6 = models.CharField(max_length=100, blank=True, default="")
+    cmz_prg_7 = models.CharField(max_length=100, blank=True, default="")
+    cmz_prg_8 = models.CharField(max_length=100, blank=True, default="")
+    cmz_prg_9 = models.CharField(max_length=100, blank=True, default="")
+    cmz_prg_10 = models.CharField(max_length=100, blank=True, default="")
 
     class Meta:
+        verbose_name = 'תווית דלת'
+        verbose_name_plural = 'תוויות דלתות'
         ordering = ['item_mark', 'leaf_role', 'label_type']
         indexes = [
             models.Index(fields=['order_number', 'print_count']),
@@ -614,7 +672,7 @@ class DoorLabel(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.order_number} - Item {self.item_mark} (Type {self.label_type})"
+        return f"{self.order_number} - פריט {self.item_mark} (סוג {self.label_type})"
 
 
 class SvgPattern(models.Model):
@@ -622,20 +680,20 @@ class SvgPattern(models.Model):
     name = models.CharField(
         max_length=50,
         unique=True,
-        verbose_name="Идентификатор (slug)",
-        help_text="Латинский ключ для SVG ID (например: foam, tubular, honeycomb)"
+        verbose_name="מזהה (slug)",
+        help_text="מפתח באנגלית למזהה ה-SVG (לדוגמה: foam, tubular, honeycomb)"
     )
-    title = models.CharField(max_length=100, verbose_name="Название")
-    width = models.PositiveIntegerField(default=20, verbose_name="Ширина тайла (px)")
-    height = models.PositiveIntegerField(default=20, verbose_name="Высота тайла (px)")
+    title = models.CharField(max_length=100, verbose_name="שם")
+    width = models.PositiveIntegerField(default=20, verbose_name="רוחב אריח (px)")
+    height = models.PositiveIntegerField(default=20, verbose_name="גובה אריח (px)")
     svg_content = models.TextField(
-        verbose_name="Внутренний SVG-контент",
-        help_text="Теги rect, circle, path, line без обрамляющего тега <pattern>"
+        verbose_name="תוכן SVG פנימי",
+        help_text="תגיות rect, circle, path, line ללא תגית העטיפה <pattern>"
     )
 
     class Meta:
-        verbose_name = "SVG Паттерн"
-        verbose_name_plural = "SVG Паттерны"
+        verbose_name = "תבנית SVG"
+        verbose_name_plural = "תבניות SVG"
         ordering = ['title']
 
     def __str__(self):
@@ -646,26 +704,26 @@ class PuzzleBlockPrototype(models.Model):
     """Справочник визуальных прототипов блоков (внешний вид)."""
 
     class FillType(models.TextChoices):
-        SOLID = 'SOLID', 'Сплошной цвет'
-        PATTERN = 'PATTERN', 'SVG Паттерн'
+        SOLID = 'SOLID', 'צבע אחיד'
+        PATTERN = 'PATTERN', 'תבנית SVG'
 
     code = models.CharField(
         max_length=50,
         unique=True,
-        verbose_name="Код прототипа",
-        help_text="Например: pine_timber, green_hdf, tubular_core"
+        verbose_name="קוד אב טיפוס",
+        help_text="לדוגמה: pine_timber, green_hdf, tubular_core"
     )
-    name = models.CharField(max_length=100, verbose_name="Название")
+    name = models.CharField(max_length=100, verbose_name="שם")
     fill_type = models.CharField(
         max_length=10,
         choices=FillType.choices,
         default=FillType.SOLID,
-        verbose_name="Тип заполнения"
+        verbose_name="סוג מילוי"
     )
     fill_color = models.CharField(
         max_length=30,
         default="#fab005",
-        verbose_name="Цвет заливки (HEX)"
+        verbose_name="צבע מילוי (HEX)"
     )
     pattern = models.ForeignKey(
         SvgPattern,
@@ -673,18 +731,18 @@ class PuzzleBlockPrototype(models.Model):
         null=True,
         blank=True,
         related_name="block_prototypes",
-        verbose_name="Паттерн"
+        verbose_name="תבנית"
     )
-    border_color = models.CharField(max_length=30, default="#000000", verbose_name="Цвет границы")
-    border_width = models.FloatField(default=1.0, verbose_name="Толщина границы")
-    border_dasharray = models.CharField(max_length=30, blank=True, default="", verbose_name="Пунктир")
-    opacity = models.FloatField(default=1.0, verbose_name="Непрозрачность (0.0 - 1.0)")
-    default_text_color = models.CharField(max_length=30, default="#000000", verbose_name="Цвет текста")
-    default_font_size = models.PositiveSmallIntegerField(default=11, verbose_name="Размер шрифта")
+    border_color = models.CharField(max_length=30, default="#000000", verbose_name="צבע גבול")
+    border_width = models.FloatField(default=1.0, verbose_name="עובי גבול")
+    border_dasharray = models.CharField(max_length=30, blank=True, default="", verbose_name="קו מקווקו")
+    opacity = models.FloatField(default=1.0, verbose_name="אטימות (0.0 - 1.0)")
+    default_text_color = models.CharField(max_length=30, default="#000000", verbose_name="צבע טקסט")
+    default_font_size = models.PositiveSmallIntegerField(default=11, verbose_name="גודל גופן")
 
     class Meta:
-        verbose_name = "Прототип блока пазла"
-        verbose_name_plural = "Прототипы блоков пазла"
+        verbose_name = "אב טיפוס של בלוק פאזל"
+        verbose_name_plural = "אבות טיפוס של בלוקי פאזל"
 
     def __str__(self):
         return f"{self.name} [{self.code}]"
@@ -695,20 +753,20 @@ class PuzzlePreset(models.Model):
     Эскиз/пиктограмма узла. Содержит правила генерации блоков
     для анфаса и торца.
     """
-    name = models.CharField(max_length=100, unique=True, verbose_name="Название пресета")
-    description = models.TextField(blank=True, verbose_name="Описание")
+    name = models.CharField(max_length=100, unique=True, verbose_name="שם פריסט")
+    description = models.TextField(blank=True, verbose_name="תיאור")
 
     # Список словарей с вызовами прототипов и координатами
     # [{"component": "pine_timber", "view": "face", "x": 0, "y": 0, "w": 8, "h": 200, "order": 20}, ...]
     blocks_config = models.JSONField(
         default=list,
         blank=True,
-        verbose_name="Конфигурация блоков"
+        verbose_name="הגדרת בלוקים"
     )
 
     class Meta:
-        verbose_name = "Пресет узла (Пиктограмма)"
-        verbose_name_plural = "Пресеты узлов (Пиктограммы)"
+        verbose_name = "פריסט צומת (פיקטוגרמה)"
+        verbose_name_plural = "פריסטים של צמתים (פיקטוגרמות)"
 
     def __str__(self):
         return self.name
@@ -721,15 +779,15 @@ class CustomizerPuzzleMapping(models.Model):
     """
 
     class SlotAction(models.TextChoices):
-        ADD = 'ADD', 'הוספה (Add blocks)'
-        REPLACE = 'REPLACE', 'החלפה (Replace slot)'
-        REMOVE = 'REMOVE', 'הסרה (Clear slot)'
+        ADD = 'ADD', 'הוספה'
+        REPLACE = 'REPLACE', 'החלפה'
+        REMOVE = 'REMOVE', 'הסרה'
 
     customizer = models.OneToOneField(
         'catalog.Customizer',
         on_delete=models.CASCADE,
         related_name='puzzle_mapping',
-        verbose_name="קסטומייזר"
+        verbose_name="התאמה אישית"
     )
     preset = models.ForeignKey(
         'production.PuzzlePreset',
@@ -754,8 +812,8 @@ class CustomizerPuzzleMapping(models.Model):
     )
 
     class Meta:
-        verbose_name = "מיפוי פיקטוגרמה לקסטומייזר"
-        verbose_name_plural = "מיפוי פיקטוגרמות לקסטומייזרים"
+        verbose_name = "מיפוי פיקטוגרמה להתאמה אישית"
+        verbose_name_plural = "מיפויי פיקטוגרמות להתאמות אישיות"
 
     def __str__(self):
         return f"{self.customizer.name} -> {self.preset.name if self.preset else 'ללא פיקטוגרמה'}"
@@ -767,17 +825,17 @@ class CustomizerPuzzleMapping(models.Model):
 
 
 class StationStatus(models.TextChoices):
-    PENDING = 'PENDING', 'Ожидает'
-    IN_PROGRESS = 'IN_PROGRESS', 'В работе'
-    COMPLETED = 'COMPLETED', 'Выполнено'
-    SKIPPED = 'SKIPPED', 'Пропущено'
+    PENDING = 'PENDING', 'ממתין'
+    IN_PROGRESS = 'IN_PROGRESS', 'בעבודה'
+    COMPLETED = 'COMPLETED', 'הושלם'
+    SKIPPED = 'SKIPPED', 'דולג'
 
 
 class StationProgressSource(models.TextChoices):
-    MANUAL = 'MANUAL', 'Вручную (диспетчер)'
-    SCANNER = 'SCANNER', 'Офисный сканер (QR бланка)'
-    AGENT = 'AGENT', 'ПК-агент (станок)'
-    TERMINAL = 'TERMINAL', 'Цеховой терминал'
+    MANUAL = 'MANUAL', 'ידנית (מתאם)'
+    SCANNER = 'SCANNER', 'סורק משרדי (QR של הדף)'
+    AGENT = 'AGENT', 'סוכן מחשב (מכונה)'
+    TERMINAL = 'TERMINAL', 'מסוף ייצור'
 
 
 class ItemStationProgress(models.Model):
@@ -789,42 +847,42 @@ class ItemStationProgress(models.Model):
         'orders.OrderItem',
         on_delete=models.CASCADE,
         related_name='station_progress',
-        verbose_name='Позиция заказа'
+        verbose_name='פריט הזמנה'
     )
     station = models.ForeignKey(
         'production.ProductionStation',
         on_delete=models.CASCADE,
         related_name='items_progress',
-        verbose_name='Станция'
+        verbose_name='תחנה'
     )
     sequence = models.PositiveSmallIntegerField(
         default=1,
-        verbose_name='Порядковый номер этапа',
-        help_text='Порядок станции в маршруте конкретной группы'
+        verbose_name='מספר סידורי של שלב',
+        help_text='סדר התחנה במסלול של הקבוצה'
     )
     status = models.CharField(
         max_length=20,
         choices=StationStatus.choices,
         default=StationStatus.PENDING,
         db_index=True,
-        verbose_name='Статус'
+        verbose_name='סטטוס'
     )
     source = models.CharField(
         max_length=20,
         choices=StationProgressSource.choices,
         default=StationProgressSource.MANUAL,
-        verbose_name='Источник отметки'
+        verbose_name='מקור הסימון'
     )
     started_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name='Время начала'
+        verbose_name='זמן התחלה'
     )
     completed_at = models.DateTimeField(
         null=True,
         blank=True,
         db_index=True,
-        verbose_name='Время завершения'
+        verbose_name='זמן סיום'
     )
     completed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -832,13 +890,13 @@ class ItemStationProgress(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name='completed_station_progress',
-        verbose_name='Оператор / Диспетчер'
+        verbose_name='מפעיל / מתאם'
     )
 
     class Meta:
         db_table = 'production_item_station_progress'
-        verbose_name = 'Прогресс позиции на станции'
-        verbose_name_plural = 'Прогресс позиций на станциях'
+        verbose_name = 'התקדמות פריט בתחנה'
+        verbose_name_plural = 'התקדמות פריטים בתחנות'
         unique_together = ('item', 'station', 'sequence')
         ordering = ['sequence', 'id']
         indexes = [
@@ -889,33 +947,33 @@ class StationDailySheetLog(models.Model):
         'production.ProductionStation',
         on_delete=models.CASCADE,
         related_name='daily_sheet_logs',
-        verbose_name='Станция'
+        verbose_name='תחנה'
     )
     sheet_date = models.DateField(
         default=timezone.now,
         db_index=True,
-        verbose_name='Дата смены'
+        verbose_name='תאריך משמרת'
     )
     printed_at = models.DateTimeField(
         auto_now_add=True,
-        verbose_name='Время печати'
+        verbose_name='זמן הדפסה'
     )
     printed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        verbose_name='Распечатал'
+        verbose_name='הודפס על ידי'
     )
     notes = models.TextField(
         blank=True,
-        verbose_name='Примечания'
+        verbose_name='הערות'
     )
 
     class Meta:
         db_table = 'production_station_daily_log'
-        verbose_name = 'Сменный журнал станции'
-        verbose_name_plural = 'Сменные журналы станций'
+        verbose_name = 'יומן משמרת תחנה'
+        verbose_name_plural = 'יומני משמרת תחנות'
         ordering = ['-sheet_date', '-printed_at']
 
     def __str__(self):
@@ -929,61 +987,201 @@ class StationScanAuditLog(models.Model):
     """
     raw_payload = models.CharField(
         max_length=255,
-        verbose_name='Сырой код / Пейлоад'
+        verbose_name='קוד גולמי / מטען'
     )
     station_code = models.CharField(
         max_length=50,
         blank=True,
-        verbose_name='Код станции'
+        verbose_name='קוד תחנה'
     )
     order_number = models.CharField(
         max_length=50,
         blank=True,
-        verbose_name='Номер заказа'
+        verbose_name='מספר הזמנה'
     )
     batch_number = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
-        verbose_name='Номер батча'
+        verbose_name='מספר אצווה'
     )
     item_mark = models.CharField(
         max_length=20,
         blank=True,
-        verbose_name='Марка позиции'
+        verbose_name='סימון פריט'
     )
     source = models.CharField(
         max_length=20,
         choices=StationProgressSource.choices,
         default=StationProgressSource.SCANNER,
-        verbose_name='Источник'
+        verbose_name='מקור'
     )
     is_success = models.BooleanField(
         default=True,
-        verbose_name='Успешно'
+        verbose_name='הצלחה'
     )
     message = models.TextField(
         blank=True,
-        verbose_name='Результат / Текст ошибки'
+        verbose_name='תוצאה / טקסט שגיאה'
     )
     created_at = models.DateTimeField(
         auto_now_add=True,
         db_index=True,
-        verbose_name='Время события'
+        verbose_name='זמן אירוע'
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        verbose_name='Пользователь'
+        verbose_name='משתמש'
     )
 
     class Meta:
         db_table = 'production_station_scan_audit'
-        verbose_name = 'Аудит сканирования станции'
-        verbose_name_plural = 'Аудит сканирований станций'
+        verbose_name = 'ביקורת סריקת תחנה'
+        verbose_name_plural = 'ביקורות סריקת תחנות'
         ordering = ['-created_at']
 
     def __str__(self):
         status_flag = "OK" if self.is_success else "ERR"
         return f"[{status_flag}] {self.raw_payload} ({self.created_at:%d.%m %H:%M})"
+
+
+class PerimeterRoutingFile(models.Model):
+    # File name scanned by the CNC barcode reader
+    file_name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="שם קובץ",
+    )
+    # Short human-readable description for operators
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="תיאור",
+    )
+    # Machine-specific flag defining edge geometry
+    edge_shape = models.BooleanField(
+        default=False,
+        verbose_name="צורת קנט (edge_shape)",
+    )
+    # Associated door models for type 1 stickers
+    doors = models.ManyToManyField(
+        "catalog.ProductFamily",
+        blank=True,
+        related_name="perimeter_routings",
+        verbose_name="משפחת מוצרים",
+    )
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "קובץ ניתוב היקפי"
+        verbose_name_plural = "קבצי ניתוב היקפי"
+
+    def __str__(self):
+        if self.description:
+            return f"{self.file_name} ({self.description})"
+        return self.file_name
+
+
+class HardwareMacroFile(models.Model):
+    # Macro or program file name recognized by the CNC machine
+    file_name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="שם קובץ / מאקרו",
+    )
+    # Short human-readable description for operators
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="תיאור",
+    )
+    # Locks, hinges, and other hardware using this macro
+    hardware = models.ManyToManyField(
+        "catalog.Hardware",  # Replace with your actual hardware model name
+        blank=True,
+        related_name="macro_files",
+        verbose_name="פרזול",
+    )
+    # Door families where this specific macro applies
+    door_families = models.ManyToManyField(
+        "catalog.ProductFamily",
+        blank=True,
+        related_name="hardware_macro_files",
+        verbose_name="משפחות דלתות",
+    )
+
+    class Meta:
+        ordering = ["file_name"]
+        verbose_name = "קובץ מאקרו פרזול"
+        verbose_name_plural = "קבצי מאקרו פרזול"
+
+    def __str__(self):
+        if self.description:
+            return f"{self.file_name} ({self.description})"
+        return self.file_name
+
+
+class CustomizerMacroFile(models.Model):
+    # Strict 1:1 relation to the customizer (e.g. specific window cutout)
+    customizer = models.OneToOneField(
+        "catalog.Customizer",  # Replace with your actual Customizer model name
+        on_delete=models.CASCADE,
+        related_name="macro_file",
+        verbose_name="התאמה אישית",
+    )
+    # CNC program file name
+    file_name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="שם קובץ / מאקרו",
+    )
+    # Short human-readable description for operators
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="תיאור",
+    )
+
+    class Meta:
+        ordering = ["file_name"]
+        verbose_name = "קובץ התאמה אישית"
+        verbose_name_plural = "קבצי התאמות אישיות"
+
+    def __str__(self):
+        if self.description:
+            return f"{self.file_name} ({self.description})"
+        return self.file_name
+
+
+class FrontEngravingFile(models.Model):
+    # Strict 1:1 relation to the door front / pattern
+    front = models.OneToOneField(
+        "catalog.Front",
+        on_delete=models.CASCADE,
+        related_name="engraving_file",
+        verbose_name="חזית / דוגמה",
+    )
+    # CNC program file name for engraving
+    file_name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="שם קובץ / מאקרו",
+    )
+    # Short human-readable description for operators
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="תיאור",
+    )
+
+    class Meta:
+        ordering = ["file_name"]
+        verbose_name = "קובץ חריטה לחזית"
+        verbose_name_plural = "קבצי חריטה לחזיתות"
+
+    def __str__(self):
+        if self.description:
+            return f"{self.file_name} ({self.description})"
+        return self.file_name

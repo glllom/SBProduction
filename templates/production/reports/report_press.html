@@ -14,6 +14,21 @@
                 margin: 10mm;
             }
         }
+
+        /* Тонкая серая прерывистая линия между колонками размеров */
+        .page .row > .col-6:nth-child(even) {
+            border-inline-start: 1.5px dashed #b0b0b0;
+            padding-inline-start: 25px;
+        }
+
+        .page .row > .col-6:nth-child(odd) {
+            padding-inline-end: 25px;
+        }
+
+        /* На случай, если для списка размеров использованы CSS-колонки (column-count) */
+        .dimensions-list, .press-dimensions {
+            column-rule: 1.5px dashed #b0b0b0;
+        }
     </style>
 {% endblock %}
 {% block content %}

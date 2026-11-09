@@ -3,22 +3,21 @@
      tabindex="-1"
      aria-hidden="true">
     <div class="modal-dialog modal-md">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-success text-white">
+        <div class="modal-content">
+            <div class="modal-header border-bottom">
                 <h5 class="modal-title fw-bold">
-                    <i class="bi bi-bookmark-plus me-2"></i>שמירת מפרט קבוצה
+                    <i class="bi bi-bookmark-plus text-success me-2"></i>שמירת מפרט קבוצה
                 </h5>
-                <button type="button"
-                        class="btn-close btn-close-white"
-                        data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="saveSpecForm" method="post" action="">
                 {% csrf_token %}
                 <div class="modal-body">
-                    <div class="alert alert-light border mb-3">
+                    <div class="alert alert-light border rounded-3 mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="fw-bold text-primary" id="saveSpecGroupName">-</span>
-                            <span class="badge bg-secondary" id="saveSpecGroupQty">- דלתות</span>
+                            <span class="badge rounded-pill bg-body-secondary text-body-secondary border"
+                                  id="saveSpecGroupQty">- דלתות</span>
                         </div>
                         <div class="small text-muted" id="saveSpecGroupDetails">-</div>
                     </div>
@@ -44,8 +43,12 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">ביטול</button>
-                    <button type="submit" class="btn btn-success px-4" id="btnSubmitSaveSpec">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">ביטול</button>
+                    <button type="submit"
+                            class="btn btn-success px-4 fw-semibold"
+                            id="btnSubmitSaveSpec">
                         <i class="bi bi-check2-circle me-1"></i>שמור מפרט
                     </button>
                 </div>

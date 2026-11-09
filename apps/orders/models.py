@@ -21,8 +21,8 @@ class OrderStatus(models.TextChoices):
 
 
 class OpeningSide(models.TextChoices):
-    LEFT = 'L', 'L'
-    RIGHT = 'R', 'R'
+    LEFT = 'L', 'שמאל'
+    RIGHT = 'R', 'ימין'
 
 
 class OpeningType(models.TextChoices):
@@ -61,15 +61,15 @@ class Order(models.Model):
     # --- Даты этапов ---
     production_start_date = models.DateField(
         null=True, blank=True, verbose_name="ירידה לייצור",
-        help_text="Дата первого запуска заказа в производство"
+        help_text="תאריך הכניסה הראשון של ההזמנה לייצור"
     )
     completion_date = models.DateField(
         null=True, blank=True, verbose_name="סיום ייצור",
-        help_text="Плановая дата окончания производства в цеху"
+        help_text="תאריך סיום מתוכנן של הייצור במפעל"
     )
     painting_completion_date = models.DateField(
         null=True, blank=True, verbose_name="סיום צבע",
-        help_text="Плановая дата окончания покраски"
+        help_text="תאריך סיום מתוכנן של הצביעה"
     )
 
     # --- Engineering / Specific order properties ---
@@ -129,17 +129,17 @@ class Order(models.Model):
         blank=True, null=True, verbose_name="הערות"
     )
     press_notes = models.TextField(
-        'הערות למכבש (Пресс)',
+        'הערות למכבש',
         blank=True,
         default=''
     )
     frames_notes = models.TextField(
-        'הערות למשקופים (Коробки)',
+        'הערות למשקופים',
         blank=True,
         default=''
     )
     warehouse_notes = models.TextField(
-        'הערות למחסן (Склад / Комплектация)',
+        'הערות למחסן',
         blank=True,
         default='',
         help_text='הוראות מיוחדות לליקוט (למשל: הלקוח מביא ידיות משלו)'
@@ -150,7 +150,7 @@ class Order(models.Model):
 
     current_batch = models.PositiveSmallIntegerField(
         default=1,
-        help_text="Tracks the latest released production batch number"
+        help_text="מספר האצווה האחרונה של הייצור ששוחררה"
     )
 
     # --- Specification Cache and Validation ---
@@ -306,7 +306,7 @@ class OrderItemsGroup(models.Model):
     batch_number = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
-        help_text="Order release wave (1 for initial order, 2+ for subsequent additions)"
+        help_text="מספר גל השחרור של ההזמנה (1 להזמנה הראשונית, 2 ומעלה לתוספות)"
     )
 
     # Django will automatically create an `order_id` field in the DB
@@ -329,7 +329,7 @@ class OrderItemsGroup(models.Model):
     batch_date = models.DateField(
         null=True, blank=True,
         verbose_name="תאריך ירידה לייצור (באץ')",
-        help_text="Зафиксированная дата запуска группы в производство"
+        help_text="תאריך הכניסה של הקבוצה לייצור, נקבע בעת השחרור ואינו משתנה"
     )
 
     quantity = models.PositiveIntegerField(
@@ -406,7 +406,7 @@ class OrderItemsGroup(models.Model):
     is_split_installation = models.BooleanField(
         default=False,
         verbose_name="התקנה מפוצלת",
-        help_text="True = משקוף וכנף בתאריכים שונים, False = בו זמנית",
+        help_text="כן = משקוף וכנף בתאריכים שונים, לא = בו זמנית",
     )
 
     comments = models.TextField(
@@ -713,7 +713,7 @@ class OrderItemsGroupCustomizer(models.Model):
         # Check if the customizer itself is available for the product
         if product_model and not self.customizer.is_available_for(product_model):
             errors[
-                'customizer'] = f"Customizer '{self.customizer.name}' is not available for product '{product_model}'."
+                'customizer'] = f"הקסטומייזר '{self.customizer.name}' אינו זמין עבור המוצר '{product_model}'."
 
         for i in range(1, 6):
             field_name = f"par{i}"
@@ -731,10 +731,10 @@ class OrderItemsGroupCustomizer(models.Model):
                         all_keys = [opt[0] for opt in all_options]
                         if stripped_value in all_keys:
                             errors[
-                                field_name] = f"Selected hardware '{stripped_value}' is incompatible with the product model."
+                                field_name] = f"הפרזול שנבחר '{stripped_value}' אינו תואם לדגם המוצר."
                         else:
                             errors[
-                                field_name] = f"Selected value '{stripped_value}' is not a valid option. Allowed: {', '.join(valid_keys)}"
+                                field_name] = f"הערך שנבחר '{stripped_value}' אינו אפשרות תקינה. אפשרויות מותרות: {', '.join(valid_keys)}"
 
         if errors:
             raise ValidationError(errors)
@@ -805,18 +805,18 @@ class OrderItem(models.Model):
         max_length=50,
         blank=True,
         null=True,
-        verbose_name="#",
+        verbose_name="סימון",
     )
 
     # --- Dimensions (in mm) ---
     width = models.DecimalField(
-        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='רוחב (מ""מ)'
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='רוחב (מ"מ)'
     )
     height = models.DecimalField(
-        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='גובה (מ""מ)'
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='גובה (מ"מ)'
     )
     wall = models.DecimalField(
-        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='עובי קיר / פתח (מ""מ)'
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='עובי קיר / פתח (מ"מ)'
     )
 
     # --- Structure and Opening ---
@@ -860,42 +860,42 @@ class OrderItem(models.Model):
         decimal_places=1,
         blank=True,
         null=True,
-        verbose_name='גובה מנעול מותאם (מ""מ)',
+        verbose_name='גובה מנעול מותאם (מ"מ)',
     )
     custom_hinge1 = models.DecimalField(
         max_digits=7,
         decimal_places=1,
         blank=True,
         null=True,
-        verbose_name='גובה ציר 1 (מ""מ)',
+        verbose_name='גובה ציר 1 (מ"מ)',
     )
     custom_hinge2 = models.DecimalField(
         max_digits=7,
         decimal_places=1,
         blank=True,
         null=True,
-        verbose_name='גובה ציר 2 (מ""מ)',
+        verbose_name='גובה ציר 2 (מ"מ)',
     )
     custom_hinge3 = models.DecimalField(
         max_digits=7,
         decimal_places=1,
         blank=True,
         null=True,
-        verbose_name='גובה ציר 3 (מ""מ)',
+        verbose_name='גובה ציר 3 (מ"מ)',
     )
     custom_hinge4 = models.DecimalField(
         max_digits=7,
         decimal_places=1,
         blank=True,
         null=True,
-        verbose_name='גובה ציר 4 (מ""מ)',
+        verbose_name='גובה ציר 4 (מ"מ)',
     )
     custom_hinge5 = models.DecimalField(
         max_digits=7,
         decimal_places=1,
         blank=True,
         null=True,
-        verbose_name='גובה ציר 5 (מ""מ)',
+        verbose_name='גובה ציר 5 (מ"מ)',
     )
     sketch = models.FileField(
         upload_to='order_sketches/%Y/%m/',
@@ -1164,7 +1164,7 @@ class GroupSpecificationCustomizer(models.Model):
     par2 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 2")
     par3 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 3")
     par4 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 4")
-    par5 = models.CharField(max_length=255, blank=True, null=True, verbose_name="5")
+    par5 = models.CharField(max_length=255, blank=True, null=True, verbose_name="פרמטר 5")
 
     class Meta:
         db_table = "group_specification_customizers"
@@ -1182,7 +1182,7 @@ class OrderComponentSelection(models.Model):
         related_name='component_selections',
         verbose_name='הזמנה'
     )
-    common_name = models.CharField('שם קבוצה (Common Name)', max_length=255, db_index=True)
+    common_name = models.CharField('שם קבוצה כללי', max_length=255, db_index=True)
     selected_hardware = models.ForeignKey(
         'catalog.Hardware',
         on_delete=models.SET_NULL,

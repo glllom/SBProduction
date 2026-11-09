@@ -5,98 +5,105 @@
           title="סטטוס נוכחי של ההזמנה: {{ order.get_status_display }}">{{ order.get_status_display }}</span>
 {% endblock %}
 {% block content %}
-    <div class="mb-4 align-items-end">
-        <div class="d-flex align-items-center mb-2">
-            <h2 class="h3 mb-0 mx-3 fw-bolder">{{ order.customer }}</h2>
+    <div class="sb-page-header align-items-center gap-3 mb-4">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <span class="sb-stat-icon sb-accent flex-shrink-0">
+                <i class="bi bi-person-badge"></i>
+            </span>
+            <h2 class="sb-page-title me-2">{{ order.customer }}</h2>
             {% if order.status != 'CANCELED' %}
                 <a href="{% url 'order-edit-header' order.pk %}"
-                   class="btn btn-sm btn-outline-primary ms-3"
+                   class="btn btn-sm btn-outline-primary"
                    data-bs-toggle="tooltip"
                    title="עריכת פרטי הזמנה">
                     <i class="bi bi-pencil"></i>
                 </a>
             {% endif %}
-            <button class="btn btn-sm btn-outline-primary ms-3"
+            <button class="btn btn-sm btn-outline-primary"
                     data-bs-toggle="modal"
                     data-bs-target="#groupModal"
                     title="הוספת קבוצת דלתות חדשה להזמנה">
                 <i class="bi bi-plus-lg me-2"></i>הוספת דלתות
             </button>
-            <button class="btn btn-sm btn-outline-warning ms-2 btn-open-load-spec"
+            <button class="btn btn-sm btn-outline-warning btn-open-load-spec"
                     data-group-id=""
                     title="הוספת קבוצה ממפרט שמור">
                 <i class="bi bi-box-arrow-in-down me-2"></i>טעינת מפרט שמור
             </button>
         </div>
-        <div class="row">
-            <div class="mb-3 col-1"
-                 data-bs-toggle="tooltip"
-                 title="סדרת הדלתות הראשית בהזמנה">
-                <label class="text-muted small d-block">סדרה</label>
-                <span class="fw-medium">{{ order.series.name|default:"-" }}</span>
-            </div>
-            <div class="mb-3 col-2"
-                 data-bs-toggle="tooltip"
-                 title="חזית או גימור ראשי שנבחר עבור ההזמנה">
-                <label class="text-muted small d-block">חזית / גימור</label>
-                <span class="fw-medium">{{ order.front.name|default:"-" }}</span>
-            </div>
-            <div class="mb-3 col-1"
-                 data-bs-toggle="tooltip"
-                 title="דגם ידית נבחר עבור ההזמנה">
-                <label class="text-muted small d-block">ידית</label>
-                <span class="fw-medium">{{ order.handle.name|default:"-" }}</span>
-            </div>
-            <div class="mb-3 col-1"
-                 data-bs-toggle="tooltip"
-                 title="גוון צבע ראשי עבור כנפי הדלתות">
-                <label class="text-muted small d-block">גוון בכנפיים</label>
-                <span class="fw-medium">{{ order.color_panel_outside|default:"-" }}
-                    {% if order.color_panel_inside and order.color_panel_inside != order.color_panel_outside %}
-                        / {{ order.color_panel_inside }}
-                    {% endif %}
-                </span>
-            </div>
-            <div class="mb-3 col-1"
-                 data-bs-toggle="tooltip"
-                 title="גוון צבע ראשי עבור המשקופים">
-                <label class="text-muted small d-block">גוון במשקופים</label>
-                <span class="fw-medium">{{ order.color_frames|default:"-" }}</span>
-            </div>
-            <div class="mb-3 col-1"></div>
-            <div class="mb-3 col-1"
-                 data-bs-toggle="tooltip"
-                 title="תאריך יצירת ההזמנה במערכת">
-                <label class="text-muted small d-block">ירידה לייצור</label>
-                <span class="fw-normal">{{ order.production_start_date|date:"d/m/y" }}</span>
-            </div>
-            <div class="mb-3 col-1"
-                 data-bs-toggle="tooltip"
-                 title="תאריך יעד סופי לסיום ייצור">
-                <label class="text-muted small d-block">סיום ייצור</label>
-                <span class="fw-normal">{{ order.completion_date|date:"d/m/y" }}</span>
-            </div>
-            <div class="mb-3 col-1"
-                 data-bs-toggle="tooltip"
-                 title="תאריך מתוכנן לצביעת הפריטים">
-                <label class="text-muted small d-block">סיום צבע</label>
-                <span class="fw-normal">{{ order.painting_completion_date|date:"d/m/y" }}</span>
+    </div>
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-6 col-md-4 col-xl-3"
+                     data-bs-toggle="tooltip"
+                     title="סדרת הדלתות הראשית בהזמנה">
+                    <div class="text-muted small">סדרה</div>
+                    <div class="fw-medium">{{ order.series.name|default:"-" }}</div>
+                </div>
+                <div class="col-6 col-md-4 col-xl-3"
+                     data-bs-toggle="tooltip"
+                     title="חזית או גימור ראשי שנבחר עבור ההזמנה">
+                    <div class="text-muted small">חזית / גימור</div>
+                    <div class="fw-medium">{{ order.front.name|default:"-" }}</div>
+                </div>
+                <div class="col-6 col-md-4 col-xl-3"
+                     data-bs-toggle="tooltip"
+                     title="דגם ידית נבחר עבור ההזמנה">
+                    <div class="text-muted small">ידית</div>
+                    <div class="fw-medium">{{ order.handle.name|default:"-" }}</div>
+                </div>
+                <div class="col-6 col-md-4 col-xl-3"
+                     data-bs-toggle="tooltip"
+                     title="גוון צבע ראשי עבור כנפי הדלתות">
+                    <div class="text-muted small">גוון בכנפיים</div>
+                    <div class="fw-medium">
+                        {{ order.color_panel_outside|default:"-" }}
+                        {% if order.color_panel_inside and order.color_panel_inside != order.color_panel_outside %}
+                            / {{ order.color_panel_inside }}
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-xl-3"
+                     data-bs-toggle="tooltip"
+                     title="גוון צבע ראשי עבור המשקופים">
+                    <div class="text-muted small">גוון במשקופים</div>
+                    <div class="fw-medium">{{ order.color_frames|default:"-" }}</div>
+                </div>
+                <div class="col-6 col-md-4 col-xl-3"
+                     data-bs-toggle="tooltip"
+                     title="תאריך יצירת ההזמנה במערכת">
+                    <div class="text-muted small">ירידה לייצור</div>
+                    <div class="fw-medium">{{ order.production_start_date|date:"d/m/y" }}</div>
+                </div>
+                <div class="col-6 col-md-4 col-xl-3"
+                     data-bs-toggle="tooltip"
+                     title="תאריך יעד סופי לסיום ייצור">
+                    <div class="text-muted small">סיום ייצור</div>
+                    <div class="fw-medium">{{ order.completion_date|date:"d/m/y" }}</div>
+                </div>
+                <div class="col-6 col-md-4 col-xl-3"
+                     data-bs-toggle="tooltip"
+                     title="תאריך מתוכנן לצביעת הפריטים">
+                    <div class="text-muted small">סיום צבע</div>
+                    <div class="fw-medium">{{ order.painting_completion_date|date:"d/m/y" }}</div>
+                </div>
             </div>
         </div>
     </div>
     <!-- Action Toolbar & Primary Process CTAs -->
-    <div class="mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2 p-2 bg-light rounded border shadow-sm">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 p-3 mb-4 rounded-3 border bg-body-tertiary">
         <div class="d-flex flex-wrap align-items-center gap-2">
             <!-- 1. ЗАПУСК В ПРОИЗВОДСТВО И ВАЛИДАЦИЯ -->
             {% if order.can_start_production %}
                 {% if order.status == 'PHASE1_READY' %}
                     <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-                       class="btn btn-warning fw-bold shadow-sm">
+                       class="btn btn-warning fw-semibold">
                         <i class="bi bi-arrow-right-circle me-1"></i> העבר לשלב ב' (הזנת מידות)
                     </a>
                 {% else %}
                     <button type="button"
-                            class="btn btn-primary fw-bold shadow-sm"
+                            class="btn btn-primary fw-semibold"
                             onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
                         <i class="bi bi-play-circle me-1"></i> העבר לייצור (אצווה חדשה)
                     </button>
@@ -115,14 +122,14 @@
             {% if not order.can_start_production %}
                 {% if order.status == 'PHASE1_PRODUCTION' %}
                     <a href="{% url 'production:order-complete-phase1' order.pk %}"
-                       class="btn btn-success fw-bold shadow-sm"
+                       class="btn btn-success fw-semibold"
                        data-bs-toggle="tooltip"
                        title="סיום שלב א' של ההזמנה">
                         <i class="bi bi-check-circle me-1"></i> סיום שלב א'
                     </a>
                 {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' or order.status == 'PARTIALLY_READY' %}
                     <a href="{% url 'production:order-complete-production' order.pk %}"
-                       class="btn btn-success fw-bold shadow-sm"
+                       class="btn btn-success fw-semibold"
                        data-bs-toggle="tooltip"
                        title="סיום תהליך הייצור והעברה למוכן למשלוח">
                         <i class="bi bi-check-all me-1"></i> סיום ייצור
@@ -131,7 +138,7 @@
             {% endif %}
             <!-- 3. ФОРМА РАЗМЕРОВ (טופס מידות) -->
             <a href="{% url 'order-measurements' order.pk %}"
-               class="btn btn-outline-primary shadow-sm"
+               class="btn btn-outline-primary"
                data-bs-toggle="tooltip"
                title="צפייה ועריכת מידות הפריטים">
                 <i class="bi bi-rulers me-1"></i> טופס מידות
@@ -139,7 +146,7 @@
             <!-- 4. ОТЧЕТЫ И ЧПУ (Модальное окно) -->
             {% if order.status != 'NEW' and order.status != 'CANCELED' %}
                 <button type="button"
-                        class="btn btn-dark fw-bold shadow-sm ms-2"
+                        class="btn btn-dark fw-semibold"
                         data-bs-toggle="modal"
                         data-bs-target="#reportsModal"
                         title="הדפסת דוחות, מדבקות והורדת קבצי מכונה">
@@ -155,7 +162,7 @@
                         data-bs-toggle="dropdown">
                     <i class="bi bi-tools me-1"></i>Dev Tools
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                <ul class="dropdown-menu dropdown-menu-end">
                     <li><a class="dropdown-item"
    href="{% url 'production:order-rebuild-batch-spec' order.pk %}"><i class="bi bi-cpu me-2 text-warning"></i>Rebuild Spec</a></li>
                     <li><a class="dropdown-item"
@@ -184,7 +191,7 @@
                 <!-- Панель управления: Свернуть все / Развернуть все -->
                 <div class="d-flex justify-content-between align-items-center mb-3 px-1">
                     <span class="text-muted small fw-semibold">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
-                    <div class="btn-group btn-group-sm shadow-sm" role="group">
+                    <div class="btn-group btn-group-sm" role="group">
                         <button type="button"
                                 class="btn btn-outline-secondary"
                                 id="btnExpandAllGroups"
@@ -205,17 +212,17 @@
             <div class="accordion d-flex flex-column gap-3" id="groupsAccordion">
                 {% for group in groups %}
                     {% with items=group.items.all %}
-                        <div class="card shadow-sm border-0 group-accordion-item"
+                        <div class="card overflow-hidden group-accordion-item"
                              data-group-id="{{ group.id }}">
                             <!-- Компактная шапка (видна всегда, в свернутом виде оставляет только модель и диапазон) -->
-                            <div class="card-header bg-white border-0 py-2 px-3 d-flex justify-content-between align-items-center cursor-pointer"
+                            <div class="card-header bg-body border-0 py-3 px-3 d-flex justify-content-between align-items-center cursor-pointer"
                                  role="button"
                                  data-bs-toggle="collapse"
                                  data-bs-target="#groupCollapse-{{ group.id }}"
                                  aria-expanded="true"
                                  aria-controls="groupCollapse-{{ group.id }}">
                                 <div class="d-flex align-items-center gap-3">
-                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle fs-6 px-3">
+                                    <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle fs-6 px-3">
                                         <i class="bi bi-door-closed me-1"></i>
                                         {% if items|length > 1 %}
                                             דלתות {{ items.0.mark }}-{{ items.last.mark }}
@@ -233,7 +240,7 @@
                                     </h5>
                                 </div>
                                 <div class="d-flex align-items-center gap-2">
-                                    <span class="badge bg-light text-secondary border">{{ group.quantity }} יח'</span>
+                                    <span class="badge rounded-pill bg-body-secondary text-body-secondary border">{{ group.quantity }} יח'</span>
                                     <i class="bi bi-chevron-down fs-5 text-secondary collapse-arrow"></i>
                                 </div>
                             </div>
@@ -246,9 +253,9 @@
                         </div>
                     {% endwith %}
                 {% empty %}
-                    <div class="card shadow-sm border-0 m-1">
-                        <div class="card-body text-center py-5">
-                            <i class="bi bi-layers fs-1 text-muted d-block mb-3"></i>
+                    <div class="card">
+                        <div class="card-body sb-empty">
+                            <i class="bi bi-layers d-block mb-3"></i>
                             <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
                             <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
                             <div class="d-flex justify-content-center gap-2 mt-3">
@@ -672,7 +679,7 @@
                             const reqBadge = (cust['customizer_is_required'] || cust['is_required']) ? '<span class="badge bg-danger-subtle text-danger ms-1">חובה</span>' : '';
                             html +=
                                 '<div class="col">' +
-                                '<div class="p-2 border rounded bg-white shadow-sm h-100" data-bs-toggle="tooltip" title="' + (cust['customizer_description'] || cust['customizer_name']) + '">' +
+                                '<div class="p-3 border rounded-3 bg-body h-100" data-bs-toggle="tooltip" title="' + (cust['customizer_description'] || cust['customizer_name']) + '">' +
                                 '<div class="d-flex align-items-center mb-2">' +
                                 '<div class="flex-shrink-0 bg-primary-subtle text-primary px-2 py-1 rounded me-3">' +
                                 '<i class="bi bi-check2-circle"></i>' +
@@ -1517,8 +1524,8 @@
 
                     const cardHtml =
                         '<div class="col-md-6 col-xl-4 spec-card-item">' +
-                        '<div class="card h-100 shadow-sm border-0 bg-light">' +
-                        '<div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2">' +
+                        '<div class="card h-100 bg-body-tertiary">' +
+                        '<div class="card-header bg-body border-bottom d-flex justify-content-between align-items-center py-2">' +
                         '<div class="text-truncate me-2"><strong class="text-primary fs-6" title="' + spec['name'] + '">' + spec['name'] + '</strong> ' + isSplitBadge + '</div>' +
                         '<button type="button" class="btn btn-outline-danger btn-sm p-1 py-0 btn-delete-spec" data-spec-id="' + spec['id'] + '" title="מחק מפרט זה"><i class="bi bi-trash"></i></button>' +
                         '</div>' +
@@ -1533,7 +1540,7 @@
                         '<div class="mb-2"><div class="text-muted extra-small mb-1">שינויים ושדרוגים (קסטומייזרים):</div><div>' + customizersHtml + '</div></div>' +
                         actionButtons +
                         '</div>' +
-                        '<div class="card-footer bg-white border-top-0 py-1 text-muted extra-small d-flex justify-content-between">' +
+                        '<div class="card-footer bg-body border-top-0 py-1 text-muted extra-small d-flex justify-content-between">' +
                         '<span>נוצר: ' + (spec['created_at_formatted'] || '') + '</span>' +
                         '<span>' + createdByHtml + '</span>' +
                         '</div></div></div>';

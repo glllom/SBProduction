@@ -697,7 +697,7 @@ class PanelDimensionStep(SpecStep):
             spec.panel_dimensions = []
             spec.press_dimensions = []
             return
-        
+
         pf = product.product_family
         h = float(item.height or 0)
         w = float(item.width or 0)
@@ -1840,7 +1840,7 @@ class DoorLabelInitStep(SpecStep):
 class DoorLabelEnrichStep(SpecStep):
     """
     Приоритет 1100: Финальное обогащение заготовок наклеек фурнитурой,
-    высотами петель, комментариями и управляющей программой ЧПУ.
+    программами ЧПУ, высотами и кастомизаторами.
     """
     priority = 1100
     important_for_phase1 = False
@@ -1854,6 +1854,7 @@ class DoorLabelEnrichStep(SpecStep):
             drafts=context.label_drafts,
             spec=context.spec,
             item=context.item,
+            customizers=context.customizers,
         )
 
 

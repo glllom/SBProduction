@@ -1,20 +1,27 @@
 {% extends "base.html" %}
 {% block content %}
     <div class="container-fluid py-4" dir="rtl">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div>
-                <h2 class="mb-1">ניהול תחנה: {{ station.name }} ({{ station.code }})</h2>
-                <div class="text-muted small">סימון הזמנות שבוצעו על פי דף עבודה</div>
+        <div class="sb-page-header mb-4">
+            <div class="d-flex align-items-center gap-3">
+                <div class="sb-stat-icon sb-accent">
+                    <i class="bi bi-gear-wide-connected"></i>
+                </div>
+                <div>
+                    <h2 class="sb-page-title">ניהול תחנה: {{ station.name }} ({{ station.code }})</h2>
+                    <div class="sb-page-subtitle">סימון הזמנות שבוצעו על פי דף עבודה</div>
+                </div>
             </div>
             <div>
                 <a href="{% url 'production:station-sheet-print' station.code %}"
                    target="_blank"
-                   class="btn btn-outline-dark">הדפס דף עבודה</a>
+                   class="btn btn-outline-secondary">
+                    <i class="bi bi-printer ms-1"></i> הדפס דף עבודה
+                </a>
             </div>
         </div>
         <form method="POST">
             {% csrf_token %}
-            <div class="card shadow-sm">
+            <div class="card border rounded-4 overflow-hidden">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-light">
@@ -44,24 +51,31 @@
                                                 {{ row.target_date|date:"d/m/Y" }}
                                             </span>
                                         {% else %}
-                                            -
+                                            <span class="text-muted">-</span>
                                         {% endif %}
                                     </td>
                                     <td>{{ row.customer|default:"-" }}</td>
-                                    <td>{{ row.pending_qty }} מתוך {{ row.total_qty }}</td>
+                                    <td>
+                                        <span class="badge text-bg-primary-subtle text-primary-emphasis rounded-pill px-3">{{ row.pending_qty }} מתוך {{ row.total_qty }}</span>
+                                    </td>
                                 </tr>
                             {% empty %}
                                 <tr>
-                                    <td colspan="5" class="text-center py-4 text-muted">אין הזמנות ממתינות לתחנה זו.</td>
+                                    <td colspan="5" class="sb-empty">
+                                        <i class="bi bi-inbox d-block mb-2"></i>
+                                        אין הזמנות ממתינות לתחנה זו.
+                                    </td>
                                 </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
                 {% if backlog %}
-                    <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
+                    <div class="card-footer bg-body d-flex justify-content-between align-items-center flex-wrap gap-3 py-3">
                         <span class="text-muted" id="selectedCounter">נבחרו 0 הזמנות</span>
-                        <button type="submit" class="btn btn-success px-4">סמן הזמנות שנבחרו כ-בוצעו (Pass)</button>
+                        <button type="submit" class="btn btn-primary px-4 fw-bold">
+                            <i class="bi bi-check2-circle ms-1"></i> סמן הזמנות שנבחרו כ-בוצעו (Pass)
+                        </button>
                     </div>
                 {% endif %}
             </div>

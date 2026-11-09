@@ -25,9 +25,9 @@ class ProductType(models.Model):
 
 class ProductFamily(models.Model):
     class AllowedDirection(models.TextChoices):
-        BOTH = 'BOTH', 'Both directions (In / Out)'
-        IN_ONLY = 'IN_ONLY', 'Inward only (In)'
-        OUT_ONLY = 'OUT_ONLY', 'Outward only (Out)'
+        BOTH = 'BOTH', 'דו-כיווני (פנימה / החוצה)'
+        IN_ONLY = 'IN_ONLY', 'פתיחה פנימה בלבד'
+        OUT_ONLY = 'OUT_ONLY', 'פתיחה החוצה בלבד'
 
     product_type = models.ForeignKey(
         ProductType,
@@ -42,7 +42,7 @@ class ProductFamily(models.Model):
     supports_split_installation = models.BooleanField('ניתן להתקין בשני שלבים', default=False)
     default_value_for_frame = models.CharField('עובי משקוף ברירת מחדל', max_length=255, blank=True, default='')
 
-    thickness = models.FloatField('עובי (Толщина)', default=0.0)
+    thickness = models.FloatField('עובי', default=0.0)
     frame_inner_height_reduction = models.FloatField(
         'הפחתת גובה פתח משקוף',
         default=0.0,
@@ -59,35 +59,35 @@ class ProductFamily(models.Model):
         'מרווח עליון כנף',
         default=-1.0,
         validators=[MaxValueValidator(0.0)],
-        help_text='зазор полотна по высоте (верх) (в мм)'
+        help_text='מרווח הכנף בגובה, בצד העליון (במ"מ)'
     )
 
     leaf_bottom_clearance = models.FloatField(
         'מרווח תחתון כנף',
         default=-1.0,
         validators=[MaxValueValidator(0.0)],
-        help_text='зазор полотна по высоте (пол) (в мм)'
+        help_text='מרווח הכנף בגובה, בצד התחתון (במ"מ)'
     )
 
     leaf_side_clearance = models.FloatField(
-        'מרווח צדדים כנף (Суммарный Зазор полотна на обе стороны)',
+        'מרווח צדדי כנף (סך הכל משני הצדדים)',
         default=-0.7,
         validators=[MaxValueValidator(0.0)],
-        help_text='Суммарный Зазор полотна на обе стороны (в мм)'
+        help_text='סך מרווח הכנף משני הצדדים (במ"מ)'
     )
 
     double_leaf_overlap = models.FloatField(
-        'תנקון מידה לדלת כפולה',
+        'תיקון מידה לדלת כפולה',
         default=0.7,
         validators=[MaxValueValidator(2)]
     )
 
     allowed_direction = models.CharField(
-        "Allowed opening direction",
+        "כיוון פתיחה מותר",
         max_length=10,
         choices=AllowedDirection.choices,
         default=AllowedDirection.BOTH,
-        help_text="Limits allowed door opening direction for this model"
+        help_text="מגביל את כיוון הפתיחה המותר של הדלת למשפחה זו"
     )
 
     class Meta:
@@ -212,7 +212,7 @@ class Hardware(models.Model):
     General hardware components (locks, hinges, etc.)
     """
     name = models.CharField('שם', max_length=255)
-    sku = models.CharField('מק""ט', max_length=100, unique=True)
+    sku = models.CharField('מק"ט', max_length=100, unique=True)
     price = models.DecimalField('מחיר', max_digits=10, decimal_places=2, default=0)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
@@ -239,12 +239,12 @@ class Hardware(models.Model):
         blank=True,
         symmetrical=False,
         related_name='assembled_in',
-        verbose_name='רכיבים (Components)',
-        help_text='Components that make up this assembly',
+        verbose_name='רכיבים',
+        help_text='הרכיבים שמרכיבים הרכבה זו',
     )
 
     common_name = models.CharField(
-        'שם קבוצה (Common Name)',
+        'שם קבוצה',
         max_length=255,
         blank=True,
         default='',
@@ -310,16 +310,16 @@ class Material(models.Model):
         related_name='inward_originals',
         verbose_name='תחליף לפתיחה החוצה'
     )
-    sku = models.CharField('מק""ט', max_length=100, unique=True)
+    sku = models.CharField('מק"ט', max_length=100, unique=True)
     material_type = models.CharField(
         'סוג חומר',
         max_length=20,
 
     )
 
-    thickness = models.DecimalField('עובי, מ""מ', max_digits=5, decimal_places=2, null=True, blank=True)
-    length = models.DecimalField('אורך סטנדרטי, מ""מ', max_digits=7, decimal_places=2, null=True, blank=True)
-    width = models.DecimalField('רוחב סטנדרטי, מ""מ', max_digits=7, decimal_places=2, null=True, blank=True)
+    thickness = models.DecimalField('עובי, מ"מ', max_digits=5, decimal_places=2, null=True, blank=True)
+    length = models.DecimalField('אורך סטנדרטי, מ"מ', max_digits=7, decimal_places=2, null=True, blank=True)
+    width = models.DecimalField('רוחב סטנדרטי, מ"מ', max_digits=7, decimal_places=2, null=True, blank=True)
     color = models.ForeignKey(Color, on_delete=models.SET_NULL, null=True, blank=True, related_name='materials')
 
     price_per_unit = models.DecimalField('מחיר ליחידה', max_digits=10, decimal_places=2, default=0)
@@ -344,7 +344,7 @@ class ProductModel(models.Model):
     Core catalog identity. Technological details are stored in apps.production.ProductTechnicalData.
     """
 
-    code = models.CharField('מק""ט', max_length=100, unique=True)
+    code = models.CharField('מק"ט', max_length=100, unique=True)
     name = models.CharField('שם', max_length=255)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
@@ -492,7 +492,7 @@ class Customizer(models.Model):
         max_length=50,
         unique=True,
         db_index=True,
-        verbose_name='קוד / מק""ט קסטומייזר',
+        verbose_name='קוד / מק"ט קסטומייזר',
         help_text="קוד ייחודי לחיפוש מהיר על ידי מנהל (למשל cmz1)",
     )
     name = models.CharField(max_length=255, verbose_name="שם")
@@ -534,7 +534,7 @@ class Customizer(models.Model):
         null=True,
         blank=True,
         related_name="customizers",
-        verbose_name="פרזול (Hardware)",
+        verbose_name="פרזול",
         help_text="קישור ישיר לפריט במחסן להזמנה אוטומטית",
     )
 
@@ -548,7 +548,7 @@ class Customizer(models.Model):
     bom_overrides = models.JSONField(
         default=dict,
         blank=True,
-        verbose_name="דריסות BOM (BOM Overrides)",
+        verbose_name="דריסות BOM",
         help_text='JSON: {"filling": "SKU_OR_ID", "panel_frame": "SKU_OR_ID", "filling_preset": "ID_OR_NAME", "covering": ""}'
     )
 
@@ -672,31 +672,31 @@ class Customizer(models.Model):
         blank=True,
         null=True,
         verbose_name="פרמטר 1: אפשרויות",
-        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
+        help_text="אפשרויות מופרדות בפסיקים. לפריטי מלאי השתמשו ב-SKU=קידומת:תווית (למשל SKU=hrdw121-12:צילינדר), ולערכים כלליים ב-KEY:תווית (למשל NONE:ללא, WC:תפוס/פנוי).",
     )
     par2_options = models.TextField(
         blank=True,
         null=True,
         verbose_name="פרמטר 2: אפשרויות",
-        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
+        help_text="אפשרויות מופרדות בפסיקים. לפריטי מלאי השתמשו ב-SKU=קידומת:תווית (למשל SKU=hrdw121-12:צילינדר), ולערכים כלליים ב-KEY:תווית (למשל NONE:ללא, WC:תפוס/פנוי).",
     )
     par3_options = models.TextField(
         blank=True,
         null=True,
         verbose_name="פרמטר 3: אפשרויות",
-        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
+        help_text="אפשרויות מופרדות בפסיקים. לפריטי מלאי השתמשו ב-SKU=קידומת:תווית (למשל SKU=hrdw121-12:צילינדר), ולערכים כלליים ב-KEY:תווית (למשל NONE:ללא, WC:תפוס/פנוי).",
     )
     par4_options = models.TextField(
         blank=True,
         null=True,
         verbose_name="פרמטר 4: אפשרויות",
-        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
+        help_text="אפשרויות מופרדות בפסיקים. לפריטי מלאי השתמשו ב-SKU=קידומת:תווית (למשל SKU=hrdw121-12:צילינדר), ולערכים כלליים ב-KEY:תווית (למשל NONE:ללא, WC:תפוס/פנוי).",
     )
     par5_options = models.TextField(
         blank=True,
         null=True,
         verbose_name="פרמטר 5: אפשרויות",
-        help_text="Options separated by commas. Use SKU=prefix:LABEL for inventory (e.g. SKU=hrdw121-12: צילינדר) or KEY:LABEL for generic values (e.g. NONE: ללא, WC: תפוס/פנוי).",
+        help_text="אפשרויות מופרדות בפסיקים. לפריטי מלאי השתמשו ב-SKU=קידומת:תווית (למשל SKU=hrdw121-12:צילינדר), ולערכים כלליים ב-KEY:תווית (למשל NONE:ללא, WC:תפוס/פנוי).",
     )
 
 
@@ -825,7 +825,7 @@ class Customizer(models.Model):
             for field_name, field_skus in field_to_skus.items():
                 invalid_skus = [sku for sku in field_skus if sku not in existing_skus]
                 if invalid_skus:
-                    errors[field_name] = f"Invalid Hardware SKUs: {', '.join(invalid_skus)}"
+                    errors[field_name] = f"מקטי חומרה לא תקינים: {', '.join(invalid_skus)}"
 
         if errors:
             raise ValidationError(errors)
