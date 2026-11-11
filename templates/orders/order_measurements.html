@@ -128,7 +128,7 @@
                         <td class="field-wall">{{ item.wall_fmt }}</td>
                         <td class="field-opening small">
                             {% if item.opening or item.direction %}
-                                {{ item.get_direction_display|default:"" }} |
+                                {{ item.direction|default:"" }} |
                                 {{ item.get_opening_display|default:"" }}
                             {% else %}
                                 -
@@ -138,7 +138,8 @@
                         <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
                         <td class="no-print text-nowrap">
                             {% if order.sketch or item.sketch %}
-                                <a href="{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
+                                <a href="
+												{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
                                    target="_blank"
                                    class="btn btn-sm btn-outline-primary py-0"
                                    data-bs-toggle="tooltip"

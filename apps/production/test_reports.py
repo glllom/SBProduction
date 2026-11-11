@@ -181,3 +181,18 @@ class MasterReportTemplateTests(TestCase):
         if 'alum_doors' in sec_map:
             self.assertFalse(sec_map['alum_doors']['is_portrait'])
             self.assertEqual(sec_map['alum_doors']['include_template'], 'production/includes/report_alum_doors.html')
+
+    @patch('apps.production.views.StationTrackingService.get_station_batch_summary')
+    def test_print_all_filters_by_station(self, mock_summary):
+        """Проверка, что параметр ?station= печатает только указанный участок"""
+        ProductionStation.objects.create(name='תחנה א', code='ST_A', active=True, order=1)
+        ProductionStation.objects.create(name='תחנה ב', code='ST_B', active=True, order=2)
+        mock_summary.return_value = [
+            {'display_order_batch': 'ORD-1', 'customer': 'Client', 'doors_count': 2, 'completion_date': None}
+        ]
+
+        response = self.client.get(reverse('production:tracking_print_all') + '?station=st_b')
+        self.assertEqual(response.status_code, 200)
+        sheets = response.context['sheets']
+        self.assertEqual([s['station'].code for s in sheets], ['ST_B'])
+        self.assertEqual(sheets[0]['total_doors'], 2)

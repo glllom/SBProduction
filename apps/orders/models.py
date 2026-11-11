@@ -21,8 +21,8 @@ class OrderStatus(models.TextChoices):
 
 
 class OpeningSide(models.TextChoices):
-    LEFT = 'L', 'שמאל'
-    RIGHT = 'R', 'ימין'
+    LEFT = 'L', 'L'
+    RIGHT = 'R', 'R'
 
 
 class OpeningType(models.TextChoices):
@@ -701,7 +701,7 @@ class OrderItemsGroupCustomizer(models.Model):
                         'value': val
                     })
         return result
-    
+
     def __str__(self):
         return f"{self.group} - {self.customizer.name}"
 

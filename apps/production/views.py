@@ -682,7 +682,7 @@ def station_report(request, pk):
                 tmpl_lower = (station.template_name or '').lower()
 
                 # Подбор шаблона секции для Мастер-отчета
-                if 'report_wood_frames' in tmpl_lower or 'report_wooden_frames' in tmpl_lower or code_lower in [
+                if 'report_wood_frames' in tmpl_lower or code_lower in [
                     'wood_frames', 'wooden_frames']:
                     include_template = 'production/includes/report_wood_frames.html'
                 elif 'report_press' in tmpl_lower or code_lower in ['press', 'cutting_press']:
@@ -757,7 +757,6 @@ def station_report(request, pk):
                 is_portrait = include_template in [
                     'production/includes/report_press.html',
                     'production/includes/report_wood_frames.html',
-                    'production/includes/report_wooden_frames.html'
                 ] or code_lower in ['press', 'cutting_press', 'wood_frames', 'wooden_frames']
 
                 sections.append({
@@ -1360,14 +1359,18 @@ def report_wood_frames(request, pk):
     order = get_object_or_404(Order, pk=pk)
     order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
 
+    requested_batches = request.GET.getlist('batch')
+    res = ProductionDataService.extract_report_items(order_spec, requested_batches)
+    report_items = res[0] if res[0] is not None else []
+
     service = ProductionDataService(order)
-    frame_groups = service.prepare_wood_frames_report_data(order_spec)
+    frame_groups = service.prepare_wood_frames_report_data(report_items)
     barcode_data = f"{order.order_number};FRAMES"
 
     return render(request, 'production/reports/report_wood_frames.html', {
         'order': order,
         'order_spec': order_spec,
-        'batches': order_spec.batches,
+        'batches_label': res[1] if res[0] is not None else "לא נבחרה אצווה",
         'frame_groups': frame_groups,
         'order_qr': get_qr_base64(barcode_data),
         'now': timezone.now(),
@@ -1629,6 +1632,7 @@ class ToggleBatchStationAjaxView(LoginRequiredMixin, View):
 class StationsBatchDailyPrintView(LoginRequiredMixin, TemplateView):
     """
     Формирует единый документ для печати списков по всем активным участкам.
+    При передаче ?station=<code> печатается только указанный участок.
     Пустые станции автоматически пропускаются.
     """
     template_name = 'production/reports/daily_stations_sheets.html'
@@ -1636,6 +1640,10 @@ class StationsBatchDailyPrintView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         stations = ProductionStation.objects.filter(active=True).order_by('order', 'id')
+
+        station_code = self.request.GET.get('station')
+        if station_code:
+            stations = stations.filter(code__iexact=station_code)
 
         printable_sheets = []
         for st in stations:

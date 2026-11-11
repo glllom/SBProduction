@@ -98,6 +98,7 @@
         {% for d in grp.dimensions %}
             <div class="col-{% if grp.dimensions|length >= 4 %}6{% else %}12{% endif %}">
                 <div class="dim-line d-flex gap-4 align-items-baseline font-monospace fs-3 fw-bold p-0 m-0">
+                    <span class="print-checkbox"></span>
                     <span>{{ d.height|floatformat }} \ {{ d.width|floatformat }}</span>
                     {% if d.qty > 1 %}
                         <span class="dim-qty fs-4 text-muted" dir="rtl">{{ d.qty }}x</span>{% endif %}

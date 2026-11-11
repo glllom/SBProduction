@@ -1,45 +1,94 @@
 <div class="wood-frames-report-content" dir="rtl">
+    <style>
+        .print-checkbox {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border: 1.5px solid #222222;
+            border-radius: 3px;
+            margin-inline-end: 10px;
+            vertical-align: middle;
+            background-color: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            flex-shrink: 0;
+        }
+
+        /* Тонкая серая пунктирная линия между 2 колонками */
+        .wood-dimensions-grid > .col-6:nth-child(even) {
+            border-inline-start: 1.5px dashed #b0b0b0;
+            padding-inline-start: 25px;
+        }
+
+        .wood-dimensions-grid > .col-6:nth-child(odd) {
+            padding-inline-end: 25px;
+        }
+    </style>
     <!-- Шапка отчёта -->
     <div class="report-header mb-3 border-bottom pb-2 d-flex justify-content-between align-items-baseline">
         <h4 class="mb-0">
             הזמנה: <strong>{{ order.order_number }}</strong>
             {% if batches_label %}<span class="text-secondary fs-6 fst-italic">[{{ batches_label }}]</span>{% endif %}
             <span class="text-secondary mx-2">|</span>
-            <span class="text-primary">{{ report_label|default:"" }}</span>
+            <span class="text-primary">{{ report_label|default:"משקופי עץ" }}</span>
         </h4>
         <span class="fs-5 text-muted">תאריך: {{ now|date:"d/m/y" }}</span>
     </div>
     <!-- Секции по группам характеристик משקופים -->
     {% for grp in frame_groups %}
         <div class="wood-frame-card mb-4">
-            <div class="row align-items-start g-4">
-                <!-- Правая колонка: Информационная шапка группы -->
-                <div class="col-6 wood-card-header-col">
+            <div class="row align-items-start g-4 mb-3">
+                <div class="col-12">
                     <p class="card-title fw-bold mb-2 fs-4">{{ grp.product_name }}</p>
-                    <!-- 2. Серая плашка: Цвет и הלבשה -->
-                    <div class="bg-body-tertiary p-2 rounded-3">
-                        <p class="mb-1">{{ grp.frames_caption }}</p>
-                        <p class="mb-1">{{ grp.door_casing }}</p>
-                        <p class="mb-1">מנעול: <strong>{{ grp.lock_name|default:"ללא" }} </strong><span class="fs-5"> {{ grp.lock_height| floatformat }}</span></p>
-                        <p class="mb-0">
-                            צירים: <strong>{{ grp.hinge_name|default:"ללא" }} </strong><span class="fs-5"> {{ grp.hinge_heights_display }}</span>
-                        </p>
+                    <!-- Серая плашка: Цвет, הלבשה, замки и петли -->
+                    <div class="bg-body-tertiary p-2 rounded-3 row">
+                        <div class="col">
+                            <p class="mb-1 fs-4 fw-bold">{{ grp.frames_caption }}</p>
+                        </div>
+                        <div class="col">
+                            <p class="mb-1">{{ grp.door_casing }}</p>
+                        </div>
                     </div>
-                </div>
-                <div class="col-6 wood-card-rows-col">
-                    <div class="card-rows-container">
-                        {% for row in grp.grouped_rows %}
-                            <div>
-                                <p dir="rtl" class="fs-5 fw-bold mb-1">{{ row.dimension_display }}</p>
-                            </div>
-                        {% endfor %}
+                    <div class="row border-bottom">
+                        <div class="col">
+                            <p class="mb-1">
+                                מנעול: <strong>{{ grp.lock_name|default:"ללא" }}</strong>
+                                {% if grp.lock_height %}
+                                    <span class="fs-5 ms-2">{{ grp.lock_height|floatformat }}</span>{% endif %}
+                            </p>
+                        </div>
+                        <div class="col">
+                            <p class="mb-0">
+                                צירים: <strong>{{ grp.hinge_name|default:"ללא" }}</strong>
+                                {% if grp.hinge_heights_display %}
+                                    <span class="fs-5 ms-2">{{ grp.hinge_heights_display }}</span>{% endif %}
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
-            <!-- Нижняя черная разделительная линия -->
-            <div class="card-bottom-divider"></div>
+            <!-- Размеры: 1 колонка при < 4 позиций, 2 колонки с пунктиром при 4+ -->
+            <div class="border-bottom border-4 border-dark pb-2 mb-3">
+                <div class="row g-2 wood-dimensions-grid">
+                    {% for row in grp.grouped_rows %}
+                        <div class="col-{% if grp.grouped_rows|length >= 4 %}6{% else %}12{% endif %}">
+                            <div class="dim-line d-flex align-items-center font-monospace fs-4 fw-bold p-0 m-0 row">
+                                <div class="col-1">
+                                    <span dir="rtl">{{ row.wall|floatformat }}{{ row.direction }}</span>
+                                </div>
+                                <div class="col-6">
+                                    <span>{{ row.height|floatformat }}</span>
+                                    <span class="fs-5">/</span>
+                                    <span>{{ row.width|floatformat }}</span>
+                                </div>
+                                <div class="col">{{ row.comments }}</div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     {% empty %}
-        <div class="alert alert-warning text-center">לא נמצאו משקופי עץ עבור הזמנה זו.</div>
+        <div class="alert alert-warning text-center mt-4">לא נמצאו משקופי עץ עבור הזמנה זו.</div>
     {% endfor %}
 </div>
