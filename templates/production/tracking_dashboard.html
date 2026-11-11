@@ -15,12 +15,14 @@
                 </div>
             </div>
             <div class="d-flex flex-wrap gap-2">
-                <!-- Печать только текущей выбранной вкладки -->
-                <button type="button"
-                        onclick="window.print()"
-                        class="btn btn-outline-secondary">
-                    <i class="bi bi-printer ms-1"></i> הדפס תחנה נוכחית
-                </button>
+                <!-- Печать только текущей выбранной вкладки (тот же отчет, что и для всех станций) -->
+                {% if selected_station %}
+                    <a href="{% url 'production:tracking_print_all' %}?station={{ selected_station.code|urlencode }}"
+                       target="_blank"
+                       class="btn btn-outline-secondary">
+                        <i class="bi bi-printer ms-1"></i> הדפס תחנה נוכחית
+                    </a>
+                {% endif %}
                 <!-- Пакетная печать всех активных станций сразу -->
                 <a href="{% url 'production:tracking_print_all' %}"
                    target="_blank"
