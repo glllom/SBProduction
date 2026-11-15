@@ -1,90 +1,336 @@
 {% extends "base.html" %}
+{% block title %}תעודת ליקוט מחסן - הזמנה {{ order.order_number }}{% endblock %}
+{% block page_title %}
+    <span>תעודת ליקוט מחסן - הזמנה {{ order.order_number }}</span>
+    {% if is_locked %}
+        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle ms-2 fs-6 fw-normal">
+            <i class="bi bi-lock-fill me-1"></i>מאושר ונעול
+        </span>
+    {% else %}
+        <span class="badge bg-light text-secondary border ms-2 fs-6 fw-normal">טיוטה בעריכה</span>
+    {% endif %}
+{% endblock %}
 {% block content %}
-    <div class="container-fluid py-4" dir="rtl">
-        <div class="sb-page-header mb-4">
-            <div class="d-flex align-items-center gap-3">
-                <div class="sb-stat-icon sb-accent">
-                    <i class="bi bi-box-seam"></i>
-                </div>
-                <div>
-                    <h4 class="sb-page-title">הגדרות מחסן וליקוט - הזמנה {{ order.order_number }}</h4>
-                    <div class="sb-page-subtitle">{{ order.customer }}</div>
-                </div>
+    <div class="container-fluid py-3" dir="rtl">
+        <!-- Верхняя панель действий -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold fs-5 text-dark">{{ order.customer }}</span>
+                {% if is_locked and order.warehouse_locked_at %}
+                    <span class="text-muted small">
+                        | אושר ב-{{ order.warehouse_locked_at|date:"d/m/Y" }}
+                        {% if order.warehouse_locked_by %}(
+                            {{ order.warehouse_locked_by.get_full_name|default:order.warehouse_locked_by.username }}
+                            ){% endif %}
+                    </span>
+                {% endif %}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <!-- Кнопка раскрытия общего комментария -->
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary position-relative d-inline-flex align-items-center justify-content-center"
+                        style="width: 34px;
+                               height: 34px"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#warehouseNotesCollapse"
+                        aria-expanded="{% if order.warehouse_notes %}true{% else %}false{% endif %}"
+                        aria-controls="warehouseNotesCollapse"
+                        title="הערות כלליות למחסן">
+                    <i class="bi bi-pencil"></i>
+                    {% if order.warehouse_notes %}
+                        <span class="position-absolute top-0 start-0 translate-middle p-1 bg-primary border border-light rounded-circle"></span>
+                    {% endif %}
+                </button>
+                {% if is_locked %}
+                    <a href="{% url 'production:station-report' order.id %}?station=WAREHOUSE"
+                       target="_blank"
+                       class="btn btn-sm btn-primary fw-semibold">
+                        <i class="bi bi-printer me-1"></i> הדפסת תעודת ליקוט
+                    </a>
+                    {% if is_admin %}
+                        <button type="submit"
+                                form="warehouseForm"
+                                name="action"
+                                value="unlock"
+                                class="btn btn-sm btn-outline-secondary"
+                                onclick="return confirm('ביטול הנעילה יפתח את התעודה לעריכה מחדש. להמשיך?')">
+                            <i class="bi bi-unlock me-1"></i> בטל נעילה
+                        </button>
+                    {% endif %}
+                {% else %}
+                    <button type="submit"
+                            form="warehouseForm"
+                            name="action"
+                            value="recalculate"
+                            class="btn btn-sm btn-outline-secondary"
+                            onclick="return confirm('פעולה זו תמחק את השורות הנוכחיות ותחשב מחדש את הפריטים מתוך ההזמנה (ההערה הכללית תישמר). להמשיך?')">
+                        <i class="bi bi-arrow-clockwise me-1"></i> חשב מחדש
+                    </button>
+                {% endif %}
             </div>
         </div>
-        <div class="card border rounded-4 overflow-hidden">
-            <form method="post">
-                {% csrf_token %}
-                <div class="card-body p-4">
-                    <!-- Указания для склада -->
-                    <div class="mb-4">
-                        <label class="form-label fw-semibold">הערות למחסן / תעודת ליקוט:</label>
-                        <textarea name="warehouse_notes"
-                                  class="form-control"
-                                  rows="3"
-                                  placeholder="הוראות מיוחדות לליקוט (למשל: הלקוח מביא ידיות משלו, לתאם מנעול מיוחד...)">{{ order.warehouse_notes }}</textarea>
-                    </div>
-                    <!-- Блок выбора цветов комплектующих -->
-                    <h6 class="border-bottom pb-2 mb-3 fw-semibold">רכיבים בעלי גוון לבחירה (אטמים, כיסויי ציר וכו')</h6>
-                    {% if customizable_hardware %}
-                        <div class="row g-4">
-                            {% for comp in customizable_hardware %}
-                                <div class="col-md-6">
-                                    <label class="form-label fw-semibold small">{{ comp.common_name }}:</label>
-                                    <select name="comp_{{ comp.common_name }}" class="form-select">
-                                        <option value="" {% if not comp.selected_id %}selected{% endif %}>-- לבחירת לקוח / טרם נקבע --</option>
-                                        {% for opt in comp.options %}
-                                            <option value="{{ opt.id }}"
-                                                    {% if comp.selected_id == opt.id %}selected{% endif %}>
-                                                {{ opt.name }} [{{ opt.color_name }}] ({{ opt.sku }})
-                                            </option>
+        <form method="post" id="warehouseForm">
+            {% csrf_token %}
+            <div class="collapse {% if order.warehouse_notes %}show{% endif %} mb-3"
+                 id="warehouseNotesCollapse">
+                <label class="form-label small fw-semibold text-secondary mb-1">הערות כלליות למחסן:</label>
+                <textarea name="warehouse_notes"
+                          class="form-control form-control-sm bg-white"
+                          rows="2"
+                          {% if is_locked %}disabled{% endif %}
+                          placeholder="">{{ order.warehouse_notes }}</textarea>
+            </div>
+            {% if not is_locked and available_colors %}
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <span class="text-muted small me-1"><i class="bi bi-palette me-1"></i> גוון לכל הרכיבים:</span>
+                    {% for color in available_colors %}
+                        <button type="button"
+                                class="btn btn-sm btn-light border quick-color-btn"
+                                data-color="{{ color }}">{{ color }}</button>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <div class="table-responsive mb-3">
+                <table class="table table-bordered table-hover align-middle mb-0 bg-white">
+                    <thead class="table-light text-secondary small">
+                        <tr>
+                            <th style="width: 12%;">קטגוריה</th>
+                            <th style="width: 25%;">פריט</th>
+                            <th style="width: 12%;">מק"ט</th>
+                            <th style="width: 18%;">גוון / צבע</th>
+                            <th style="width: 5%;" class="text-center">כמות</th>
+                            <th style="width: 20%;">הערה</th>
+                            {% if not is_locked %}
+                                <th style="width: 5%;" class="text-center">מחק</th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sec in sections %}
+                            {% for row in sec.rows %}
+                                {% with it=row.obj %}
+                                    <tr>
+                                        {% if forloop.first %}
+                                            <td rowspan="{{ sec.rows|length }}"
+                                                class="fw-bold bg-light align-top text-dark">{{ sec.label }}</td>
+                                        {% endif %}
+                                        <td class="fw-semibold">{{ it.common_name|default:it.name }}</td>
+                                        <td class="text-muted small font-monospace sku-cell-{{ it.id }}">{{ it.sku|default:"-" }}</td>
+                                        <td>
+                                            {% if it.is_color_required %}
+                                                <select name="hw_color_{{ it.id }}"
+                                                        class="form-select form-select-sm color-select {% if not it.hardware_id %}border-danger{% endif %}"
+                                                        data-item-id="{{ it.id }}"
+                                                        {% if is_locked %}disabled{% endif %}>
+                                                    <option value="">-- חובה לבחור גוון --</option>
+                                                    {% for opt in row.color_options %}
+                                                        <option value="{{ opt.id }}"
+                                                                data-color-name="{{ opt.color_name }}"
+                                                                data-sku="{{ opt.sku }}"
+                                                                {% if it.hardware_id == opt.id %}selected{% endif %}>
+                                                            {{ opt.color_name }} ({{ opt.sku }})
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            {% else %}
+                                                <span class="text-muted small">{{ it.color_name|default:"-" }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="excel-td">
+                                            <input type="number"
+                                                   step="0.5"
+                                                   min="0"
+                                                   name="qty_{{ it.id }}"
+                                                   value="{{ it.qty_display }}"
+                                                   class="excel-input text-center fw-semibold"
+                                                   {% if is_locked %}disabled{% endif %}>
+                                        </td>
+                                        <td class="excel-td">
+                                            <input type="text"
+                                                   name="comment_{{ it.id }}"
+                                                   value="{{ it.comment }}"
+                                                   class="excel-input"
+                                                   placeholder="הערה לשורה..."
+                                                   {% if is_locked %}disabled{% endif %}>
+                                        </td>
+                                        {% if not is_locked %}
+                                            <td class="text-center">
+                                                <input type="checkbox"
+                                                       name="delete_{{ it.id }}"
+                                                       value="1"
+                                                       class="form-check-input">
+                                            </td>
+                                        {% endif %}
+                                    </tr>
+                                {% endwith %}
+                            {% empty %}
+                                <tr>
+                                    <td class="fw-bold bg-light text-dark">{{ sec.label }}</td>
+                                    <td colspan="{% if is_locked %}5{% else %}6{% endif %}"
+                                        class="text-muted small">אין
+                                        פריטים
+                                        בקטגוריה
+                                        זו
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% endfor %}
+                        <!-- Строка добавления произвольной позиции -->
+                        {% if not is_locked %}
+                            <tr class="table-light">
+                                <td>
+                                    <select name="new_item_category" class="form-select form-select-sm">
+                                        {% for code, label in categories %}
+                                            <option value="{{ code }}" {% if code == 'OTHER' %}selected{% endif %}>{{ label }}</option>
                                         {% endfor %}
                                     </select>
-                                </div>
-                            {% endfor %}
-                        </div>
-                    {% else %}
-                        <p class="text-muted small mb-0">בהזמנה זו לא זוהו רכיבים מרובי גוונים מתוך ה-BOM.</p>
-                    {% endif %}
-                    <!-- Аккордеон с заметками для пресса и коробок -->
-                    <div class="accordion mt-4" id="deptNotesAccordion">
-                        <div class="accordion-item">
-                            <h2 class="accordion-header">
-                                <button class="accordion-button collapsed py-2 text-muted small"
-                                        type="button"
-                                        data-bs-toggle="collapse"
-                                        data-bs-target="#collapseDeptNotes"
-                                        aria-expanded="false"
-                                        aria-controls="collapseDeptNotes">
-                                    הערות למחלקות נוספות (מכבש / משקופים)
-                                </button>
-                            </h2>
-                            <div id="collapseDeptNotes" class="accordion-collapse collapse">
-                                <div class="accordion-body">
-                                    <div class="row g-3">
-                                        <div class="col-md-6">
-                                            <label class="form-label small">הערות למכבש:</label>
-                                            <textarea name="press_notes" class="form-control form-control-sm" rows="2">{{ order.press_notes }}</textarea>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label small">הערות למשקופים:</label>
-                                            <textarea name="frames_notes" class="form-control form-control-sm" rows="2">{{ order.frames_notes }}</textarea>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                                </td>
+                                <td>
+                                    <input type="text"
+                                           name="new_item_name"
+                                           class="form-control form-control-sm"
+                                           placeholder="+ הוסף פריט ידני...">
+                                </td>
+                                <td>
+                                    <input type="text"
+                                           name="new_item_sku"
+                                           class="form-control form-control-sm"
+                                           placeholder='מק"ט'>
+                                </td>
+                                <td>
+                                    <input type="text"
+                                           name="new_item_color"
+                                           class="form-control form-control-sm"
+                                           placeholder="גוון">
+                                </td>
+                                <td class="p-1">
+                                    <input type="number"
+                                           step="0.5"
+                                           name="new_item_qty"
+                                           class="form-control form-control-sm text-center"
+                                           placeholder="1">
+                                </td>
+                                <td colspan="2">
+                                    <input type="text"
+                                           name="new_item_comment"
+                                           class="form-control form-control-sm"
+                                           placeholder="הערה לפריט החדש">
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            <!-- Нижняя панель кнопок -->
+            <div class="d-flex justify-content-between align-items-center pt-2">
+                <a href="{% url 'order-detail' order.id %}"
+                   class="btn btn-sm btn-outline-secondary">חזרה להזמנה</a>
+                {% if not is_locked %}
+                    <div class="d-flex gap-2">
+                        <button type="submit"
+                                name="action"
+                                value="save_draft"
+                                class="btn btn-sm btn-outline-secondary">שמור טיוטה</button>
+                        <button type="submit"
+                                name="action"
+                                value="approve_and_print"
+                                class="btn btn-sm btn-primary fw-semibold"
+                                onclick="return validateBeforeApprove()">
+                            <i class="bi bi-check2-circle me-1"></i> אשר והדפס למחסן
+                        </button>
                     </div>
-                </div>
-                <div class="card-footer bg-body d-flex flex-wrap justify-content-between align-items-center gap-3 p-3">
-                    <a href="{% url 'order-detail' order.id %}"
-                       class="btn btn-outline-secondary">חזרה להזמנה</a>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="submit" name="save_only" class="btn btn-outline-primary">שמור</button>
-                        <button type="submit" name="save_and_print" class="btn btn-primary fw-bold">שמור והפק תעודת ליקוט</button>
-                    </div>
-                </div>
-            </form>
-        </div>
+                {% endif %}
+            </div>
+        </form>
     </div>
+    <style>
+        .excel-td {
+            padding: 0 !important;
+            vertical-align: middle;
+            height: 1px; /* позволяет input растянуться на всю высоту строки */
+        }
+
+        .excel-input {
+            width: 100%;
+            height: 100%;
+            min-height: 38px;
+            border: none !important;
+            border-radius: 0 !important;
+            background-color: transparent !important;
+            box-shadow: none !important;
+            padding: 6px 10px;
+            font-size: 0.9rem;
+            color: inherit;
+            outline: none;
+        }
+
+        .excel-input:focus {
+            background-color: #ffffff !important;
+            /* Внутренняя рамка выделения активной ячейки, как в Excel */
+            box-shadow: inset 0 0 0 2px #0d6efd !important;
+        }
+
+        .excel-input:disabled {
+            color: #495057;
+            cursor: default;
+        }
+
+        /* Убираем стрелки у числового поля (опционально, для чистого вида) */
+        .excel-input[type="number"]::-webkit-inner-spin-button,
+        .excel-input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+    </style>
+    <script>
+        function validateBeforeApprove() {
+            const missingColors = [];
+            document.querySelectorAll('.color-select').forEach(select => {
+                if (!select.value) {
+                    select.classList.add('border-danger');
+                    missingColors.push(select);
+                }
+            });
+            if (missingColors.length > 0) {
+                alert('לא ניתן לאשר ולהדפיס: יש לבחור גוון עבור כל הפריטים המסומנים באדום.');
+                missingColors[0].focus();
+                return false;
+            }
+            return confirm('שימו לב! לאחר האישור תעודת הליקוט תינעל לעריכה ותועבר להדפסה למחסן. להמשיך?');
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.quick-color-btn').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const targetColor = this.dataset.color.trim();
+                    document.querySelectorAll('.color-select').forEach(select => {
+                        let matchedValue = '';
+                        for (const opt of select.options) {
+                            if ((opt.dataset.colorName || '').trim() === targetColor) {
+                                matchedValue = opt.value;
+                                break;
+                            }
+                        }
+                        select.value = matchedValue;
+                        select.dispatchEvent(new Event('change'));
+                    });
+                });
+            });
+
+            document.querySelectorAll('.color-select').forEach(select => {
+                select.addEventListener('change', function () {
+                    const selectedOpt = this.options[this.selectedIndex];
+                    const itemId = this.dataset.itemId;
+                    const skuCell = document.querySelector(`.sku-cell-${itemId}`);
+                    if (skuCell) {
+                        skuCell.textContent = selectedOpt && selectedOpt.dataset.sku ? selectedOpt.dataset.sku : '-';
+                    }
+                    if (this.value) {
+                        this.classList.remove('border-danger');
+                    } else {
+                        this.classList.add('border-danger');
+                    }
+                });
+            });
+        });
+    </script>
 {% endblock %}

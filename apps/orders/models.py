@@ -36,6 +36,35 @@ class OpeningType(models.TextChoices):
 
 
 class Order(models.Model):
+    # В класс Order (apps/orders/models.py) добавьте:
+    class WarehouseState(models.IntegerChoices):
+        UNINITIALIZED = 0, 'טרם הוכן (חדש)'
+        DRAFT = 1, 'טיוטה / בעריכה'
+        LOCKED = 2, 'מאושר ונעול'
+
+    warehouse_state = models.PositiveSmallIntegerField(
+        choices=WarehouseState.choices,
+        default=WarehouseState.UNINITIALIZED,
+        verbose_name='מצב תעודת ליקוט'
+    )
+    warehouse_version = models.PositiveSmallIntegerField(
+        default=1,
+        verbose_name='גרסת תעודת ליקוט'
+    )
+    warehouse_locked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='תאריך אישור ליקוט'
+    )
+    warehouse_locked_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_warehouse_slips',
+        verbose_name='אושר ע"י'
+    )
+
     # --- Identifiers and base data ---
     order_number = models.CharField(
         max_length=50,
@@ -1199,3 +1228,58 @@ class OrderComponentSelection(models.Model):
 
     def __str__(self):
         return f"{self.order.order_number} - {self.common_name}: {self.selected_hardware}"
+
+
+class OrderWarehouseItem(models.Model):
+    class Category(models.TextChoices):
+        LOCKS = 'LOCKS', 'מנעולים'
+        HANDLES = 'HANDLES', 'ידיות'
+        HINGES = 'HINGES', 'צירים'
+        OTHER = 'OTHER', 'תוספות'
+
+    order = models.ForeignKey(
+        'orders.Order',
+        on_delete=models.CASCADE,
+        related_name='warehouse_items',
+        verbose_name='הזמנה'
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=Category.choices,
+        default=Category.OTHER,
+        verbose_name='קטגוריה'
+    )
+    common_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        db_index=True,
+        verbose_name='שם קבוצה (לזיהוי גוונים)'
+    )
+    hardware = models.ForeignKey(
+        'catalog.Hardware',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='פריט קטלוג'
+    )
+    name = models.CharField(max_length=255, verbose_name='שם פריט')
+    sku = models.CharField(max_length=100, blank=True, default='', verbose_name='מק"ט')
+    color_name = models.CharField(max_length=100, blank=True, default='', verbose_name='גוון')
+    is_color_required = models.BooleanField(default=False, verbose_name='חובת בחירת גוון')
+    quantity = models.DecimalField(max_digits=8, decimal_places=1, default=1, verbose_name='כמות')
+    comment = models.CharField(max_length=255, blank=True, default='', verbose_name='הערה לפריט')
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'order_warehouse_items'
+        ordering = ['category', 'sort_order', 'id']
+        verbose_name = 'פריט ליקוט מחסן'
+        verbose_name_plural = 'פריטי ליקוט מחסן'
+
+    def __str__(self):
+        return f"{self.order.order_number} | {self.name} ({self.quantity})"
+
+    @property
+    def qty_display(self):
+        return int(self.quantity) if self.quantity == int(self.quantity) else self.quantity

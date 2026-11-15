@@ -1,54 +1,107 @@
-<div class="station-report-section warehouse-section">
-    <!-- Шапка отчёта -->
-    <div class="report-header d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+<div class="warehouse-slip" dir="rtl">
+    <style>
+        .wh-checkbox {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 1.5px solid #222;
+            border-radius: 3px;
+            vertical-align: middle;
+        }
+
+        .wh-section-header {
+            background-color: #d9d9d9 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            font-weight: 700;
+            font-size: 1.05rem;
+            padding: 4px 10px;
+            border: 1px solid #999;
+        }
+
+        .wh-table th, .wh-table td {
+            border: 1px solid #bbb !important;
+            padding: 5px 8px !important;
+            vertical-align: middle;
+        }
+    </style>
+    <!-- Официальная шапка накладной со штампом версии и даты -->
+    <div class="d-flex justify-content-between align-items-center border-bottom border-2 border-dark pb-2 mb-3">
         <div>
-            <h3 class="m-0">
-                דוח ליקוט פירזול מחסן (Pick List)
-                <span class="text-secondary mx-2">|</span>
-                הזמנה: <strong>{{ order.order_number }}</strong>
-            </h3>
-            <div class="text-muted">
-                לקוח: <strong>{{ order.customer_name|default:order.customer }}</strong>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <h3 class="fw-bold m-0">תעודת ליקוט מחסן</h3>
             </div>
-        </div>
-        <div class="text-end">
-            <div>תאריך: {{ now|date:"d/m/Y H:i" }}</div>
-            {% if order_qr %}
-                <img src="data:image/svg+xml;base64,{{ order_qr }}"
-                     width="50"
-                     height="50"
-                     alt="QR">
-            {% endif %}
-        </div>
+            <div class="fs-5">לקוח: <strong>{{ order.customer }}</strong></div>
+            <div class="small text-muted mt-1">
+                {#                {% if order.warehouse_locked_at %}#}
+                {#                    תאריך אישור: <strong>{{ order.warehouse_locked_at|date:"d/m/Y" }}</strong>#}
+                {#                    {% if order.warehouse_locked_by %}#}
+                {#                        | אושר ע"י:#}
+                {#                        <strong>{{ order.warehouse_locked_by.get_full_name|default:order.warehouse_locked_by.username }}</strong>#}
+                {#                    {% endif %}#}
+            {#                {% else %}#}
+            תאריך הפקה: <strong>{{ now|date:"d/m/y" }}</strong>
+            {#                {% endif %}#}
     </div>
-    <!-- Таблица комплектации -->
-    <table class="table table-bordered table-sm align-middle bg-white">
-        <thead class="table-light text-center">
-            <tr>
-                <th style="width: 25%;">קטגוריה (Категория)</th>
-                <th>תיאור פריט (Наименование)</th>
-                <th style="width: 15%;">כמות (Кол-во)</th>
-                <th style="width: 15%;">אישור ליקוט (Собрано)</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for it in hardware_summary %}
+</div>
+<div class="d-flex align-items-center gap-3">
+    <div class="border border-2 border-dark px-3 py-1 bg-light text-center">
+        <div class="small text-muted">מספר הזמנה</div>
+        <div class="fs-2 fw-bold lh-1">{{ order.order_number }}</div>
+    </div>
+    {% if order_qr %}
+        <img src="data:image/svg+xml;base64,{{ order_qr }}"
+             width="56"
+             height="56"
+             alt="QR">
+    {% endif %}
+</div>
+</div>
+<!-- Общий комментарий на накладную -->
+{% if order.warehouse_notes %}
+    <div class="border border-2 border-dark p-2 mb-3 bg-light">
+        <div class="fw-bold text-decoration-underline mb-1">הערות לליקוט:</div>
+        <div class="fs-5" style="white-space: pre-line;">{{ order.warehouse_notes }}</div>
+    </div>
+{% endif %}
+<!-- Таблица комплектующих -->
+<table class="table table-sm wh-table mb-3">
+    <thead>
+        <tr class="table-light text-center small">
+            <th style="width: 36px;">✓</th>
+            <th style="width: 18%;" class="text-start">תיאור פריט</th>
+            <th style="width: 18%;">מק"ט</th>
+            <th style="width: 13%;">גוון</th>
+            <th style="width: 8%;">כמות</th>
+            <th>הערה</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for sec in sections %}
+            {% if sec.rows %}
                 <tr>
-                    <td class="fw-bold">{{ it.category }}</td>
-                    <td>{{ it.name }}</td>
-                    <td class="text-center fs-5 fw-bold">{{ it.quantity }}</td>
-                    <td class="text-center">
-                        <span style="display: inline-block;
-                                     width: 20px;
-                                     height: 20px;
-                                     border: 1px solid #333"></span>
-                    </td>
+                    <td colspan="6" class="wh-section-header">{{ sec.label }}</td>
                 </tr>
-            {% empty %}
-                <tr>
-                    <td colspan="4" class="text-center py-3 text-muted">לא נמצא פירזול לליקוט בהזמנה זו</td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                {% for row in sec.rows %}
+                    {% with it=row.obj %}
+                        <tr>
+                            <td class="text-center">
+                                <span class="wh-checkbox"></span>
+                            </td>
+                            <td class="fw-semibold">{{ it.name }}</td>
+                            <td class="text-center font-monospace small">{{ it.sku|default:"-" }}</td>
+                            <td class="text-center fw-bold">{{ it.color_name|default:"-" }}</td>
+                            <td class="text-center fs-5 fw-bold">{{ it.qty_display }}</td>
+                            <td class="small">{{ it.comment }}</td>
+                        </tr>
+                    {% endwith %}
+                {% endfor %}
+            {% endif %}
+        {% endfor %}
+    </tbody>
+</table>
+{#<!-- Блок для подписи кладовщика -->#}
+{#<div class="border border-dark p-2 mt-3" style="min-height: 85px;">#}
+{#    <div class="fw-bold text-muted small">הערות מחסן:</div>#}
+{#</div>#}
 </div>

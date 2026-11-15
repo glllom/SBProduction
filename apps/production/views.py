@@ -17,7 +17,7 @@ from django.views.generic import TemplateView
 
 from apps.catalog.models import Hardware
 from apps.orders.models import (
-    Order, OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus, OrderComponentSelection
+    Order, OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus
 )
 from apps.production.models import ProductionStation, StationProgressSource
 from apps.production.tracking_services import StationTrackingService
@@ -843,15 +843,14 @@ def station_report(request, pk):
         })
 
     if station_code and station_code.upper() in ['WAREHOUSE', 'HARDWARE', 'PICK_LIST']:
-        hardware_summary = service.get_warehouse_hardware_summary(report_items)
+        from .warehouse_service import WarehousePackingSlipService
+        sections, _ = WarehousePackingSlipService.get_grouped_items_for_ui(order)
         return render(request, 'production/reports/report_warehouse_hardware.html', {
             'order': order,
-            'order_spec': spec_obj,
-            'batches_label': batches_label,
-            'hardware_summary': hardware_summary,
-            'report_label': 'דוח ליקוט פירזול',
+            'sections': sections,
+            'report_label': 'דו"ח פירזולים / ליקוט מחסן',
             'now': timezone.now(),
-            'order_qr': get_qr_base64(barcode_data),
+            'order_qr': get_qr_base64(f"{order.order_number};WAREHOUSE"),
         })
 
     # СИСТЕМНАЯ ФИЛЬТРАЦИЯ ПО СТАНЦИЯМ ДЛЯ ОБЫЧНЫХ ОТЧЕТОВ
@@ -1379,49 +1378,160 @@ def report_wood_frames(request, pk):
 
 @login_required
 def order_warehouse_setup(request, pk):
-    """Form for editing warehouse instructions and choosing color-specific hardware variants."""
-    order = get_object_or_404(Order, pk=pk)
-    phase = 'phase2' if (order.phase2_spec_cache or order.status != OrderStatus.PHASE1_PRODUCTION) else 'phase1'
-    spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
+    """
+    Управление накладной склада:
+    - Состояние 0 -> 1: автоподбор из заказа при открытии.
+    - Состояние 1: редактирование, сохранение черновика, пересчёт, или 'Утвердить и распечатать' (-> состояние 2).
+    - Состояние 2: заблокировано; разблокировка доступна только администратору с повышением версии.
+    """
+    from .warehouse_service import WarehousePackingSlipService
+    from apps.orders.models import OrderWarehouseItem
 
-    customizable_hardware = ProductionDataService.get_order_customizable_hardware(order, spec_obj)
+    order = get_object_or_404(Order, pk=pk)
+
+    is_admin = bool(
+        request.user.is_superuser
+        or getattr(request.user, 'is_admin_user', False)
+        or getattr(request.user, 'role', None) == 'ADMIN'
+    )
+    is_locked = (order.warehouse_state == Order.WarehouseState.LOCKED)
 
     if request.method == 'POST':
-        order.warehouse_notes = request.POST.get('warehouse_notes', '').strip()
-        order.press_notes = request.POST.get('press_notes', '').strip()
-        order.frames_notes = request.POST.get('frames_notes', '').strip()
-        order.save(update_fields=['warehouse_notes', 'press_notes', 'frames_notes'])
+        action = request.POST.get('action', 'save_draft')
 
-        for item in customizable_hardware:
-            field_name = f"comp_{item['common_name']}"
-            chosen_val = request.POST.get(field_name)
+        # 1. Разблокировка администратором (состояние 2 -> 1, версия +1)
+        if action == 'unlock':
+            if not is_admin:
+                messages.error(request, 'רק מנהל מערכת רשאי לבטל נעילה של תעודת ליקוט.')
+                return redirect('production:order-warehouse-setup', pk=pk)
 
-            if chosen_val:
+            old_ver = order.warehouse_version
+            order.warehouse_state = Order.WarehouseState.DRAFT
+            order.warehouse_version = old_ver + 1
+            order.warehouse_locked_at = None
+            order.warehouse_locked_by = None
+            order.save(update_fields=[
+                'warehouse_state', 'warehouse_version', 'warehouse_locked_at', 'warehouse_locked_by'
+            ])
+
+            OrderChangeLog.objects.create(
+                order=order,
+                user=request.user,
+                field_name='warehouse_state',
+                old_value=f'LOCKED (גרסה {old_ver})',
+                new_value=f'UNLOCKED -> גרסה {order.warehouse_version}'
+            )
+            messages.warning(request, f'הנעילה בוטלה. נפתחה גרסה {order.warehouse_version} לעריכה.')
+            return redirect('production:order-warehouse-setup', pk=pk)
+
+        if is_locked:
+            messages.error(request, 'התעודה נעולה לעריכה.')
+            return redirect('production:order-warehouse-setup', pk=pk)
+
+        # 2. Пересчёт позиций из заказа (с сохранением общего комментария)
+        if action == 'recalculate':
+            order.warehouse_notes = request.POST.get('warehouse_notes', '').strip()
+            order.save(update_fields=['warehouse_notes'])
+            WarehousePackingSlipService.recalculate(order)
+            messages.info(request, 'הרשימה חושבה מחדש מתוך ההזמנה.')
+            return redirect('production:order-warehouse-setup', pk=pk)
+
+        # 3. Сохранение черновика или утверждение с блокировкой
+        with transaction.atomic():
+            order.warehouse_notes = request.POST.get('warehouse_notes', '').strip()
+            order.save(update_fields=['warehouse_notes'])
+
+            validation_errors = []
+
+            for item in order.warehouse_items.all():
+                if request.POST.get(f'delete_{item.id}') == '1':
+                    item.delete()
+                    continue
+
+                qty_raw = request.POST.get(f'qty_{item.id}')
+                if qty_raw is not None:
+                    try:
+                        item.quantity = max(0, float(qty_raw))
+                    except ValueError:
+                        pass
+
+                item.comment = request.POST.get(f'comment_{item.id}', '').strip()
+
+                if item.is_color_required:
+                    hw_id_raw = request.POST.get(f'hw_color_{item.id}')
+                    if hw_id_raw and hw_id_raw.isdigit():
+                        chosen_hw = Hardware.objects.filter(pk=int(hw_id_raw)).select_related('color').first()
+                        if chosen_hw:
+                            item.hardware = chosen_hw
+                            item.name = chosen_hw.name
+                            item.sku = chosen_hw.sku or ''
+                            item.color_name = chosen_hw.color.name if chosen_hw.color else ''
+                    else:
+                        item.hardware = None
+                        item.sku = ''
+                        item.color_name = ''
+                        if action == 'approve_and_print':
+                            validation_errors.append(f"חובה לבחור גוון עבור: {item.common_name or item.name}")
+
+                item.save()
+
+            # Добавление ручной позиции
+            new_name = request.POST.get('new_item_name', '').strip()
+            if new_name:
+                new_cat = request.POST.get('new_item_category') or OrderWarehouseItem.Category.OTHER
+                new_sku = request.POST.get('new_item_sku', '').strip()
+                new_color = request.POST.get('new_item_color', '').strip()
+                new_comment = request.POST.get('new_item_comment', '').strip()
                 try:
-                    chosen_id = int(chosen_val)
-                    OrderComponentSelection.objects.update_or_create(
-                        order=order,
-                        common_name=item['common_name'],
-                        defaults={'selected_hardware_id': chosen_id}
-                    )
-                except (ValueError, TypeError):
-                    pass
-            else:
-                OrderComponentSelection.objects.filter(
+                    new_qty = float(request.POST.get('new_item_qty') or 1)
+                except ValueError:
+                    new_qty = 1
+
+                OrderWarehouseItem.objects.create(
                     order=order,
-                    common_name=item['common_name']
-                ).delete()
+                    category=new_cat,
+                    name=new_name,
+                    sku=new_sku,
+                    color_name=new_color,
+                    quantity=new_qty,
+                    comment=new_comment,
+                )
 
-        messages.success(request, 'הגדרות המחסן נשמרו בהצלחה.')
+            if validation_errors:
+                for err in validation_errors:
+                    messages.error(request, err)
+                return redirect('production:order-warehouse-setup', pk=pk)
 
-        if 'save_and_print' in request.POST:
+            # Утверждение документа -> перевод в состояние 2 (LOCKED)
+            if action == 'approve_and_print':
+                order.warehouse_state = Order.WarehouseState.LOCKED
+                order.warehouse_locked_at = timezone.now()
+                order.warehouse_locked_by = request.user
+                order.save(update_fields=['warehouse_state', 'warehouse_locked_at', 'warehouse_locked_by'])
+
+                OrderChangeLog.objects.create(
+                    order=order,
+                    user=request.user,
+                    field_name='warehouse_state',
+                    old_value='DRAFT',
+                    new_value=f'APPROVED & LOCKED (גרסה {order.warehouse_version})'
+                )
+
+        if action == 'approve_and_print':
             return redirect(f"{reverse('production:station-report', kwargs={'pk': pk})}?station=WAREHOUSE")
 
-        return redirect('order-detail', pk=pk)
+        messages.success(request, 'הטיוטה נשמרה בהצלחה.')
+        return redirect('production:order-warehouse-setup', pk=pk)
+
+    sections, available_colors = WarehousePackingSlipService.get_grouped_items_for_ui(order)
 
     return render(request, 'production/order_warehouse_setup.html', {
         'order': order,
-        'customizable_hardware': customizable_hardware,
+        'sections': sections,
+        'available_colors': available_colors,
+        'is_locked': is_locked,
+        'is_admin': is_admin,
+        'categories': OrderWarehouseItem.Category.choices,
     })
 
 

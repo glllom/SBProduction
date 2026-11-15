@@ -211,6 +211,15 @@ class Hardware(models.Model):
     """
     General hardware components (locks, hinges, etc.)
     """
+
+    class RuleTag(models.TextChoices):
+        STANDARD = 'STANDARD', 'רגיל (לפי יחידות)'
+        MATCH_LEAF_WIDTH = 'MATCH_LEAF_WIDTH', 'התאמת מידה לפי רוחב כנף (par1 = אורך בס"מ)'
+        MATCH_LEAF_HEIGHT = 'MATCH_LEAF_HEIGHT', 'התאמת מידה לפי גובה כנף (par1 = אורך בס"מ)'
+        PERIMETER_METERS = 'PERIMETER_METERS', 'חישוב מטראז׳ היקף (אטמים / גומי)'
+        ONLY_IF_PANEL_PAINTED = 'ONLY_IF_PANEL_PAINTED', 'רק אם הכנף בצבע (ציר פאפא / כנף)'
+        ONLY_IF_FRAME_PAINTED = 'ONLY_IF_FRAME_PAINTED', 'רק אם המשקוף בצבע (ציר מאמא / משקוף)'
+
     name = models.CharField('שם', max_length=255)
     sku = models.CharField('מק"ט', max_length=100, unique=True)
     price = models.DecimalField('מחיר', max_digits=10, decimal_places=2, default=0)
@@ -263,6 +272,38 @@ class Hardware(models.Model):
     class Meta:
         verbose_name = 'פרזול'
         verbose_name_plural = 'פרזול'
+
+    rule_tag = models.CharField(
+        'כלל חישוב למחסן',
+        max_length=32,
+        choices=RuleTag.choices,
+        default=RuleTag.STANDARD,
+        db_index=True
+    )
+
+    # --- Метаданные (3 универсальных параметра с запасом) ---
+    par1_label = models.CharField('שם פרמטר 1', max_length=100, blank=True, default='')
+    par1_value = models.CharField('ערך פרמטר 1', max_length=255, blank=True, default='')
+    par1_desc = models.CharField('תיאור פרמטר 1', max_length=255, blank=True, default='')
+
+    par2_label = models.CharField('שם פרמטר 2', max_length=100, blank=True, default='')
+    par2_value = models.CharField('ערך פרמטר 2', max_length=255, blank=True, default='')
+    par2_desc = models.CharField('תיאור פרמטר 2', max_length=255, blank=True, default='')
+
+    par3_label = models.CharField('שם פרמטר 3', max_length=100, blank=True, default='')
+    par3_value = models.CharField('ערך פרמטר 3', max_length=255, blank=True, default='')
+    par3_desc = models.CharField('תיאור פרמטר 3', max_length=255, blank=True, default='')
+
+    def get_numeric_par(self, index: int = 1) -> float | None:
+        """Безопасно извлекает числовое значение из par1_value..par3_value."""
+        raw = getattr(self, f'par{index}_value', '') or ''
+        cleaned = str(raw).strip().replace(',', '.')
+        if not cleaned:
+            return None
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
@@ -698,7 +739,6 @@ class Customizer(models.Model):
         verbose_name="פרמטר 5: אפשרויות",
         help_text="אפשרויות מופרדות בפסיקים. לפריטי מלאי השתמשו ב-SKU=קידומת:תווית (למשל SKU=hrdw121-12:צילינדר), ולערכים כלליים ב-KEY:תווית (למשל NONE:ללא, WC:תפוס/פנוי).",
     )
-
 
     class Meta:
         db_table = "customizers"
