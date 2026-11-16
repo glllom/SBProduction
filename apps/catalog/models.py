@@ -203,9 +203,11 @@ class Hardware(models.Model):
         MATCH_LEAF_WIDTH = 'MATCH_LEAF_WIDTH', 'התאמת מידה לפי רוחב כנף (par1 = אורך בס"מ)'
         MATCH_LEAF_HEIGHT = 'MATCH_LEAF_HEIGHT', 'התאמת מידה לפי גובה כנף (par1 = אורך בס"מ)'
         PERIMETER_METERS = 'PERIMETER_METERS', 'חישוב מטראז׳ היקף (אטמים / גומי)'
-        ONLY_IF_PANEL_PAINTED = 'ONLY_IF_PANEL_PAINTED', 'רק אם הכנף בצבע (ציר פאפא / כנף)'
-        ONLY_IF_FRAME_PAINTED = 'ONLY_IF_FRAME_PAINTED', 'רק אם המשקוף בצבע (ציר מאמא / משקוף)'
-
+        ONLY_IF_PANEL_PAINTED = 'ONLY_IF_PANEL_PAINTED', 'רק אם הכנף צבועה'
+        ONLY_IF_FRAME_PAINTED = 'ONLY_IF_FRAME_PAINTED', 'רק אם המשקוף צבוע'
+        BUNDLE = 'BUNDLE', 'ערכה וירטואלית (כמות מ-par1, ללא תנאי)'
+        CONDITIONAL_BUNDLE = 'CONDITIONAL_BUNDLE', 'סט וירטואלי (לפי חוקי צביעה של הרכיבים)'
+        
     class HardwareRole(models.TextChoices):
         LOCK = 'LOCK', 'מנעול'
         CYLINDER = 'CYLINDER', 'צילינדר'

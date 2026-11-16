@@ -231,7 +231,7 @@ class ProductAdmin(ModelAdmin):
     )
     list_select_related = ('product_family__product_type', 'series', 'parent_model')
     list_filter = ('active', 'product_family__product_type', 'product_family', 'series')
-    search_fields = ('code', 'name', 'description', 'series__code', 'product_family__code')
+    search_fields = ('code', 'name', 'description', 'product_family__code')
     autocomplete_fields = ('parent_model',)
     filter_horizontal = ('required_customizers',)
     save_as = True

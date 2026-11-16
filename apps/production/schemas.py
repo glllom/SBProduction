@@ -108,7 +108,8 @@ class ProductionSpec(BaseModel):
     direction_code: str = ""  # L/R
     opening_code: str = ""  # IN/OUT
     is_double_door: bool = False
-
+    edge_shape: bool = False
+    
     # Appearance
     front_name: str = ""
     finish_type: str = "PAINT"

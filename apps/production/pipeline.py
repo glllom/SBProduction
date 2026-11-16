@@ -228,8 +228,6 @@ class LockSelectionStep(SpecStep):
 
     def process(self, context: SpecContext):
         spec = context.spec
-        item = context.item
-
         if not getattr(spec, 'has_door', True):
             return
 
@@ -256,14 +254,15 @@ class LockSelectionStep(SpecStep):
                 context.data['override_lock_height'] = custom_h
 
         current_lock_name = (spec.lock_name or '').strip()
-        if current_lock_name in ('ללא מנעול', 'ללא', 'NO_LOCK', 'NONE') or 'ללא' in current_lock_name:
-            spec.lock_name = 'ללא מנעול'
+        if (
+                not spec.lock_id
+                or current_lock_name in ('', 'N/A', 'ללא מנעול', 'ללא', 'NO_LOCK', 'NONE')
+                or 'ללא' in current_lock_name
+        ):
             spec.lock_id = None
+            spec.lock_name = 'ללא מנעול'
             context.set_bom_hardware_slot('lock', 'Lock', None)
             return
-
-        if not spec.lock_name or spec.lock_name == 'N/A':
-            raise PipelineError(f"לא הוגדר דגם מנעול לדלת מס' {item.mark or item.id}")
 
     @staticmethod
     def _extract_custom_height(group_customizer) -> Optional[float]:
@@ -465,15 +464,20 @@ class HingeSelectionStep(SpecStep):
             if custom_heights:
                 context.data['override_hinge_heights'] = custom_heights
 
+        # Если в BOM не было петель и кастомизатор их не добавил — дверь без петель (например, ממ"ד)
         current_hinge_name = (spec.hinge_name or '').strip()
-        if current_hinge_name in ('ללא צירים', 'ללא', 'NO_HINGES', 'NONE') or 'ללא' in current_hinge_name:
+        if (
+                not context.data.get('hinge_hardware_id')
+                and (
+                not current_hinge_name
+                or current_hinge_name in ('N/A', 'ללא צירים', 'ללא', 'NO_HINGE', 'NONE')
+                or 'ללא' in current_hinge_name
+        )
+        ):
             spec.hinge_name = 'ללא צירים'
-            context.data['hinge_hardware_id'] = None
+            spec.hinge_heights = []
             context.set_bom_hardware_slot('hinge', 'צירים', None)
             return
-
-        if not spec.hinge_name or spec.hinge_name == 'N/A':
-            raise PipelineError(f"לא הוגדר דגם צירים לדלת מס' {item.mark or item.id}")
 
     @staticmethod
     def _extract_custom_heights(group_customizer) -> List[float]:
@@ -498,7 +502,8 @@ class LockPositionStep(SpecStep):
         spec = context.spec
         item = context.item
 
-        if not getattr(spec, 'has_door', True):
+        if not getattr(spec, 'has_door', True) or not spec.lock_id:
+            spec.lock_height = None
             return
 
         if spec.lock_name == 'ללא מנעול' or spec.lock_id is None:
@@ -573,10 +578,11 @@ class HingePositionStep(SpecStep):
         spec = context.spec
         item = context.item
 
-        if not getattr(spec, 'has_door', True):
-            return
-
-        if spec.hinge_name in ('ללא צירים', 'ללא', 'NO_HINGES', 'NONE'):
+        if (
+                not getattr(spec, 'has_door', True)
+                or not spec.hinge_name
+                or spec.hinge_name in ('N/A', 'ללא צירים', 'ללא')
+        ):
             spec.hinge_heights = []
             return
 
@@ -1934,6 +1940,7 @@ class DoorLabelEnrichStep(SpecStep):
             item=context.item,
             customizers=context.customizers,
         )
+        context.spec.edge_shape = any(bool(d.get('edge_shape')) for d in context.label_drafts)
 
 
 class OrderDoorLabelsStep(OrderStep):
