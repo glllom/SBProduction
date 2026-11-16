@@ -4,8 +4,8 @@ from django_json_widget.widgets import JSONEditorWidget
 from unfold.admin import ModelAdmin, TabularInline, StackedInline
 
 from apps.production.models import ProductTechnicalData, BOM
-from .models import Customizer
 from .models import (
+    Customizer,
     ProductType,
     ProductFamily,
     Series,
@@ -13,10 +13,8 @@ from .models import (
     Color,
     Material,
     ProductModel,
-    Handle,
-    Hardware
+    Hardware,
 )
-
 
 JSON_FORMFIELD_OVERRIDES = {
     models.JSONField: {'widget': JSONEditorWidget},
@@ -46,12 +44,17 @@ class ProductFamilyAdmin(ModelAdmin):
     search_fields = ('name', 'code', 'description', 'product_type__code')
     fieldsets = (
         ('מידע כללי', {
-            'fields': ('product_type', 'name', 'code', 'description', 'active', 'allowed_direction',
-                       'supports_split_installation')
+            'fields': (
+                'product_type', 'name', 'code', 'description',
+                'active', 'allowed_direction', 'supports_split_installation',
+            )
         }),
         ('גיאומטריה ועובי', {
-            'fields': ('thickness', 'default_value_for_frame', 'frame_inner_height_reduction',
-                       'frame_inner_width_reduction', 'double_leaf_overlap')
+            'fields': (
+                'thickness', 'default_value_for_frame',
+                'frame_inner_height_reduction', 'frame_inner_width_reduction',
+                'double_leaf_overlap',
+            )
         }),
         ('מרווחי כנף', {
             'fields': ('leaf_top_clearance', 'leaf_bottom_clearance', 'leaf_side_clearance')
@@ -102,13 +105,6 @@ class FrameColorAdmin(ModelAdmin):
     search_fields = ('name', 'code', 'description')
 
 
-@admin.register(Handle)
-class HandleAdmin(ModelAdmin):
-    list_display = ('id', 'name', 'code', 'active')
-    list_editable = ('active',)
-    search_fields = ('name', 'code')
-
-
 @admin.register(Material)
 class MaterialAdmin(ModelAdmin):
     list_display = ('id', 'name', 'common_name', 'sku', 'material_type', 'color', 'thickness', 'price_per_unit')
@@ -131,16 +127,33 @@ class MaterialAdmin(ModelAdmin):
 
 @admin.register(Hardware)
 class HardwareAdmin(ModelAdmin):
-    list_display = ('id', 'name', 'sku', 'common_name', 'price', 'color', 'active')
+    list_display = (
+        'id', 'name', 'sku', 'role', 'common_name',
+        'par1_value', 'rule_tag', 'color', 'price', 'active',
+    )
     list_select_related = ('color',)
     list_editable = ('active',)
-    list_filter = ('active', 'color')
-    search_fields = ('name', 'sku', 'common_name', 'description')
+    list_filter = ('role', 'rule_tag', 'active', 'color')
+    search_fields = ('name', 'sku', 'common_name', 'par1_value', 'description')
     filter_horizontal = ('product_types', 'product_families', 'product_models', 'components')
     save_as = True
     fieldsets = (
         ('מידע כללי', {
-            'fields': ('name', 'sku', 'price', 'description', 'active', 'common_name', 'color')
+            'fields': (
+                ('name', 'sku'),
+                ('role', 'common_name'),
+                ('color', 'price', 'active'),
+                'description',
+            )
+        }),
+        ('חוקי חישוב ופרמטרים (מחסן והתאמות)', {
+            'description': 'par1 משמש למידה בס"מ (גיליוטינה) או סוג נעילה (WC / CYLINDER / KEY) לקישור זוגות.',
+            'fields': (
+                'rule_tag',
+                ('par1_label', 'par1_value', 'par1_desc'),
+                ('par2_label', 'par2_value', 'par2_desc'),
+                ('par3_label', 'par3_value', 'par3_desc'),
+            )
         }),
         ('תאימות למוצרים', {
             'fields': ('product_types', 'product_families', 'product_models')
@@ -158,11 +171,13 @@ class BOMInline(StackedInline):
     verbose_name_plural = 'עץ מוצר (BOM)'
     fk_name = 'product'
     formfield_overrides = JSON_FORMFIELD_OVERRIDES
-    autocomplete_fields = ('covering', 'base', 'filling', 'panel_frame', 'casing', 'frame',
-                           'profile1', 'profile2', 'profile3',
-                           'other1', 'other2', 'other3', 'other4', 'other5',
-                           'lock', 'hinges',
-                           'filling_preset', 'panel_frame_preset', 'base_preset', 'covering_preset')
+    autocomplete_fields = (
+        'covering', 'base', 'filling', 'panel_frame', 'casing', 'frame',
+        'profile1', 'profile2', 'profile3',
+        'other1', 'other2', 'other3', 'other4', 'other5',
+        'lock', 'hinges',
+        'filling_preset', 'panel_frame_preset', 'base_preset', 'covering_preset',
+    )
     filter_horizontal = ('additional', 'required_customizers')
     fieldsets = (
         ('חומרים', {
@@ -210,8 +225,10 @@ class ProductTechnicalDataInline(StackedInline):
 
 @admin.register(ProductModel)
 class ProductAdmin(ModelAdmin):
-    list_display = ('id', 'code', 'name', 'product_family', 'series', 'parent_model',
-                    'active', 'has_door', 'has_frame')
+    list_display = (
+        'id', 'code', 'name', 'product_family', 'series',
+        'parent_model', 'active', 'has_door', 'has_frame',
+    )
     list_select_related = ('product_family__product_type', 'series', 'parent_model')
     list_filter = ('active', 'product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name', 'description', 'series__code', 'product_family__code')
@@ -243,16 +260,16 @@ class CustomizerAdmin(ModelAdmin):
     formfield_overrides = JSON_FORMFIELD_OVERRIDES
     save_as = True
     fieldsets = (
-        ('מידע כללי', {
-            'fields': ('code', 'name', 'description', 'active', 'is_required', 'tag')
-        }),
-        ('שיוך לקטלוג (ריק = גלובלי)', {
-            'fields': ('product_types', 'product_families', 'product_models')
-        }),
-        ('פרזול ו-BOM', {
-            'fields': ('hardware', 'bom_overrides')
-        }),
-    ) + tuple(
+                    ('מידע כללי', {
+                        'fields': ('code', 'name', 'description', 'active', 'is_required', 'tag')
+                    }),
+                    ('שיוך לקטלוג (ריק = גלובלי)', {
+                        'fields': ('product_types', 'product_families', 'product_models')
+                    }),
+                    ('פרזול ו-BOM', {
+                        'fields': ('hardware', 'bom_overrides')
+                    }),
+                ) + tuple(
         (f'פרמטר {i}', {
             'classes': ('collapse',),
             'fields': (f'par{i}_label', f'par{i}_required', f'par{i}_value', f'par{i}_hint', f'par{i}_options'),

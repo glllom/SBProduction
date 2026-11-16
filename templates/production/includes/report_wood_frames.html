@@ -80,6 +80,9 @@
                                     <span>{{ row.height|floatformat }}</span>
                                     <span class="fs-5">/</span>
                                     <span>{{ row.width|floatformat }}</span>
+                                    {% if row.qty > 1 %}
+                                        {{ row.qty }}x
+                                    {% endif %}
                                 </div>
                                 <div class="col">{{ row.comments }}</div>
                             </div>
