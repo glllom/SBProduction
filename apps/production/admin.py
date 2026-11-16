@@ -44,15 +44,21 @@ class ProductTechnicalDataAdmin(ModelAdmin):
 
 @admin.register(BOM)
 class BOMAdmin(ModelAdmin):
-    list_display = ('product',)
-    list_select_related = ('product',)
+    list_display = ('product', 'lock', 'hinges', 'frame', 'covering', 'filling', 'display_additional_count')
+    list_select_related = ('product', 'lock', 'hinges', 'frame', 'covering', 'filling')
+    search_fields = (
+        'product__name', 'product__code',
+        'lock__name', 'lock__sku',
+        'hinges__name', 'hinges__sku',
+        'frame__name', 'covering__name',
+    )
+    save_as = True
     autocomplete_fields = (
         'product', 'covering', 'base', 'filling', 'casing', 'frame', 'panel_frame',
         'profile1', 'profile2', 'profile3',
         'other1', 'other2', 'other3', 'other4', 'other5',
         'lock', 'hinges',
-        # Пресеты для отрисовки базовых слотов
-        'panel_frame_preset', 'filling_preset', 'base_preset', 'covering_preset'
+        'panel_frame_preset', 'filling_preset', 'base_preset', 'covering_preset',
     )
     filter_horizontal = ('additional', 'required_customizers')
     formfield_overrides = JSON_FORMFIELD_OVERRIDES
@@ -98,12 +104,26 @@ class BOMAdmin(ModelAdmin):
         }),
     )
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('additional')
+
+    def display_additional_count(self, obj):
+        items = list(obj.additional.all())
+        if not items:
+            return '-'
+        preview = ", ".join(i.name for i in items[:3])
+        return f"{preview} (+{len(items) - 3})" if len(items) > 3 else preview
+
+    display_additional_count.short_description = 'תוספות ב-BOM'
+
 
 @admin.register(LockStandardHeight)
 class LockStandardHeightAdmin(ModelAdmin):
-    list_display = ('id', 'base_door_height', 'base_lock_height', 'step')
-    list_filter = ('product_families',)
+    list_display = ('id', 'display_locks', 'display_families', 'base_door_height', 'base_lock_height', 'step')
+    list_filter = ('product_families', 'locks')
+    search_fields = ('locks__name', 'locks__sku', 'product_families__name')
     filter_horizontal = ('product_families', 'locks')
+    save_as = True
     fieldsets = (
         ('תחולה', {
             'fields': ('product_families', 'locks')
@@ -113,24 +133,60 @@ class LockStandardHeightAdmin(ModelAdmin):
         }),
     )
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('locks', 'product_families')
+
+    def display_locks(self, obj):
+        return ", ".join(l.name for l in obj.locks.all()) or '-'
+
+    display_locks.short_description = 'מנעולים'
+
+    def display_families(self, obj):
+        return ", ".join(f.name for f in obj.product_families.all()) or '-'
+
+    display_families.short_description = 'משפחות מוצרים'
+
 
 @admin.register(HingeStandardHeight)
 class HingeStandardHeightAdmin(ModelAdmin):
-    list_display = ('id', 'min_height', 'max_height', 'hinge_count')
-    list_filter = ('product_families',)
+    list_display = ('id', 'display_hinges', 'display_families', 'min_height', 'max_height', 'hinge_count',
+                    'display_heights')
+    list_filter = ('product_families', 'hinges')
+    search_fields = ('hinges__name', 'hinges__sku', 'product_families__name')
     filter_horizontal = ('product_families', 'hinges')
     readonly_fields = ('hinge_count',)
+    save_as = True
     fieldsets = (
         ('תחולה', {
             'fields': ('product_families', 'hinges')
         }),
         ('טווח גובה דלת', {
-            'fields': ('min_height', 'max_height')
+            'fields': (('min_height', 'max_height'),)
         }),
         ('גבהי צירים', {
-            'fields': ('value1', 'value2', 'value3', 'value4', 'value5', 'hinge_count')
+            'fields': (('value1', 'value2', 'value3', 'value4', 'value5'), 'hinge_count')
         }),
     )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('hinges', 'product_families')
+
+    def display_hinges(self, obj):
+        return ", ".join(h.name for h in obj.hinges.all()) or '-'
+
+    display_hinges.short_description = 'צירים'
+
+    def display_families(self, obj):
+        return ", ".join(f.name for f in obj.product_families.all()) or '-'
+
+    display_families.short_description = 'משפחות מוצרים'
+
+    def display_heights(self, obj):
+        vals = [getattr(obj, f'value{i}', None) for i in range(1, 6)]
+        active_vals = [str(int(v) if float(v).is_integer() else v) for v in vals if v]
+        return " / ".join(active_vals) or '0 (ללא)'
+
+    display_heights.short_description = 'מידות גובה'
 
 
 @admin.register(CustomizerProductionStation)
@@ -140,7 +196,7 @@ class CustomizerProductionStationAdmin(ModelAdmin):
     list_editable = ('force_alternative_machine',)
     list_select_related = ('customizer', 'station')
     autocomplete_fields = ('customizer', 'station')
-    search_fields = ('customizer__name', 'station__name', 'station__code')
+    search_fields = ('customizer__name', 'customizer__code', 'station__name', 'station__code')
 
 
 @admin.register(ProductionStation)
@@ -186,15 +242,18 @@ class ProductionRouteStepInline(TabularInline):
 
 @admin.register(ProductionRoute)
 class ProductionRouteAdmin(ModelAdmin):
-    list_display = ('name', 'active', 'display_products',)
+    list_display = ('name', 'active', 'display_products')
     list_filter = ('active',)
     filter_horizontal = ('products',)
     save_as = True
     inlines = [ProductionRouteStepInline]
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('products')
+
     def display_products(self, obj):
-        products = obj.products.all()[:5]
-        return ", ".join([p.name for p in products]) + ("..." if obj.products.count() > 5 else "")
+        products = list(obj.products.all())
+        return ", ".join(p.name for p in products[:5]) + ("..." if len(products) > 5 else "")
 
     display_products.short_description = 'מוצרים'
 
@@ -233,14 +292,16 @@ class CustomizerPuzzleMappingAdmin(ModelAdmin):
     list_display = ('customizer', 'preset', 'slot_action', 'target_slot')
     list_filter = ('slot_action', 'target_slot')
     list_select_related = ('customizer', 'preset')
-    search_fields = ('customizer__name', 'preset__name')
+    search_fields = ('customizer__name', 'customizer__code', 'preset__name')
     autocomplete_fields = ('customizer', 'preset')
 
 
 @admin.register(DoorLabel)
 class DoorLabelAdmin(ModelAdmin):
-    list_display = ('id', 'order_link', 'order_number', 'item_mark', 'label_type', 'leaf_role', 'target_machine',
-                    'print_count', 'last_printed_at')
+    list_display = (
+        'id', 'order_link', 'order_number', 'item_mark', 'label_type', 'leaf_role',
+        'lock_name', 'hinge_name', 'target_machine', 'print_count', 'last_printed_at',
+    )
     list_filter = ('label_type', 'leaf_role', 'target_machine', 'is_paint')
     list_select_related = ('order',)
     date_hierarchy = 'created_at'
@@ -249,21 +310,40 @@ class DoorLabelAdmin(ModelAdmin):
     readonly_fields = ('created_at',)
     fieldsets = (
         ('הקשר', {
-            'fields': ('order', 'order_item', 'order_number', 'client_name', 'item_mark', 'total_items',
-                       'label_type', 'leaf_role', 'target_machine')
+            'fields': (
+                ('order', 'order_item'),
+                ('order_number', 'client_name'),
+                ('item_mark', 'total_items'),
+                ('label_type', 'leaf_role', 'target_machine'),
+            )
         }),
         ('הדפסה', {
-            'fields': ('print_count', 'last_printed_at', 'created_at')
+            'fields': (('print_count', 'last_printed_at', 'created_at'),)
         }),
         ('גיאומטריה ועובי', {
-            'fields': ('width', 'height', 'thickness', 'direction', 'opening', 'edge_type', 'is_paint')
+            'fields': (
+                ('width', 'height', 'thickness'),
+                ('direction', 'opening', 'edge_type', 'is_paint'),
+            )
         }),
         ('פרזול ותוספות', {
-            'fields': ('lock_name', 'lock_height', 'hinge_name', 'hinge_1', 'hinge_2', 'hinge_3', 'hinge_4',
-                       'hinge_5', 'addons_summary', 'icon_filename', 'comment')
+            'fields': (
+                ('lock_name', 'lock_height', 'lock_program'),
+                ('hinge_name', 'hinge_program'),
+                ('hinge_1', 'hinge_2', 'hinge_3', 'hinge_4', 'hinge_5'),
+                ('icon_filename', 'front_program'),
+                'addons_summary',
+                'comment',
+            )
         }),
-        ('CNC', {
-            'fields': ('qr_payload',)
+        ('תוכניות CNC ומאקרו', {
+            'fields': (
+                ('cnc_program', 'edge_shape'),
+                'customizer_programs',
+                ('cmz_prg_1', 'cmz_prg_2', 'cmz_prg_3', 'cmz_prg_4', 'cmz_prg_5'),
+                ('cmz_prg_6', 'cmz_prg_7', 'cmz_prg_8', 'cmz_prg_9', 'cmz_prg_10'),
+                'qr_payload',
+            )
         }),
     )
 
@@ -279,8 +359,10 @@ class DoorLabelAdmin(ModelAdmin):
 
 @admin.register(ItemStationProgress)
 class ItemStationProgressAdmin(ModelAdmin):
-    list_display = ('id', 'item_link', 'station', 'sequence', 'status', 'source', 'started_at', 'completed_at',
-                    'completed_by')
+    list_display = (
+        'id', 'item_link', 'station', 'sequence', 'status', 'source',
+        'started_at', 'completed_at', 'completed_by',
+    )
     list_filter = ('status', 'source', 'station')
     list_editable = ('status',)
     list_select_related = ('item', 'station', 'completed_by')
@@ -320,13 +402,17 @@ class StationDailySheetLogAdmin(ModelAdmin):
 
 @admin.register(StationScanAuditLog)
 class StationScanAuditLogAdmin(ModelAdmin):
-    list_display = ('id', 'created_at', 'raw_payload', 'station_code', 'order_number', 'item_mark',
-                    'source', 'is_success')
+    list_display = (
+        'id', 'created_at', 'raw_payload', 'station_code', 'order_number',
+        'item_mark', 'source', 'is_success',
+    )
     list_filter = ('is_success', 'source', 'station_code')
     date_hierarchy = 'created_at'
     search_fields = ('raw_payload', 'station_code', 'order_number', 'item_mark', 'message')
-    readonly_fields = ('raw_payload', 'station_code', 'order_number', 'batch_number', 'item_mark', 'source',
-                       'is_success', 'message', 'created_at', 'created_by')
+    readonly_fields = (
+        'raw_payload', 'station_code', 'order_number', 'batch_number',
+        'item_mark', 'source', 'is_success', 'message', 'created_at', 'created_by',
+    )
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -340,17 +426,40 @@ class StationScanAuditLogAdmin(ModelAdmin):
 
 @admin.register(PerimeterRoutingFile)
 class PerimeterRoutingFileAdmin(ModelAdmin):
-    list_display = ('id', 'file_name', 'description', 'edge_shape')
-    list_filter = ('edge_shape',)
-    search_fields = ('file_name', 'description')
+    list_display = ('id', 'file_name', 'display_doors', 'edge_shape', 'description')
+    list_filter = ('edge_shape', 'doors')
+    search_fields = ('file_name', 'description', 'doors__name')
     filter_horizontal = ('doors',)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('doors')
+
+    def display_doors(self, obj):
+        return ", ".join(d.name for d in obj.doors.all()) or '-'
+
+    display_doors.short_description = 'משפחות דלתות'
 
 
 @admin.register(HardwareMacroFile)
 class HardwareMacroFileAdmin(ModelAdmin):
-    list_display = ('id', 'file_name', 'description')
-    search_fields = ('file_name', 'description')
+    list_display = ('id', 'file_name', 'display_hardware', 'display_families', 'description')
+    list_filter = ('door_families', 'hardware__role')
+    search_fields = ('file_name', 'description', 'hardware__name', 'hardware__sku', 'door_families__name')
     filter_horizontal = ('hardware', 'door_families')
+    save_as = True
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('hardware', 'door_families')
+
+    def display_hardware(self, obj):
+        return ", ".join(h.name for h in obj.hardware.all()) or '-'
+
+    display_hardware.short_description = 'פרזול'
+
+    def display_families(self, obj):
+        return ", ".join(f.name for f in obj.door_families.all()) or '-'
+
+    display_families.short_description = 'משפחות דלתות'
 
 
 @admin.register(CustomizerMacroFile)

@@ -5,14 +5,14 @@ import re
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
 
-from apps.catalog.models import Material
+from apps.catalog.models import Material, Hardware
 from apps.orders.models import OrderItem, OrderItemsGroup, OrderItemsGroupCustomizer
 from .bom_calculator import BOMCalculator
 from .evaluator import FormulaEvaluator
 from .models import LockStandardHeight, HingeStandardHeight, PuzzleBlockPrototype, PuzzlePreset
 from .schemas import (
-    ProductionSpec, SpecBOMItem, SpecCustomizerParam, SpecCustomizerReport,
-    OrderHeaderSpec, OrderSpec, DoorPuzzleSpec, SvgPuzzleBlock
+    ProductionSpec, SpecBOMItem, OrderHeaderSpec, OrderSpec, DoorPuzzleSpec, SvgPuzzleBlock, SpecCustomizerReport,
+    SpecCustomizerParam
 )
 
 
@@ -44,30 +44,23 @@ class SpecContext:
             mark=item.mark or ""
         )
         self.data: Dict[str, Any] = {}
-        self.label_drafts: List[Dict[str, Any]] = []  # <-- Заготовки наклеек для позиции
-        self._bom = None  # In-memory patched BOM container
+        self.label_drafts: List[Dict[str, Any]] = []
+        self._bom = None
 
         if customizers is not None:
-            self.customizers = customizers
+            self.customizers = list(customizers)
         else:
             if self.group:
                 self.customizers = list(
                     self.group.customizers.select_related('customizer', 'customizer__puzzle_mapping__preset')
-                    .prefetch_related('customizer__hardware__components', )
+                    .prefetch_related('customizer__hardware__components')
                     .order_by('customizer__tag', 'customizer__code')
                 )
             else:
                 self.customizers = []
 
-        self.unprocessed_customizers = list(self.customizers)
-        self.processed_customizers = []
-
     @property
     def bom(self):
-        """
-        Returns active in-memory patched BOM if overridden by customizers,
-        otherwise falls back to product's base effective_bom.
-        """
         if self._bom is not None:
             return self._bom
         if self.product:
@@ -81,31 +74,47 @@ class SpecContext:
     def add_error(self, message: str):
         self.spec.errors.append(message)
 
-    def consume_customizers(self, tags) -> List:
-        """Finds customizers by tag(s), moves them to processed, and returns them."""
+    def find_customizers(self, tags) -> List:
+        """Возвращает все кастомизаторы группы, у которых есть хотя бы один из указанных тегов."""
         if isinstance(tags, str):
             tags_set = {tags.upper()}
         else:
             tags_set = {t.upper() for t in tags}
 
         found = []
-        remaining = []
-        for gc in self.unprocessed_customizers:
+        for gc in self.customizers:
             tag_str = (gc.customizer.tag or "").upper()
             item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
-
             if item_tags & tags_set:
                 found.append(gc)
-                report_tags = {'DOORS_REPORT', 'FRAMES_REPORT', 'FRAME_MODIFICATION'}
-                if not (item_tags & report_tags):
-                    self.processed_customizers.append(gc)
-                else:
-                    remaining.append(gc)
-            else:
-                remaining.append(gc)
-
-        self.unprocessed_customizers = remaining
         return found
+
+    def set_bom_hardware_slot(self, slot_tag: str, section: str, main_hw: Optional[Hardware]):
+        """
+        Идемпотентно перезаписывает слот фурнитуры в spec.bom_items (lock / cylinder / hinge / handle).
+        Гарантирует отсутствие дублей.
+        """
+        target_tag = slot_tag.lower()
+        self.spec.bom_items = [
+            b for b in self.spec.bom_items
+            if str(b.tag or '').lower() != target_tag
+        ]
+        if not main_hw:
+            return
+
+        hw_list = [main_hw] + list(main_hw.components.all())
+        for hw in hw_list:
+            self.spec.bom_items.append(
+                SpecBOMItem(
+                    type='hardware',
+                    section=section,
+                    item_name=hw.name,
+                    common_name=hw.common_name or None,
+                    quantity=1,
+                    tag=target_tag,
+                    item_id=hw.id,
+                )
+            )
 
 
 class SpecStep(ABC):
@@ -224,50 +233,33 @@ class LockSelectionStep(SpecStep):
         if not getattr(spec, 'has_door', True):
             return
 
-        group_customizers = context.consume_customizers('LOCK')
+        lock_customizers = context.find_customizers('LOCK')
 
-        # 1. Проверка переопределения через кастомизатор
-        if group_customizers:
-            for gc in group_customizers:
-                c = gc.customizer
-                tag_val = (c.tag or '').upper()
-                c_code = (c.code or '').upper()
+        for gc in lock_customizers:
+            c = gc.customizer
+            tag_val = (c.tag or '').upper()
+            c_code = (c.code or '').upper()
 
-                if any(k in tag_val or k in c_code for k in ('NO_LOCK', 'WITHOUT_LOCK', 'NONE')):
-                    spec.lock_id = None
-                    spec.lock_name = 'ללא מנעול'
-                    spec.bom_items = [b for b in spec.bom_items if str(b.tag).lower() != 'lock']
-                    return
+            if any(k in tag_val or k in c_code for k in ('NO_LOCK', 'WITHOUT_LOCK', 'NONE')):
+                spec.lock_id = None
+                spec.lock_name = 'ללא מנעול'
+                context.set_bom_hardware_slot('lock', 'Lock', None)
+                return
 
-                main_hw = c.hardware
-                if main_hw:
-                    hardware_list = [main_hw] + list(main_hw.components.all())
-                    spec.bom_items = [b for b in spec.bom_items if str(b.tag).lower() != 'lock']
-                    spec.lock_id = main_hw.id
-                    spec.lock_name = main_hw.name
+            if c.hardware:
+                spec.lock_id = c.hardware.id
+                spec.lock_name = (c.hardware.common_name or '').strip() or c.hardware.name
+                context.set_bom_hardware_slot('lock', 'Lock', c.hardware)
 
-                    for hw in hardware_list:
-                        spec.bom_items.append(
-                            SpecBOMItem(
-                                type='hardware',
-                                section='Lock',
-                                item_name=hw.name,
-                                quantity=1,
-                                tag='lock',
-                                item_id=hw.id
-                            )
-                        )
+            custom_h = self._extract_custom_height(gc)
+            if custom_h is not None and custom_h != 0:
+                context.data['override_lock_height'] = custom_h
 
-                custom_h = self._extract_custom_height(gc)
-                # Разрешаем отрицательные высоты (от низа), исключаем только 0 и None
-                if custom_h is not None and custom_h != 0:
-                    context.data['override_lock_height'] = custom_h
-
-        # 2. Проверка значения из BOM
         current_lock_name = (spec.lock_name or '').strip()
         if current_lock_name in ('ללא מנעול', 'ללא', 'NO_LOCK', 'NONE') or 'ללא' in current_lock_name:
             spec.lock_name = 'ללא מנעול'
             spec.lock_id = None
+            context.set_bom_hardware_slot('lock', 'Lock', None)
             return
 
         if not spec.lock_name or spec.lock_name == 'N/A':
@@ -279,22 +271,224 @@ class LockSelectionStep(SpecStep):
         for i in range(1, 6):
             label = (getattr(c, f'par{i}_label') or '').lower()
             val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
-            if ('גובה' in label or 'height' in label) and val:
+            if ('גובה' in label or 'height' in label) and val not in (None, ''):
                 try:
                     num = float(val)
                     if num != 0:
                         return num
                 except (ValueError, TypeError):
                     pass
-        val = group_customizer.par1 or c.par1_value
-        if val:
-            try:
-                num = float(val)
-                if num != 0:
-                    return num
-            except (ValueError, TypeError):
-                pass
         return None
+
+
+class LockOptionSelectionStep(SpecStep):
+    priority = 460
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        if not getattr(spec, 'has_door', True):
+            return
+
+        curr_lock = Hardware.objects.filter(pk=spec.lock_id).first() if spec.lock_id else None
+
+        # Базовый режим берём из текущего замка (если в его par1_value задан WC/CYLINDER/KEY), иначе WC
+        base_lock_mode = (curr_lock.par1_value or '').strip().upper() if curr_lock else ''
+        target_mode = base_lock_mode if base_lock_mode in ('WC', 'CYLINDER', 'KEY') else 'WC'
+        cylinder_hw: Optional[Hardware] = None
+
+        # Проверяем все кастомизаторы запирания (включая прямой cmz_008 и комбинированный cmz_004)
+        relevant_gcs = context.find_customizers({'LOCK', 'LOCK_OPTION', 'CYLINDER', 'KEY_LOCK', 'WC_LOCK'})
+
+        for gc in relevant_gcs:
+            c = gc.customizer
+            tag_str = (c.tag or '').upper()
+            item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
+
+            # 1. Прямой кастомизатор цилиндра без параметров (например, cmz_008)
+            if c.hardware and (getattr(c.hardware, 'role', '') == 'CYLINDER' or 'CYLINDER' in item_tags):
+                cylinder_hw = c.hardware
+                target_mode = 'CYLINDER'
+
+            # 2. Параметр выбора типа запирания (например, "סוג נעילה" в комбинированном cmz_004)
+            raw_opt_val = self._extract_option_param(gc, item_tags)
+            if raw_opt_val:
+                resolved_hw = self._resolve_cylinder_hardware(raw_opt_val)
+                if resolved_hw:
+                    cylinder_hw = resolved_hw
+                    target_mode = 'CYLINDER'
+                else:
+                    up_val = raw_opt_val.upper()
+                    if any(k in up_val for k in ('CYLINDER', 'צילינדר', 'צילימדר')):
+                        target_mode = 'CYLINDER'
+                    elif any(k in up_val for k in ('WC', 'תפוס', 'פנוי')):
+                        target_mode = 'WC'
+                    elif any(k in up_val for k in ('KEY', 'מפתח')):
+                        target_mode = 'KEY'
+                    elif any(k in up_val for k in ('NONE', 'WITHOUT_LOCK', 'ללא')):
+                        target_mode = 'NONE'
+            elif not cylinder_hw:
+                if 'CYLINDER' in item_tags:
+                    target_mode = 'CYLINDER'
+                elif 'KEY_LOCK' in item_tags:
+                    target_mode = 'KEY'
+                elif 'WC_LOCK' in item_tags:
+                    target_mode = 'WC'
+
+        if spec.lock_id is None or spec.lock_name == 'ללא מנעול':
+            target_mode = 'NONE'
+
+        mode_labels = {
+            'WC': 'תפוס/פנוי',
+            'CYLINDER': 'צילינדר',
+            'KEY': 'מפתח אפס',
+            'NONE': 'ללא',
+        }
+        spec.lock_option_type = mode_labels.get(target_mode, 'תפוס/פנוי')
+
+        # 3. Запись слота цилиндра в bom_items
+        context.set_bom_hardware_slot('cylinder', 'צילינדר', cylinder_hw)
+
+        # 4. Автоподмена модификации замка (WC <-> CYLINDER <-> KEY) по common_name + par1_value
+        if curr_lock and curr_lock.common_name and target_mode in ('WC', 'CYLINDER', 'KEY'):
+            curr_mode = (curr_lock.par1_value or '').strip().upper()
+            if curr_mode != target_mode:
+                matched_lock = (
+                    Hardware.objects.filter(
+                        active=True,
+                        role='LOCK',
+                        common_name=curr_lock.common_name,
+                        par1_value__iexact=target_mode,
+                    )
+                    .order_by('id')
+                    .first()
+                )
+                if matched_lock:
+                    spec.lock_id = matched_lock.id
+                    spec.lock_name = (matched_lock.common_name or '').strip() or matched_lock.name
+                    context.set_bom_hardware_slot('lock', 'Lock', matched_lock)
+
+        # 5. Автоподмена модификации ручки (WC <-> CYLINDER <-> KEY) по common_name + par1_value
+        base_handle = getattr(context.order, 'handle', None)
+        if base_handle:
+            eff_handle = base_handle
+            if target_mode in ('WC', 'CYLINDER', 'KEY') and base_handle.common_name:
+                curr_h_mode = (base_handle.par1_value or '').strip().upper()
+                if curr_h_mode != target_mode:
+                    qs = Hardware.objects.filter(
+                        active=True,
+                        role='HANDLE',
+                        common_name=base_handle.common_name,
+                        par1_value__iexact=target_mode,
+                    )
+                    if base_handle.color_id:
+                        matched_handle = qs.filter(color_id=base_handle.color_id).first() or qs.order_by('id').first()
+                    else:
+                        matched_handle = qs.order_by('id').first()
+
+                    if matched_handle:
+                        eff_handle = matched_handle
+
+            spec.handle_name = eff_handle.name
+            context.set_bom_hardware_slot('handle', 'ידיות', eff_handle)
+
+    @staticmethod
+    def _extract_option_param(group_customizer, item_tags: set[str]) -> str:
+        """Извлекает значение параметра типа запирания, не путая его с высотой замка."""
+        c = group_customizer.customizer
+        for i in range(1, 6):
+            label = (getattr(c, f'par{i}_label') or '').lower()
+            if 'גובה' in label or 'height' in label:
+                continue
+            if any(k in label for k in ('נעילה', 'סוג', 'צילינדר', 'option', 'type', 'lock')):
+                val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
+                if val is not None and str(val).strip():
+                    return str(val).strip()
+
+        # Fallback для кастомизаторов опций без подписи параметра (кроме чистого LOCK, где par1 может быть высотой)
+        if 'LOCK' not in item_tags:
+            for i in range(1, 6):
+                label = (getattr(c, f'par{i}_label') or '').lower()
+                if 'גובה' in label or 'height' in label:
+                    continue
+                val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
+                if val is not None and str(val).strip():
+                    return str(val).strip()
+        return ''
+
+    @staticmethod
+    def _resolve_cylinder_hardware(raw_val: str) -> Optional[Hardware]:
+        """Находит артикул цилиндра в Hardware по SKU=..., ID, sku или названию."""
+        val = raw_val.strip()
+        if not val:
+            return None
+        if val.upper().startswith('SKU='):
+            return Hardware.objects.filter(sku=val.split('=', 1)[1].strip(), active=True).first()
+        if val.isdigit():
+            hw = Hardware.objects.filter(pk=int(val), role='CYLINDER', active=True).first()
+            if hw:
+                return hw
+        return (
+                Hardware.objects.filter(sku=val, role='CYLINDER', active=True).first()
+                or Hardware.objects.filter(name=val, role='CYLINDER', active=True).first()
+        )
+
+
+class HingeSelectionStep(SpecStep):
+    priority = 470
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        item = context.item
+
+        if not getattr(spec, 'has_door', True):
+            return
+
+        hinge_customizers = context.find_customizers('HINGE')
+
+        for gc in hinge_customizers:
+            c = gc.customizer
+            tag_val = (c.tag or '').upper()
+            c_code = (c.code or '').upper()
+
+            if any(k in tag_val or k in c_code for k in ('NO_HINGES', 'WITHOUT_HINGES', 'NONE')):
+                spec.hinge_name = 'ללא צירים'
+                context.data['hinge_hardware_id'] = None
+                context.set_bom_hardware_slot('hinge', 'צירים', None)
+                return
+
+            if c.hardware:
+                spec.hinge_name = (c.hardware.common_name or '').strip() or c.hardware.name
+                context.data['hinge_hardware_id'] = c.hardware.id
+                context.set_bom_hardware_slot('hinge', 'צירים', c.hardware)
+
+            custom_heights = self._extract_custom_heights(gc)
+            if custom_heights:
+                context.data['override_hinge_heights'] = custom_heights
+
+        current_hinge_name = (spec.hinge_name or '').strip()
+        if current_hinge_name in ('ללא צירים', 'ללא', 'NO_HINGES', 'NONE') or 'ללא' in current_hinge_name:
+            spec.hinge_name = 'ללא צירים'
+            context.data['hinge_hardware_id'] = None
+            context.set_bom_hardware_slot('hinge', 'צירים', None)
+            return
+
+        if not spec.hinge_name or spec.hinge_name == 'N/A':
+            raise PipelineError(f"לא הוגדר דגם צירים לדלת מס' {item.mark or item.id}")
+
+    @staticmethod
+    def _extract_custom_heights(group_customizer) -> List[float]:
+        c = group_customizer.customizer
+        res = []
+        for i in range(1, 6):
+            val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
+            if val:
+                try:
+                    num = float(val)
+                    if num > 0:
+                        res.append(num)
+                except (ValueError, TypeError):
+                    pass
+        return res
 
 
 class LockPositionStep(SpecStep):
@@ -488,88 +682,12 @@ class MeasurerDataStep(SpecStep):
             spec.hinge_heights_on_frame = []
 
 
-class HingeSelectionStep(SpecStep):
-    priority = 470
-
-    # important_for_phase1 = True (по умолчанию)
-
-    def process(self, context: SpecContext):
-        spec = context.spec
-        item = context.item
-
-        if not getattr(spec, 'has_door', True):
-            return
-
-        group_customizers = context.consume_customizers('HINGE')
-
-        # 1. Проверка переопределения через кастомизатор
-        if group_customizers:
-            for gc in group_customizers:
-                c = gc.customizer
-                tag_val = (c.tag or '').upper()
-                c_code = (c.code or '').upper()
-
-                if any(k in tag_val or k in c_code for k in ('NO_HINGES', 'WITHOUT_HINGES', 'NONE')):
-                    spec.hinge_name = 'ללא צירים'
-                    context.data['hinge_hardware_id'] = None
-                    spec.bom_items = [b for b in spec.bom_items if str(b.tag).lower() != 'hinge']
-                    return
-
-                main_hw = c.hardware
-                if main_hw:
-                    hardware_list = [main_hw] + list(main_hw.components.all())
-                    spec.bom_items = [b for b in spec.bom_items if str(b.tag).lower() != 'hinge']
-                    spec.hinge_name = main_hw.name
-                    context.data['hinge_hardware_id'] = main_hw.id
-
-                    for hw in hardware_list:
-                        spec.bom_items.append(
-                            SpecBOMItem(
-                                type='hardware',
-                                section='צירים',
-                                item_name=hw.name,
-                                quantity=1,
-                                tag='hinge',
-                                item_id=hw.id
-                            )
-                        )
-
-                custom_heights = self._extract_custom_heights(gc)
-                if custom_heights:
-                    context.data['override_hinge_heights'] = custom_heights
-
-        # 2. Проверка значения из BOM
-        current_hinge_name = (spec.hinge_name or '').strip()
-        if current_hinge_name in ('ללא צירים', 'ללא', 'NO_HINGES', 'NONE') or 'ללא' in current_hinge_name:
-            spec.hinge_name = 'ללא צירים'
-            context.data['hinge_hardware_id'] = None
-            return
-
-        if not spec.hinge_name or spec.hinge_name == 'N/A':
-            raise PipelineError(f"לא הוגדר דגם צירים לדלת מס' {item.mark or item.id}")
-
-    @staticmethod
-    def _extract_custom_heights(group_customizer) -> List[float]:
-        c = group_customizer.customizer
-        res = []
-        for i in range(1, 6):
-            val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
-            if val:
-                try:
-                    num = float(val)
-                    if num > 0:
-                        res.append(num)
-                except (ValueError, TypeError):
-                    pass
-        return res
-
-
 class DoubleDoorStep(SpecStep):
     priority = 10
 
     def process(self, context: SpecContext):
         spec = context.spec
-        found = context.consume_customizers('DOUBLE_DOOR')
+        found = context.find_customizers('DOUBLE_DOOR')
         if found:
             gc = found[0]
             c = gc.customizer
@@ -603,7 +721,7 @@ class WoodEdgeStep(SpecStep):
         if not getattr(spec, 'has_door', True):
             return
 
-        found = context.consume_customizers('WOOD_EDGE')
+        found = context.find_customizers('WOOD_EDGE')
         if not found:
             return
 
@@ -897,9 +1015,7 @@ class AppearanceStep(SpecStep):
 class SingleCustomizerStep(SpecStep):
     priority = 700
 
-    # Customizer tags that must be printed on the door label
     LABEL_CUSTOMIZER_TAGS = {'WINDOW', 'CUSTOM_ROUTING', 'DOOR_CNC', 'HARDWARE_EXTRA'}
-    # Customizer tags that represent face engraving parameters
     ENGRAVING_TAGS = {'ENGRAVING', 'FRONT_ENGRAVING', 'FACE_MILLING'}
 
     def __init__(self, group_customizer):
@@ -912,7 +1028,9 @@ class SingleCustomizerStep(SpecStep):
         tag_str = (c.tag or "").upper()
         item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
 
-        if c.hardware:
+        # В BOM добавляем ТОЛЬКО дополнительные аксессуары (role == 'OTHER').
+        # Слоты LOCK, CYLINDER, HINGE, HANDLE управляются строго своими шагами и сюда не дублируются.
+        if c.hardware and getattr(c.hardware, 'role', 'OTHER') == 'OTHER':
             hardware_list = [c.hardware] + list(c.hardware.components.all())
             for hw in hardware_list:
                 spec.bom_items.append(
@@ -920,6 +1038,7 @@ class SingleCustomizerStep(SpecStep):
                         type='hardware',
                         section=tag_str or 'Customizer',
                         item_name=hw.name,
+                        common_name=hw.common_name or None,
                         quantity=1,
                         tag=tag_str,
                         item_id=hw.id
@@ -993,21 +1112,21 @@ class SingleCustomizerStep(SpecStep):
         }
 
 
-class UnprocessedCustomizersStep(SpecStep):
+class CustomizersFormattingStep(SpecStep):
     """
-    Priority 700: Processes all remaining customizers before routing and label enrichment.
+    Priority 700: Формирует данные кастомизаторов для отчетов, наклеек, гравировки
+    и добавляет в BOM дополнительные аксессуары (role == 'OTHER').
     """
     priority = 700
 
     def process(self, context: SpecContext):
-        for gc in list(context.unprocessed_customizers):
+        for gc in context.customizers:
             try:
                 SingleCustomizerStep(gc).process(context)
             except PipelineError as e:
                 context.add_error(str(e))
             except Exception as e:
                 context.add_error(f"Unexpected error in customizer {gc.customizer.code}: {str(e)}")
-        context.unprocessed_customizers = []
 
 
 class MachiningRoutingStep(SpecStep):
@@ -1287,7 +1406,7 @@ class BOMStep(SpecStep):
         if lock_bom and lock_bom.get('item'):
             lock_item = lock_bom['item']
             spec.lock_id = lock_item.id
-            spec.lock_name = lock_item.name
+            spec.lock_name = (getattr(lock_item, 'common_name', '') or '').strip() or lock_item.name
         else:
             spec.lock_id = None
             spec.lock_name = "N/A"
@@ -1295,7 +1414,7 @@ class BOMStep(SpecStep):
         hinge_bom = next((b for b in bom_result if isinstance(b, dict) and b.get('tag') == 'hinge'), None)
         if hinge_bom and hinge_bom.get('item'):
             hinge_item = hinge_bom['item']
-            spec.hinge_name = hinge_item.name
+            spec.hinge_name = (getattr(hinge_item, 'common_name', '') or '').strip() or hinge_item.name
         else:
             spec.hinge_name = "N/A"
 
@@ -1361,39 +1480,6 @@ class MaterialSelectionStep(SpecStep):
                     context.add_error(f"No suitable sheet found for {bom_item.section}{section_suffix}")
 
         spec.bom_items = new_bom_items
-
-
-class LockOptionSelectionStep(SpecStep):
-    priority = 460
-
-    def process(self, context: SpecContext):
-        spec = context.spec
-        locking_tags = {'LOCK_OPTION', 'CYLINDER', 'KEY_LOCK', 'WC_LOCK'}
-        found = context.consume_customizers(locking_tags)
-        gc = found[0] if found else None
-
-        if gc:
-            c = gc.customizer
-            val = (gc.par1 or c.par1_value or c.tag or "").upper()
-            if val.startswith("SKU="):
-                val = val[4:]
-
-            tag_str = (c.tag or "").upper()
-            item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
-
-            if val.startswith("CYLINDER") or "CYLINDER" in item_tags:
-                spec.lock_option_type = "צילינדר"
-            elif val in ("WC", "WC_LOCK") or "WC_LOCK" in item_tags:
-                spec.lock_option_type = "תפוס/פנוי"
-            elif val in ("KEY", "KEY_LOCK") or "KEY_LOCK" in item_tags:
-                spec.lock_option_type = "מפתח אפס"
-            elif val in ("NONE", "WITHOUT_LOCK"):
-                spec.lock_option_type = "ללא"
-            else:
-                spec.lock_option_type = "צילינדר"
-        else:
-            if not spec.lock_option_type:
-                spec.lock_option_type = "תפוס/פנוי"
 
 
 class SandwichAndFrameStep(SpecStep):
@@ -1690,7 +1776,7 @@ class SpecPipeline:
             SandwichAndFrameStep(),
             CustomizerPuzzleStep(),
             MeasurerDataStep(),
-            UnprocessedCustomizersStep(),  # <-- Priority 700
+            CustomizersFormattingStep(),  # <-- Priority 700
             MachiningRoutingStep(),  # <-- Priority 750
             TechnicalDataStep(),  # <-- Priority 800
             MediaStep(),  # <-- Priority 900
@@ -1712,14 +1798,6 @@ class SpecPipeline:
                 context.add_error(str(e))
             except Exception as e:
                 context.add_error(f"Unexpected error in {step.__class__.__name__}: {str(e)}")
-
-        for gc in list(context.unprocessed_customizers):
-            try:
-                SingleCustomizerStep(gc).process(context)
-            except PipelineError as e:
-                context.add_error(str(e))
-            except Exception as e:
-                context.add_error(f"Unexpected error in customizer {gc.customizer.code}: {str(e)}")
 
         return context.spec
 

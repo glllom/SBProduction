@@ -193,20 +193,6 @@ class Color(models.Model):
         return f"{self.name}"
 
 
-class Handle(models.Model):
-    name = models.CharField('שם', max_length=100, unique=True)
-    code = models.CharField('קוד', max_length=32, unique=True)
-    description = models.TextField('תיאור', blank=True)
-    active = models.BooleanField('פעיל', default=True)
-
-    class Meta:
-        verbose_name = 'ידית'
-        verbose_name_plural = 'ידיות'
-
-    def __str__(self):
-        return self.name
-
-
 class Hardware(models.Model):
     """
     General hardware components (locks, hinges, etc.)
@@ -220,7 +206,21 @@ class Hardware(models.Model):
         ONLY_IF_PANEL_PAINTED = 'ONLY_IF_PANEL_PAINTED', 'רק אם הכנף בצבע (ציר פאפא / כנף)'
         ONLY_IF_FRAME_PAINTED = 'ONLY_IF_FRAME_PAINTED', 'רק אם המשקוף בצבע (ציר מאמא / משקוף)'
 
+    class HardwareRole(models.TextChoices):
+        LOCK = 'LOCK', 'מנעול'
+        CYLINDER = 'CYLINDER', 'צילינדר'
+        HANDLE = 'HANDLE', 'ידית'
+        HINGE = 'HINGE', 'ציר'
+        OTHER = 'OTHER', 'פרזול משלים / אביזרים'
+
     name = models.CharField('שם', max_length=255)
+    role = models.CharField(
+        'סוג פרזול',
+        max_length=20,
+        choices=HardwareRole.choices,
+        default=HardwareRole.OTHER,
+        db_index=True
+    )
     sku = models.CharField('מק"ט', max_length=100, unique=True)
     price = models.DecimalField('מחיר', max_digits=10, decimal_places=2, default=0)
     description = models.TextField('תיאור', blank=True)
@@ -280,6 +280,10 @@ class Hardware(models.Model):
         default=RuleTag.STANDARD,
         db_index=True
     )
+
+    @property
+    def code(self):
+        return self.sku
 
     # --- Метаданные (3 универсальных параметра с запасом) ---
     par1_label = models.CharField('שם פרמטר 1', max_length=100, blank=True, default='')

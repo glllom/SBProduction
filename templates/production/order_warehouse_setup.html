@@ -95,11 +95,11 @@
                     <thead class="table-light text-secondary small">
                         <tr>
                             <th style="width: 12%;">קטגוריה</th>
-                            <th style="width: 25%;">פריט</th>
+                            <th style="width: 22%;">פריט</th>
                             <th style="width: 12%;">מק"ט</th>
                             <th style="width: 18%;">גוון / צבע</th>
                             <th style="width: 5%;" class="text-center">כמות</th>
-                            <th style="width: 20%;">הערה</th>
+                            <th>הערה</th>
                             {% if not is_locked %}
                                 <th style="width: 5%;" class="text-center">מחק</th>{% endif %}
                         </tr>
@@ -113,7 +113,7 @@
                                             <td rowspan="{{ sec.rows|length }}"
                                                 class="fw-bold bg-light align-top text-dark">{{ sec.label }}</td>
                                         {% endif %}
-                                        <td class="fw-semibold">{{ it.common_name|default:it.name }}</td>
+                                        <td class="fw-semibold">{{ it.name|default:it.name }}</td>
                                         <td class="text-muted small font-monospace sku-cell-{{ it.id }}">{{ it.sku|default:"-" }}</td>
                                         <td>
                                             {% if it.is_color_required %}
