@@ -129,6 +129,7 @@ class OrderEditPermissionMixin(View):
 
         return super().dispatch(request, *args, **kwargs)
 
+
 class OrderItemUpdateView(LoginRequiredMixin, UpdateView):
     model = OrderItem
     form_class = OrderItemForm
@@ -206,6 +207,46 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
                 'series', 'front', 'basic_color_frames'
             ).prefetch_related('items', 'customizers__customizer')
         )
+        for g in groups:
+            g.can_edit = g.is_editable_by(user)
+        context['groups'] = groups
+
+        # Сборка данных по партиям (Batches) для модального окна отчётов
+        batches_map = {}
+        for g in groups:
+            if g.batch_number is None or g.production_state == OrderItemsGroup.ProductionState.CANCELED:
+                continue
+            b_entry = batches_map.setdefault(g.batch_number, {
+                'number': g.batch_number,
+                'date': g.batch_date,
+                'items_count': 0,
+                'models': [],
+            })
+            if g.batch_date and (not b_entry['date'] or g.batch_date < b_entry['date']):
+                b_entry['date'] = g.batch_date
+            active_items = [it for it in g.items.all() if it.state != OrderItem.ItemState.CANCELED]
+            b_entry['items_count'] += len(active_items)
+            if g.product and g.product.name and g.product.name not in b_entry['models']:
+                b_entry['models'].append(g.product.name)
+
+        # Fallback, если счётчик current_batch увеличен, но группы не найдены
+        if not batches_map and (order.current_batch or 1) > 1:
+            for b_num in range(1, order.current_batch):
+                batches_map[b_num] = {
+                    'number': b_num,
+                    'date': None,
+                    'items_count': 0,
+                    'models': [],
+                }
+
+        order_batches = []
+        for b_num in sorted(batches_map.keys()):
+            entry = batches_map[b_num]
+            entry['models_summary'] = ', '.join(entry['models'])
+            order_batches.append(entry)
+
+        context['order_batches'] = order_batches
+
         for g in groups:
             g.can_edit = g.is_editable_by(user)
         context['groups'] = groups

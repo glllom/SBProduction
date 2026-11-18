@@ -289,6 +289,8 @@
         const canEdit = "{% if can_edit_order %}true{% else %}false{% endif %}" === "true";
         const orderSeriesId = "{{ order.series_id|default:'' }}";
         const orderFrontId = "{{ order.front_id|default:'' }}";
+        const orderStatus = "{{ order.status }}";
+        const csrfToken = "{{ csrf_token }}";
         const productTypeConfig = {};
         {% for pt in product_types %}
             productTypeConfig["{{ pt.id }}"] = {
@@ -305,6 +307,44 @@
             }
         }
 
+        function transferOrderToProduction(btn, url) {
+            if (!confirm('האם להעביר את ההזמנה לתהליך ייצור?')) {
+                return;
+            }
+
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>מעביר לייצור...';
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        if (response.ok && data['status'] === 'ok') {
+                            window.open(data['master_report_url'], '_blank');
+                            window.location.reload();
+                        } else {
+                            const errors = data['errors'] || [data['message'] || 'שגיאה בהעברה לייצור'];
+                            alert('לא ניתן להעביר לייצור:\n• ' + errors.join('\n• '));
+                            btn.disabled = false;
+                            btn.innerHTML = originalHtml;
+                        }
+                    });
+                })
+                .catch(function (err) {
+                    console.error(err);
+                    alert('שגיאת תקשורת עם השרת');
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                });
+        }
+
         $(document).ready(function () {
             const $saveSpecGroupName = $('#saveSpecGroupName');
             const $saveSpecGroupDetails = $('#saveSpecGroupDetails');
@@ -312,16 +352,29 @@
             const $saveSpecNameInput = $('#saveSpecNameInput');
             const $saveSpecDescInput = $('#saveSpecDescInput');
             const $saveSpecForm = $('#saveSpecForm');
-            const $csrfTokenInput = $('input[name="csrfmiddlewaretoken"]');
             const $loadSpecTargetGroupId = $('#loadSpecTargetGroupId');
             const $loadSpecTargetBadge = $('#loadSpecTargetBadge');
             const $specLoadingIndicator = $('#specLoadingIndicator');
             const $specCardsGrid = $('#specCardsGrid');
             const $specEmptyState = $('#specEmptyState');
             const $groupModal = $('#groupModal');
-            const $editHeaderForm = $('#editHeaderForm');
-            const $deleteOrderForm = $('#deleteOrderForm');
 
+            function postFormAjax(url, paramsObj) {
+                const payload = Object.assign({csrfmiddlewaretoken: csrfToken}, paramsObj || {});
+                return fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams(payload)
+                }).then(function (res) {
+                    return res.json();
+                });
+            }
+
+            // --- Раскрытие/скрытие строк позиций в карточке группы ---
             $('.btn-toggle-items').on('click', function () {
                 const $btn = $(this);
                 const groupId = $btn.data('group-id');
@@ -335,52 +388,35 @@
                     $allRows.each(function (index) {
                         if (index >= 4) $(this).addClass('d-none');
                     });
-                    const count = $allRows.length - 4;
-                    $btn.text('הצג עוד... (' + count + ')');
+                    $btn.text('הצג עוד... (' + ($allRows.length - 4) + ')');
                 }
             });
 
+            // --- Модалка быстрого редактирования отдельной двери ---
             $('.btn-edit-item').on('click', function () {
                 const $btn = $(this);
                 const itemId = $btn.data('item-id');
                 const typeId = $btn.data('type-id');
-
                 const mark = $btn.data('item-mark');
-                const width = $btn.data('width');
-                const height = $btn.data('height');
-                const wall = $btn.data('wall');
-                const direction = $btn.data('direction');
-                const opening = $btn.data('opening');
-                const additionCut = $btn.data('addition-cut');
-                const place = $btn.data('place');
-                const comment = $btn.data('comment');
                 const sketchUrl = $btn.data('sketch-url');
-
-                const lock = $btn.data('lock');
-                const h1 = $btn.data('h1');
-                const h2 = $btn.data('h2');
-                const h3 = $btn.data('h3');
-                const h4 = $btn.data('h4');
-                const h5 = $btn.data('h5');
 
                 $('#editItemForm').attr('action', '/orders/items/' + itemId + '/edit/');
                 $('#modalItemMarkDisplay').text(mark);
                 $('#id_item_mark').val(mark);
-                $('#id_item_width').val(width);
-                $('#id_item_height').val(height);
-                $('#id_item_wall').val(wall);
-                $('#id_item_direction').val(direction);
-                $('#id_item_opening').val(opening);
-                $('#id_item_addition_cut').val(additionCut);
-                $('#id_item_place').val(place);
-                $('#id_item_comment').val(comment);
-
-                $('#id_item_lock').val(lock);
-                $('#id_item_h1').val(h1);
-                $('#id_item_h2').val(h2);
-                $('#id_item_h3').val(h3);
-                $('#id_item_h4').val(h4);
-                $('#id_item_h5').val(h5);
+                $('#id_item_width').val($btn.data('width'));
+                $('#id_item_height').val($btn.data('height'));
+                $('#id_item_wall').val($btn.data('wall'));
+                $('#id_item_direction').val($btn.data('direction'));
+                $('#id_item_opening').val($btn.data('opening'));
+                $('#id_item_addition_cut').val($btn.data('addition-cut'));
+                $('#id_item_place').val($btn.data('place'));
+                $('#id_item_comment').val($btn.data('comment'));
+                $('#id_item_lock').val($btn.data('lock'));
+                $('#id_item_h1').val($btn.data('h1'));
+                $('#id_item_h2').val($btn.data('h2'));
+                $('#id_item_h3').val($btn.data('h3'));
+                $('#id_item_h4').val($btn.data('h4'));
+                $('#id_item_h5').val($btn.data('h5'));
 
                 if (sketchUrl) {
                     $('#sketchLink').attr('href', sketchUrl);
@@ -390,19 +426,14 @@
                 }
 
                 const config = productTypeConfig[typeId] || {has_door: true, has_frame: true};
-                const $fieldWall = $('.field-wall');
-                const $fieldDoor = $('.field-door');
-                const $fieldDims = $('.field-dims');
-                const $fieldPlace = $('.field-place');
-
-                $fieldWall.toggle(config.has_frame);
-                $fieldDoor.toggle(config.has_door);
-
                 const showDims = config.has_door || config.has_frame;
-                $fieldDims.toggle(showDims);
-                $fieldPlace.toggle(showDims);
+                $('.field-wall').toggle(config.has_frame);
+                $('.field-door').toggle(config.has_door);
+                $('.field-dims').toggle(showDims);
+                $('.field-place').toggle(showDims);
             });
 
+            // --- Модалка добавления / редактирования группы (#groupModal) ---
             $('#groupModal input, #groupModal select, #groupModal textarea').each(function () {
                 const $el = $(this);
                 if ($el.is(':checkbox') || $el.is(':radio')) {
@@ -414,158 +445,6 @@
                 }
             });
 
-            $(document).on('click', '[data-bs-target="#groupModal"]', function () {
-                const $btn = $(this);
-                const isEdit = $btn.hasClass('btn-edit-group');
-                const $modal = $('#groupModal');
-                const $form = $('#groupForm');
-                const $label = $('#groupModalLabel');
-                const $submitBtn = $('#groupModalSubmitBtn');
-                const $customizeBtn = $('#groupModalCustomizeBtn');
-
-                $modal.data('mode', isEdit ? 'edit' : 'add');
-
-                // 1. Корректная установка текста кнопки Submit в зависимости от режима
-                if (isEdit) {
-                    $label.text('עריכת קבוצה');
-                    $submitBtn.text('שמור שינויים'); // Исправлено: при редактировании всегда "שמור שינויים"
-                    $form.attr('action', $btn.attr('data-edit-url'));
-
-                    $form[0].reset();
-
-                    const canEditGroup = $btn.attr('data-can-edit') !== 'false';
-                    const isPanelTbd = $btn.attr('data-panel-tbd') === 'true';
-                    const isFrameTbd = $btn.attr('data-frame-tbd') === 'true';
-
-                    // 3. Кнопка перехода к кастомизаторам зависит от прав редактирования (canEditGroup)
-                    if (canEditGroup) {
-                        $customizeBtn.removeClass('d-none').prop('disabled', false);
-                    } else {
-                        $customizeBtn.addClass('d-none');
-                    }
-
-                    $modal.find('input[name="quantity"]').val($btn.attr('data-quantity'));
-                    $modal.find('textarea[name="comments"]').val($btn.attr('data-comments'));
-                    $modal.find('input[name="is_split_installation"]').prop('checked', $btn.attr('data-is-split') === 'true');
-
-                    const panelPaint = $btn.attr('data-panel-paint-option') || 'MAIN_COLOR';
-                    $modal.find('select[name="panel_paint_option"]').val(panelPaint).trigger('change');
-
-                    const isDiffSides = $btn.attr('data-is-diff-sides') === 'true';
-                    $modal.find('input[name="is_door_inside_different_color"]').prop('checked', isDiffSides).trigger('change');
-
-                    $modal.find('input[name="color_panel_outside"]').val($btn.attr('data-color-panel-outside') || '');
-                    $modal.find('input[name="color_panel_inside"]').val($btn.attr('data-color-panel-inside') || '');
-
-                    const framePaint = $btn.attr('data-frame-paint-option') || 'NO_PAINT';
-                    $modal.find('select[name="frame_paint_option"]').val(framePaint).trigger('change');
-                    $modal.find('input[name="color_frames"]').val($btn.attr('data-color-frames') || '');
-
-                    const productId = $btn.attr('data-product-id');
-                    const productName = $btn.attr('data-product-name');
-                    const productCode = $btn.attr('data-product-code');
-                    if (productId) {
-                        const $productSelect = $modal.find('select[name="product"]');
-                        if ($productSelect.find('option[value="' + productId + '"]').length === 0) {
-                            $productSelect.append('<option value="' + productId + '">' + productName + '</option>');
-                        }
-                        $productSelect.val(productId);
-                        $modal.find('.product-info-display').html('<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ' + productName + ' (' + productCode + ')</strong>');
-                    }
-
-                    $modal.find('select[name="product_family"]').attr('data-initial-value', $btn.attr('data-product-family'));
-                    $modal.find('select[name="product_type"]').val($btn.attr('data-product-type')).trigger('change');
-
-                    $modal.find('select[name="front"]').attr('data-initial-value', $btn.attr('data-front'));
-                    $modal.find('select[name="basic_color_frames"]').attr('data-initial-value', $btn.attr('data-basic-color-frames'));
-                    $modal.find('select[name="series"]').val($btn.attr('data-series')).trigger('change');
-
-                    const structuralSelectors = 'select[name="product_type"], select[name="product_family"], select[name="series"], select[name="front"], select[name="basic_color_frames"], select[name="product"], input[name="quantity"], input[name="is_split_installation"]';
-
-                    if (!canEditGroup) {
-                        // 1. Блокируем структурные поля и базовый цвет коробки
-                        $modal.find(structuralSelectors).prop('disabled', true);
-
-                        // 2. Открываем поля краски и цветов (даже если есть флаги TBD, делаем их доступными)
-                        $modal.find('select[name="panel_paint_option"], input[name="is_door_inside_different_color"], input[name="color_panel_outside"], input[name="color_panel_inside"], select[name="frame_paint_option"], input[name="color_frames"]').prop('disabled', false);
-
-                        // Добавляем предупреждающий баннер в модалку
-                        if ($modal.find('.alert-grace-period').length === 0) {
-                            $modal.find('.modal-body').prepend(`
-                    <div class="alert alert-warning alert-grace-period mb-2 p-1" role="alert">
-                        <i class="bi bi-lock-fill me-2"></i> הקבוצה נעולה לעריכה כללית (עבר תאריך הייצור). ניתן לערוך <strong>נתוני צביעה בלבד</strong>.
-                    </div>
-                `);
-                        }
-                    } else {
-                        // Разблокируем всё, если группа полностью доступна
-                        $modal.find('input, select, textarea').prop('disabled', false);
-                        $modal.find('.alert-grace-period').remove();
-                    }
-                } else {
-                    $label.text('הוספת קבוצת דלתות');
-                    $submitBtn.text('הוסף קבוצה'); // При добавлении всегда "הוסף קבוצה"
-                    $customizeBtn.removeClass('d-none');
-                    $form.attr('action', "{% url 'group-add' order.pk %}");
-                    $form[0].reset();
-
-                    $modal.find('input, select, textarea').prop('disabled', false);
-                    $modal.find('select').removeAttr('data-initial-value');
-                    $modal.find('.product-info-display').html('<small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
-
-                    if (orderSeriesId) {
-                        $modal.find('select[name="series"]').val(orderSeriesId).trigger('change');
-                    }
-
-                    $modal.find('select[name="panel_paint_option"]').val('MAIN_COLOR').trigger('change');
-                    $modal.find('input[name="is_door_inside_different_color"]').prop('checked', false).trigger('change');
-                    $modal.find('input[name="color_panel_outside"]').val('');
-                    $modal.find('input[name="color_panel_inside"]').val('');
-
-                    $modal.find('select[name="frame_paint_option"]').val('NO_PAINT').trigger('change');
-                    $modal.find('input[name="color_frames"]').val('');
-                }
-            });
-
-// 2. Валидация обязательных полей перед отправкой формы
-            $('#groupForm').on('submit', function (e) {
-                const $modal = $('#groupModal');
-                // Если группа заблокирована по Grace Period, структурные поля disabled, их проверять не нужно
-                const productType = $modal.find('select[name="product_type"]').val();
-                const productFamily = $modal.find('select[name="product_family"]').val();
-                const series = $modal.find('select[name="series"]').val();
-                const front = $modal.find('select[name="front"]').val();
-                const quantity = $modal.find('input[name="quantity"]').val();
-
-                let missingFields = [];
-                if (!productType) missingFields.push('סוג מוצר');
-                if (!productFamily) missingFields.push('משפחת מוצר');
-                if (!series) missingFields.push('סדרה');
-                if (!front) missingFields.push('חזית');
-                if (!quantity || parseInt(quantity) <= 0) missingFields.push('כמות תקינה');
-
-                if (missingFields.length > 0) {
-                    e.preventDefault();
-                    alert('אנא מלא את השדות חובה הבאים: ' + missingFields.join(', '));
-                    return false;
-                }
-            });
-            if ($editHeaderForm.length) {
-                $editHeaderForm.on('submit', function (e) {
-                    if (!confirm('לשמור שינויים?')) {
-                        e.preventDefault();
-                    }
-                });
-            }
-
-            if ($deleteOrderForm.length) {
-                $deleteOrderForm.on('submit', function (e) {
-                    if (!confirm('האם אתה בטוח שברצונך למחוק את ההזמנה? פעולה זו אינה ניתנת לביטול.')) {
-                        e.preventDefault();
-                    }
-                });
-            }
-
             function getGroupFormState($form) {
                 const $disabled = $form.find(':disabled');
                 $disabled.prop('disabled', false);
@@ -574,21 +453,128 @@
                 return state;
             }
 
-            $(document).on('show.bs.modal', '#groupModal', function () {
-                const $modal = $(this);
-                const $form = $modal.find('form');
+            $(document).on('click', '[data-bs-target="#groupModal"]', function () {
+                const $btn = $(this);
+                const isEdit = $btn.hasClass('btn-edit-group');
+                const $form = $('#groupForm');
+                const $label = $('#groupModalLabel');
+                const $submitBtn = $('#groupModalSubmitBtn');
+                const $customizeBtn = $('#groupModalCustomizeBtn');
+
+                $groupModal.data('mode', isEdit ? 'edit' : 'add');
+                $groupModal.data('force-close', false);
+
+                if (isEdit) {
+                    $label.text('עריכת קבוצה');
+                    $submitBtn.text('שמור שינויים');
+                    $form.attr('action', $btn.attr('data-edit-url'));
+                    $form[0].reset();
+
+                    const canEditGroup = $btn.attr('data-can-edit') !== 'false';
+                    $customizeBtn.toggleClass('d-none', !canEditGroup).prop('disabled', !canEditGroup);
+
+                    $groupModal.find('input[name="quantity"]').val($btn.attr('data-quantity'));
+                    $groupModal.find('textarea[name="comments"]').val($btn.attr('data-comments'));
+                    $groupModal.find('input[name="is_split_installation"]').prop('checked', $btn.attr('data-is-split') === 'true');
+
+                    const panelPaint = $btn.attr('data-panel-paint-option') || 'MAIN_COLOR';
+                    $groupModal.find('select[name="panel_paint_option"]').val(panelPaint).trigger('change');
+
+                    const isDiffSides = $btn.attr('data-is-diff-sides') === 'true';
+                    $groupModal.find('input[name="is_door_inside_different_color"]').prop('checked', isDiffSides).trigger('change');
+
+                    $groupModal.find('input[name="color_panel_outside"]').val($btn.attr('data-color-panel-outside') || '');
+                    $groupModal.find('input[name="color_panel_inside"]').val($btn.attr('data-color-panel-inside') || '');
+
+                    const framePaint = $btn.attr('data-frame-paint-option') || 'NO_PAINT';
+                    $groupModal.find('select[name="frame_paint_option"]').val(framePaint).trigger('change');
+                    $groupModal.find('input[name="color_frames"]').val($btn.attr('data-color-frames') || '');
+
+                    const productId = $btn.attr('data-product-id');
+                    const productName = $btn.attr('data-product-name');
+                    const productCode = $btn.attr('data-product-code');
+                    if (productId) {
+                        const $productSelect = $groupModal.find('select[name="product"]');
+                        if ($productSelect.find('option[value="' + productId + '"]').length === 0) {
+                            $productSelect.append('<option value="' + productId + '">' + productName + '</option>');
+                        }
+                        $productSelect.val(productId);
+                        $groupModal.find('.product-info-display').html(
+                            '<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ' +
+                            productName + ' (' + productCode + ')</strong>'
+                        );
+                    }
+
+                    $groupModal.find('select[name="product_family"]').attr('data-initial-value', $btn.attr('data-product-family'));
+                    $groupModal.find('select[name="product_type"]').val($btn.attr('data-product-type')).trigger('change');
+
+                    $groupModal.find('select[name="front"]').attr('data-initial-value', $btn.attr('data-front'));
+                    $groupModal.find('select[name="basic_color_frames"]').attr('data-initial-value', $btn.attr('data-basic-color-frames'));
+                    $groupModal.find('select[name="series"]').val($btn.attr('data-series')).trigger('change');
+
+                    const structuralSelectors =
+                        'select[name="product_type"], select[name="product_family"], select[name="series"], ' +
+                        'select[name="front"], select[name="basic_color_frames"], select[name="product"], ' +
+                        'input[name="quantity"], input[name="is_split_installation"]';
+
+                    if (!canEditGroup) {
+                        $groupModal.find(structuralSelectors).prop('disabled', true);
+                        $groupModal.find(
+                            'select[name="panel_paint_option"], input[name="is_door_inside_different_color"], ' +
+                            'input[name="color_panel_outside"], input[name="color_panel_inside"], ' +
+                            'select[name="frame_paint_option"], input[name="color_frames"]'
+                        ).prop('disabled', false);
+
+                        if ($groupModal.find('.alert-grace-period').length === 0) {
+                            $groupModal.find('.modal-body').prepend(
+                                '<div class="alert alert-warning alert-grace-period mb-2 p-1" role="alert">' +
+                                '<i class="bi bi-lock-fill me-2"></i> הקבוצה נעולה לעריכה כללית (עבר תאריך הייצור). ' +
+                                'ניתן לערוך <strong>נתוני צביעה בלבד</strong>.</div>'
+                            );
+                        }
+                    } else {
+                        $groupModal.find('input, select, textarea').prop('disabled', false);
+                        $groupModal.find('.alert-grace-period').remove();
+                    }
+                } else {
+                    $label.text('הוספת קבוצת דלתות');
+                    $submitBtn.text('הוסף קבוצה');
+                    $customizeBtn.removeClass('d-none').prop('disabled', false);
+                    $form.attr('action', "{% url 'group-add' order.pk %}");
+                    $form[0].reset();
+
+                    $groupModal.find('input, select, textarea').prop('disabled', false);
+                    $groupModal.find('.alert-grace-period').remove();
+                    $groupModal.find('select').removeAttr('data-initial-value');
+                    $groupModal.find('.product-info-display').html('<small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
+
+                    if (orderSeriesId) {
+                        $groupModal.find('select[name="series"]').val(orderSeriesId).trigger('change');
+                    }
+
+                    $groupModal.find('select[name="panel_paint_option"]').val('MAIN_COLOR').trigger('change');
+                    $groupModal.find('input[name="is_door_inside_different_color"]').prop('checked', false).trigger('change');
+                    $groupModal.find('input[name="color_panel_outside"]').val('');
+                    $groupModal.find('input[name="color_panel_inside"]').val('');
+
+                    $groupModal.find('select[name="frame_paint_option"]').val('NO_PAINT').trigger('change');
+                    $groupModal.find('input[name="color_frames"]').val('');
+                }
+            });
+
+            $groupModal.on('show.bs.modal', function () {
+                const $form = $(this).find('form');
                 setTimeout(function () {
                     $form.data('initial-state', getGroupFormState($form));
                 }, 100);
             });
 
-            $(document).on('hide.bs.modal', '#groupModal', function (e) {
-                const $modal = $(this);
-                const $form = $modal.find('form');
+            $groupModal.on('hide.bs.modal', function (e) {
+                const $form = $(this).find('form');
                 const initialState = $form.data('initial-state');
                 const currentState = getGroupFormState($form);
 
-                if (initialState !== currentState && !$modal.data('force-close')) {
+                if (initialState !== currentState && !$(this).data('force-close')) {
                     if (!confirm('יש שינויים שלא נשמרו. האם אתה בטוח שברצונך לסגור?')) {
                         e.preventDefault();
                         e.stopPropagation();
@@ -597,25 +583,394 @@
                 }
             });
 
-            $(document).on('submit', '#groupModal form', function (e) {
+            // Единый обработчик отправки #groupForm (валидация + подтверждение + разблокировка полей)
+            $('#groupForm').on('submit', function (e) {
                 const $form = $(this);
-                const $modal = $form.closest('.modal');
+                const productType = $groupModal.find('select[name="product_type"]').val();
+                const productFamily = $groupModal.find('select[name="product_family"]').val();
+                const series = $groupModal.find('select[name="series"]').val();
+                const front = $groupModal.find('select[name="front"]').val();
+                const quantity = $groupModal.find('input[name="quantity"]').val();
+
+                const missingFields = [];
+                if (!productType) missingFields.push('סוג מוצר');
+                if (!productFamily) missingFields.push('משפחת מוצר');
+                if (!series) missingFields.push('סדרה');
+                if (!front) missingFields.push('חזית');
+                if (!quantity || parseInt(quantity, 10) <= 0) missingFields.push('כמות תקינה');
+
+                if (missingFields.length > 0) {
+                    e.preventDefault();
+                    alert('אנא מלא את השדות חובה הבאים: ' + missingFields.join(', '));
+                    return false;
+                }
+
                 const initialState = $form.data('initial-state');
                 const currentState = getGroupFormState($form);
+                if (initialState !== currentState && !confirm('לשמור שינויים?')) {
+                    e.preventDefault();
+                    return false;
+                }
 
-                if (initialState !== currentState) {
-                    if (!confirm('לשמור שינויים?')) {
-                        e.preventDefault();
+                $groupModal.data('force-close', true);
+                $form.find(':disabled').prop('disabled', false);
+            });
+
+            // --- Каскадные списки каталога (Тип -> Семейство -> Серия -> Модель / Фасад / Цвет коробки) ---
+            function updateFronts($container, seriesId) {
+                const $frontSelect = $container.find('select[name="front"]');
+                if (!$frontSelect.length) return;
+
+                if (!seriesId) {
+                    $frontSelect.html('<option value="">---------</option>').trigger('change');
+                    return;
+                }
+
+                const currentVal = $frontSelect.val();
+                fetch('/catalog/api/fronts/?series=' + seriesId)
+                    .then(function (response) {
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        let options = '<option value="">---------</option>';
+                        const fronts = (Array.isArray(data) ? data : data['results']) || [];
+                        fronts.forEach(function (front) {
+                            const desc = front['description'] || '';
+                            const finishType = front['finish_type'] || 'PAINT';
+                            options +=
+                                '<option value="' + front['id'] + '" data-finish-type="' + finishType +
+                                '" data-description="' + desc + '" title="' + desc + '">' + front['name'] + '</option>';
+                        });
+                        $frontSelect.html(options);
+
+                        const $modalEl = $container.closest('#groupModal');
+                        const isNew = $modalEl.length > 0 && $modalEl.data('mode') === 'add';
+                        const initialVal = $frontSelect.attr('data-initial-value');
+
+                        if (currentVal && fronts.some(function (f) {
+                            return String(f['id']) === String(currentVal);
+                        })) {
+                            $frontSelect.val(currentVal);
+                        } else if (!isNew && initialVal && fronts.some(function (f) {
+                            return String(f['id']) === String(initialVal);
+                        })) {
+                            $frontSelect.val(initialVal);
+                        } else if (isNew && seriesId === orderSeriesId && orderFrontId && fronts.some(function (f) {
+                            return String(f['id']) === String(orderFrontId);
+                        })) {
+                            $frontSelect.val(orderFrontId);
+                        }
+                        $frontSelect.trigger('change');
+                    })
+                    .catch(function (error) {
+                        console.error('Error fetching fronts:', error);
+                    });
+            }
+
+            function updateFrameColors($container, seriesId, familyId) {
+                const $basicColorFramesSelect = $container.find('select[name="basic_color_frames"]');
+                if (!$basicColorFramesSelect.length) return;
+
+                const $modalEl = $container.closest('#groupModal');
+                const isGroupLocked = $modalEl.length > 0 && $modalEl.find('input[name="quantity"]').is(':disabled');
+
+                if (!seriesId || !familyId || isGroupLocked) {
+                    $basicColorFramesSelect.prop('disabled', true);
+                    if (isGroupLocked) {
+                        if (window.jQuery && $basicColorFramesSelect.data('select2')) {
+                            $basicColorFramesSelect.trigger('change.select2');
+                        }
                         return;
+                    }
+                    $basicColorFramesSelect.html('<option value="">---------</option>').val('').trigger('change');
+                    return;
+                }
+
+                const url = '/catalog/api/frame-colors/?series=' + seriesId + '&family=' + familyId;
+                const currentVal = $basicColorFramesSelect.val();
+                const initialVal = $basicColorFramesSelect.attr('data-initial-value');
+                const isNew = $modalEl.length > 0 && $modalEl.data('mode') === 'add';
+
+                fetch(url)
+                    .then(function (response) {
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        let options = '<option value="">---------</option>';
+                        const colors = (Array.isArray(data) ? data : data['results']) || [];
+
+                        if (colors.length === 0) {
+                            $basicColorFramesSelect.prop('disabled', true).html(options).val('').trigger('change');
+                        } else {
+                            $basicColorFramesSelect.prop('disabled', false);
+                            colors.forEach(function (color) {
+                                const desc = color['sku'] || color['description'] || '';
+                                options += '<option value="' + color['id'] + '" data-description="' + desc + '" title="' + desc + '">' + color['name'] + '</option>';
+                            });
+                            $basicColorFramesSelect.html(options);
+
+                            if (currentVal && colors.some(function (c) {
+                                return String(c['id']) === String(currentVal);
+                            })) {
+                                $basicColorFramesSelect.val(currentVal);
+                            } else if (!isNew && initialVal && colors.some(function (c) {
+                                return String(c['id']) === String(initialVal);
+                            })) {
+                                $basicColorFramesSelect.val(initialVal);
+                            } else {
+                                $basicColorFramesSelect.val(colors[0]['id']);
+                            }
+                            $basicColorFramesSelect.trigger('change');
+                        }
+                    })
+                    .catch(function (error) {
+                        console.error('Error fetching frame colors:', error);
+                        $basicColorFramesSelect.prop('disabled', true);
+                    });
+            }
+
+            function updateProductModel($container) {
+                const $seriesSelect = $container.find('select[name="series"]');
+                const $familySelect = $container.find('select[name="product_family"]');
+                const $productSelect = $container.find('select[name="product"]');
+                const $splitCheckbox = $container.find('input[name="is_split_installation"]');
+                const $display = $container.find('.product-info-display');
+                const $submitBtn = $container.closest('form').find('button[type="submit"]');
+
+                if (!$seriesSelect.length || !$familySelect.length || !$productSelect.length) return;
+
+                const seriesId = $seriesSelect.val();
+                const familyId = $familySelect.val();
+
+                if (!seriesId || !familyId) {
+                    if ($display.length) {
+                        $display.html('<small class="text-muted">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
+                    }
+                    if ($productSelect.val() !== '') {
+                        $productSelect.val('');
+                        if ($productSelect.hasClass('select2-hidden-accessible')) {
+                            $productSelect.trigger('change.select2');
+                        }
+                    }
+                    if ($splitCheckbox.length) {
+                        $splitCheckbox.prop('disabled', true).prop('checked', false);
+                    }
+                    return;
+                }
+
+                fetch('/catalog/api/models/?series=' + seriesId + '&family=' + familyId)
+                    .then(function (response) {
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        const models = (Array.isArray(data) ? data : data['results']) || [];
+
+                        if (models.length > 0) {
+                            const model = models[0];
+                            const desc = model['description'] || '';
+                            const supportsSplit = Boolean(model['supports_split_installation']);
+
+                            if ($display.length) {
+                                $display.html(
+                                    '<strong class="text-success-emphasis" data-bs-toggle="tooltip" title="' + (desc || model['name']) + '">' +
+                                    '<i class="bi bi-check-circle-fill me-1"></i> ' + model['name'] + ' (' + model['code'] + ')</strong>'
+                                );
+                                if (window['initTooltips']) window['initTooltips']($display[0]);
+                            }
+
+                            if ($productSelect.find('option[value="' + model['id'] + '"]').length === 0) {
+                                $productSelect.append('<option value="' + model['id'] + '" data-description="' + desc + '">' + model['name'] + '</option>');
+                            }
+
+                            if (String($productSelect.val()) !== String(model['id'])) {
+                                $productSelect.val(model['id']);
+                                if ($productSelect.hasClass('select2-hidden-accessible')) {
+                                    $productSelect.trigger('change.select2');
+                                }
+                            }
+
+                            if ($splitCheckbox.length) {
+                                const canUseSplit = ['NEW', 'PHASE1_PRODUCTION'].includes(orderStatus);
+                                if (canUseSplit && supportsSplit) {
+                                    $splitCheckbox.prop('disabled', false).prop('checked', true);
+                                } else {
+                                    $splitCheckbox.prop('disabled', true).prop('checked', false);
+                                }
+                            }
+                            $submitBtn.prop('disabled', false);
+                        } else {
+                            if ($display.length) {
+                                $display.html('<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> מוצר לא נמצא לשילוב זה</span>');
+                            }
+                            if ($productSelect.val() !== '') {
+                                $productSelect.val('');
+                                if ($productSelect.hasClass('select2-hidden-accessible')) {
+                                    $productSelect.trigger('change.select2');
+                                }
+                            }
+                            $submitBtn.prop('disabled', true);
+                        }
+                    })
+                    .catch(function (error) {
+                        console.error('Error fetching product model:', error);
+                        $submitBtn.prop('disabled', false);
+                    });
+            }
+
+            $(document).on('change', 'select[name="product_type"]', function () {
+                const $typeSelect = $(this);
+                const typeId = $typeSelect.val();
+                const $container = $typeSelect.closest('.modal-body, form');
+                const $familySelect = $container.find('select[name="product_family"]');
+
+                if (!typeId) {
+                    $familySelect.html('<option value="">---------</option>').trigger('change');
+                    return;
+                }
+
+                const currentVal = $familySelect.val();
+                const initialVal = $familySelect.attr('data-initial-value');
+
+                fetch('/catalog/api/families/?type=' + typeId)
+                    .then(function (response) {
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        let options = '<option value="">---------</option>';
+                        const families = (Array.isArray(data) ? data : data['results']) || [];
+                        families.forEach(function (family) {
+                            const desc = family['description'] || '';
+                            options += '<option value="' + family['id'] + '" data-description="' + desc + '" title="' + desc + '">' + family['name'] + '</option>';
+                        });
+                        $familySelect.html(options);
+
+                        if (currentVal && families.some(function (f) {
+                            return String(f['id']) === String(currentVal);
+                        })) {
+                            $familySelect.val(currentVal);
+                        } else if (initialVal && families.some(function (f) {
+                            return String(f['id']) === String(initialVal);
+                        })) {
+                            $familySelect.val(initialVal);
+                        }
+
+                        $familySelect.trigger('change');
+                    })
+                    .catch(function (error) {
+                        console.error('Error fetching families:', error);
+                    });
+            });
+
+            $(document).on('change', 'select[name="series"]', function (e) {
+                if (e.namespace === 'select2') return;
+                const $container = $(this).closest('.modal-body, form, .card-body');
+                if (!$container.length) return;
+
+                const seriesId = $(this).val();
+                const familyId = $container.find('select[name="product_family"]').val();
+
+                updateFronts($container, seriesId);
+                updateFrameColors($container, seriesId, familyId);
+                updateProductModel($container);
+            });
+
+            $(document).on('change', 'select[name="product_family"]', function (e) {
+                if (e.namespace === 'select2') return;
+                const $container = $(this).closest('.modal-body, form, .card-body');
+                if (!$container.length) return;
+
+                const familyId = $(this).val();
+                const seriesId = $container.find('select[name="series"]').val();
+
+                updateFrameColors($container, seriesId, familyId);
+                updateProductModel($container);
+            });
+
+            // --- Логика покраски полотна и коробки в модалке группы ---
+            function setupGroupPaintingLogic($modal) {
+                const $frameSelect = $modal.find('select[name="frame_paint_option"]');
+                const $frameWrap = $modal.find('#group-frame-special-color-wrap');
+
+                const $panelSelect = $modal.find('select[name="panel_paint_option"]');
+                const $panelWrap = $modal.find('#group-panel-special-color-wrap');
+                const $diffWrap = $modal.find('#group-diff-sides-switch-wrap');
+                const $diffToggle = $modal.find('input[name="is_door_inside_different_color"]');
+                const $insideWrap = $modal.find('#group-panel-inside-wrap');
+                const $labelOut = $modal.find('#group-label-panel-out');
+                const $labelIn = $modal.find('#group-panel-inside-wrap label');
+                const $inputOut = $modal.find('input[name="color_panel_outside"]');
+                const $inputIn = $modal.find('input[name="color_panel_inside"]');
+                const $frontSelect = $modal.find('select[name="front"]');
+                const $panelTitle = $panelSelect.closest('.col-md-6').find('.form-label').first();
+
+                function syncColors() {
+                    $frameWrap.toggle($frameSelect.val() === 'SPECIAL_COLOR');
+
+                    const finishType = $frontSelect.find('option:selected').attr('data-finish-type') || 'PAINT';
+                    const isDiff = $diffToggle.is(':checked');
+
+                    $('#group-no-paint-notice').remove();
+
+                    if (finishType === 'NO_PAINT') {
+                        $panelTitle.html('גימור כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
+                        $panelSelect.hide().val('NO_PAINT');
+                        $panelWrap.hide();
+                        $diffWrap.hide();
+                        $insideWrap.hide();
+                        $inputOut.val('');
+                        $inputIn.val('');
+                        $panelSelect.after('<div id="group-no-paint-notice" class="badge bg-secondary p-2 mt-1">ללא צבע (בסיס)</div>');
+                    } else {
+                        $panelSelect.show();
+
+                        if (finishType === 'FORMICA') {
+                            $panelTitle.html('גימור פורמייקה: <i class="bi bi-info-circle help-hint-icon"></i>');
+                            $inputOut.attr('placeholder', 'מספר פורמייקה');
+                            $inputIn.attr('placeholder', 'מספר פורמייקה פנים');
+                            $labelOut.text(isDiff ? 'מספר פורמייקה (חוץ):' : 'מספר פורמייקה:');
+                            $labelIn.text('מספר פורמייקה (פנים):');
+                        } else {
+                            $panelTitle.html('צביעת כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
+                            $inputOut.attr('placeholder', 'קוד צבע');
+                            $inputIn.attr('placeholder', 'קוד צבע פנים');
+                            $labelOut.text(isDiff ? 'גוון כנף חוץ:' : 'גוון כנף (דו-צדדי):');
+                            $labelIn.text('גוון כנף צד פנים:');
+                        }
+
+                        if ($panelSelect.val() === 'SPECIAL_COLOR') {
+                            $panelWrap.show();
+                            $diffWrap.show();
+                            $insideWrap.toggle(isDiff);
+                        } else {
+                            $panelWrap.hide();
+                            $diffWrap.hide();
+                            $insideWrap.hide();
+                        }
                     }
                 }
 
-                if ($modal.length) {
-                    $modal.data('force-close', true);
-                }
+                $frameSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
+                $panelSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
+                $diffToggle.off('change.groupPaint').on('change.groupPaint', syncColors);
+                $frontSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
 
-                $form.find(':disabled').prop('disabled', false);
-            });
+                $modal.find('#btn-group-copy-door').off('click.groupCopy').on('click.groupCopy', function () {
+                    $modal.find('input[name="color_frames"]').val($modal.find('input[name="color_panel_outside"]').val());
+                });
+
+                syncColors();
+            }
+
+            if ($groupModal.length) {
+                setupGroupPaintingLogic($groupModal);
+            }
+
+            // --- Управление кастомизаторами группы (#groupCustomizerModal) ---
+            const $custModal = $('#groupCustomizerModal');
+            const $custSearch = $('#customizerSearch');
+            const $custResults = $('#customizerSearchResults');
+            const $custTableBody = $('#groupCustomizersList');
 
             function updateMainListCustomizers(groupId) {
                 fetch('/orders/api/group-customizers/?group_id=' + groupId)
@@ -697,11 +1052,6 @@
                     });
             }
 
-            const $custModal = $('#groupCustomizerModal');
-            const $custSearch = $('#customizerSearch');
-            const $custResults = $('#customizerSearchResults');
-            const $custTableBody = $('#groupCustomizersList');
-
             function updatePar2Visibility($row) {
                 const $par1 = $row.find('.cust-param-input[data-param="par1"]');
                 const $par2Col = $row.find('.col-md-6[data-param-index="2"]');
@@ -720,61 +1070,11 @@
                 }
             }
 
-            function openCustomizerModal(groupId) {
-                const $groupCard = $('.group-card[data-group-id="' + groupId + '"]');
-                if (!$groupCard.length) {
-                    $('#custModalGroupName').text('קבוצה #' + groupId);
-                } else {
-                    $('#custModalGroupName').text($groupCard.data('group-name'));
-                    $('#custModalGroupQty').text($groupCard.data('group-qty'));
-                    $('#custModalGroupDetails').text($groupCard.data('group-details'));
-
-                    $custModal.data('product-id', $groupCard.data('product-id'));
-                    $custModal.data('family-id', $groupCard.data('family-id'));
-                    $custModal.data('type-id', $groupCard.data('type-id'));
-                }
-
-                $custModal.data('group-id', groupId);
-                loadGroupCustomizers(groupId);
-
-                const modalInst = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance($custModal[0]) : null;
-                if (modalInst) {
-                    modalInst.show();
-                }
-            }
-
-            function loadGroupCustomizers(groupId) {
-                $custTableBody.html('<tr><td colspan="3" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>');
-
-                fetch('/orders/api/group-customizers/?group_id=' + groupId)
-                    .then(function (r) {
-                        return r.json();
-                    })
-                    .then(function (data) {
-                        let html = '';
-                        const items = Array.isArray(data) ? data : (data['results'] || []);
-                        items.forEach(function (item) {
-                            html += renderCustomizerRow(item);
-                        });
-                        if (items.length === 0) {
-                            html = '<tr><td colspan="3" class="text-center py-4 text-muted">לא נוספו קסטומייזרים לקבוצה זו</td></tr>';
-                        }
-                        $custTableBody.html(html);
-                        $custTableBody.find('tr').each(function () {
-                            updatePar2Visibility($(this));
-                        });
-                        if (window['initTooltips']) window['initTooltips']($custTableBody[0]);
-                    })
-                    .catch(function (err) {
-                        console.error('Error loading group customizers:', err);
-                        $custTableBody.html('<tr><td colspan="3" class="text-center text-danger py-4">שגיאה בטעינת נתונים</td></tr>');
-                    });
-            }
-
             function renderCustomizerRow(item) {
                 let paramsHtml = '<div class="row g-2">';
                 let hasParams = false;
                 const custIsRequired = item['customizer_is_required'];
+
                 for (let i = 1; i <= 5; i++) {
                     const label = item['par' + i + '_label'];
                     const hint = item['par' + i + '_hint'] || '';
@@ -798,7 +1098,10 @@
                             inputHtml += '</select>';
                         } else {
                             const effectiveVal = (currentValue !== null && currentValue !== undefined && currentValue !== '') ? currentValue : (defaultValue || '');
-                            inputHtml = '<input type="text" class="form-control form-control-sm cust-param-input" data-id="' + item['id'] + '" data-param="par' + i + '" value="' + effectiveVal + '" placeholder="' + (hint || (isRequired ? 'שדה חובה' : '')) + '" ' + (hint ? 'data-bs-toggle="tooltip" title="' + hint + '"' : '') + '>';
+                            inputHtml =
+                                '<input type="text" class="form-control form-control-sm cust-param-input" data-id="' + item['id'] +
+                                '" data-param="par' + i + '" value="' + effectiveVal + '" placeholder="' + (hint || (isRequired ? 'שדה חובה' : '')) +
+                                '" ' + (hint ? 'data-bs-toggle="tooltip" title="' + hint + '"' : '') + '>';
                         }
 
                         paramsHtml +=
@@ -821,6 +1124,52 @@
                     '<td class="text-end">' +
                     '<button class="btn btn-sm btn-outline-danger remove-cust-btn" data-id="' + item['id'] + '" data-bs-toggle="tooltip" title="הסר קסטומייזר זה מהקבוצה">' +
                     '<i class="bi bi-trash"></i></button></td></tr>';
+            }
+
+            function loadGroupCustomizers(groupId) {
+                $custTableBody.html('<tr><td colspan="3" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>');
+
+                fetch('/orders/api/group-customizers/?group_id=' + groupId)
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function (data) {
+                        const items = Array.isArray(data) ? data : (data['results'] || []);
+                        let html = items.map(renderCustomizerRow).join('');
+                        if (items.length === 0) {
+                            html = '<tr><td colspan="3" class="text-center py-4 text-muted">לא נוספו קסטומייזרים לקבוצה זו</td></tr>';
+                        }
+                        $custTableBody.html(html);
+                        $custTableBody.find('tr').each(function () {
+                            updatePar2Visibility($(this));
+                        });
+                        if (window['initTooltips']) window['initTooltips']($custTableBody[0]);
+                    })
+                    .catch(function (err) {
+                        console.error('Error loading group customizers:', err);
+                        $custTableBody.html('<tr><td colspan="3" class="text-center text-danger py-4">שגיאה בטעינת נתונים</td></tr>');
+                    });
+            }
+
+            function openCustomizerModal(groupId) {
+                const $groupCard = $('.group-card[data-group-id="' + groupId + '"]');
+                if (!$groupCard.length) {
+                    $('#custModalGroupName').text('קבוצה #' + groupId);
+                } else {
+                    $('#custModalGroupName').text($groupCard.data('group-name'));
+                    $('#custModalGroupQty').text($groupCard.data('group-qty'));
+                    $('#custModalGroupDetails').text($groupCard.data('group-details'));
+
+                    $custModal.data('product-id', $groupCard.data('product-id'));
+                    $custModal.data('family-id', $groupCard.data('family-id'));
+                    $custModal.data('type-id', $groupCard.data('type-id'));
+                }
+
+                $custModal.data('group-id', groupId);
+                loadGroupCustomizers(groupId);
+
+                const modalInst = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance($custModal[0]) : null;
+                if (modalInst) modalInst.show();
             }
 
             let searchTimeout;
@@ -876,12 +1225,9 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRFToken': '{{ csrf_token }}'
+                        'X-CSRFToken': csrfToken
                     },
-                    body: JSON.stringify({
-                        group: groupId,
-                        customizer: custId
-                    })
+                    body: JSON.stringify({group: groupId, customizer: custId})
                 })
                     .then(function (r) {
                         return r.json();
@@ -900,7 +1246,7 @@
                 const groupId = $custModal.data('group-id');
                 fetch('/orders/api/group-customizers/' + id + '/', {
                     method: 'DELETE',
-                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                    headers: {'X-CSRFToken': csrfToken}
                 }).then(function () {
                     loadGroupCustomizers(groupId);
                     updateMainListCustomizers(groupId);
@@ -929,19 +1275,18 @@
                         method: 'PATCH',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRFToken': '{{ csrf_token }}'
+                            'X-CSRFToken': csrfToken
                         },
                         body: JSON.stringify(payload)
-                    })
-                        .then(function (r) {
-                            if (r.ok) {
-                                $input.removeClass('border-warning').addClass('border-success');
-                                setTimeout(function () {
-                                    $input.removeClass('border-success');
-                                }, 1000);
-                                updateMainListCustomizers(groupId);
-                            }
-                        });
+                    }).then(function (r) {
+                        if (r.ok) {
+                            $input.removeClass('border-warning').addClass('border-success');
+                            setTimeout(function () {
+                                $input.removeClass('border-success');
+                            }, 1000);
+                            updateMainListCustomizers(groupId);
+                        }
+                    });
                 }, 1000);
             });
 
@@ -958,433 +1303,36 @@
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
 
-            $(document).on('click', '.open-customizer-btn', function () {
-                const groupId = $(this).data('group-id');
+            $(document).on('click', '.open-customizer-btn, button:contains("ניהול קסטומייזרים")', function () {
+                const groupId = $(this).data('group-id') || $(this).closest('.group-card').data('group-id');
                 if (groupId) openCustomizerModal(groupId);
             });
 
-            $(document).on('click', 'button:contains("ניהול קסטומייזרים")', function () {
-                if ($(this).hasClass('open-customizer-btn')) return;
-                const $card = $(this).closest('.group-card');
-                const groupId = $card.data('group-id');
-                if (groupId) openCustomizerModal(groupId);
-            });
+            // --- Сохранение и загрузка шаблонов спецификаций ---
+            function showSuccessNotification(message) {
+                const toastHtml =
+                    '<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 11000">' +
+                    '<div class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">' +
+                    '<div class="d-flex">' +
+                    '<div class="toast-body"><i class="bi bi-check-circle-fill me-2"></i> ' + message + '</div>' +
+                    '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>' +
+                    '</div></div></div>';
 
-            $(document).on('change', 'select[name="series"]', function () {
-                const $seriesSelect = $(this);
-                const seriesId = $seriesSelect.val();
-                const $container = $seriesSelect.closest('.modal-body, form, .card-body');
-                const familyId = $container.find('select[name="product_family"]').val();
+                const $wrapper = $(toastHtml);
+                $('body').append($wrapper);
 
-                updateFronts($container, seriesId);
-                updateFrameColors($container, seriesId, familyId);
-            });
-
-            $(document).on('change', 'select[name="product_family"]', function () {
-                const $familySelect = $(this);
-                const familyId = $familySelect.val();
-                const $container = $familySelect.closest('.modal-body, form, .card-body');
-                const seriesId = $container.find('select[name="series"]').val();
-
-                updateFrameColors($container, seriesId, familyId);
-            });
-
-            function updateFronts($container, seriesId) {
-                const $frontSelect = $container.find('select[name="front"]');
-                if (!$frontSelect.length) return;
-
-                if (!seriesId) {
-                    $frontSelect.html('<option value="">---------</option>').trigger('change');
+                const toastEl = $wrapper.find('.toast')[0];
+                if (window.bootstrap && window.bootstrap.Toast) {
+                    const toast = new window.bootstrap.Toast(toastEl, {delay: 3000});
+                    toast.show();
+                    toastEl.addEventListener('hidden.bs.toast', function () {
+                        $wrapper.remove();
+                    });
                 } else {
-                    const currentVal = $frontSelect.val();
-                    fetch('/catalog/api/fronts/?series=' + seriesId)
-                        .then(function (response) {
-                            return response.json();
-                        })
-                        .then(function (data) {
-                            let options = '<option value="">---------</option>';
-                            const fronts = (Array.isArray(data) ? data : data['results']) || [];
-                            fronts.forEach(function (front) {
-                                const desc = front['description'] || '';
-                                const finishType = front['finish_type'] || 'PAINT';
-                                // Сохраняем finish_type прямо в атрибут опции
-                                options += '<option value="' + front['id'] + '" data-finish-type="' + finishType + '" data-description="' + desc + '" title="' + desc + '">' + front['name'] + '</option>';
-                            });
-                            $frontSelect.html(options);
-
-                            const $modalEl = $container.closest('#groupModal');
-                            const isNew = $modalEl.length > 0 && $modalEl.data('mode') === 'add';
-                            const initialVal = $frontSelect.attr('data-initial-value');
-
-                            if (currentVal && fronts.some(function (f) {
-                                return String(f['id']) === String(currentVal);
-                            })) {
-                                $frontSelect.val(currentVal);
-                            } else if (!isNew && initialVal && fronts.some(function (f) {
-                                return String(f['id']) === String(initialVal);
-                            })) {
-                                $frontSelect.val(initialVal);
-                            } else if (isNew && seriesId === orderSeriesId && orderFrontId && fronts.some(function (f) {
-                                return String(f['id']) === String(orderFrontId);
-                            })) {
-                                $frontSelect.val(orderFrontId);
-                            }
-                            $frontSelect.trigger('change');
-                        })
-                        .catch(function (error) {
-                            console.error('Error fetching fronts:', error);
-                        });
+                    setTimeout(function () {
+                        $wrapper.remove();
+                    }, 3500);
                 }
-            }
-
-            function updateFrameColors($container, seriesId, familyId) {
-                const $basicColorFramesSelect = $container.find('select[name="basic_color_frames"]');
-                if (!$basicColorFramesSelect.length) return;
-
-                const $modalEl = $container.closest('#groupModal');
-                const isGroupLocked = $modalEl.length > 0 && $modalEl.find('input[name="quantity"]').is(':disabled');
-
-                if (!seriesId || !familyId || isGroupLocked) {
-                    // Если группа заблокирована, не даем функции включать поле обратно
-                    if (isGroupLocked) {
-                        $basicColorFramesSelect.prop('disabled', true);
-                        if (window.jQuery && $basicColorFramesSelect.data('select2')) {
-                            $basicColorFramesSelect.trigger('change.select2');
-                        }
-                        return;
-                    }
-
-                    $basicColorFramesSelect.prop('disabled', true);
-                    $basicColorFramesSelect.html('<option value="">---------</option>').val('').trigger('change');
-                    return;
-                }
-
-                // ЗДЕСЬ ИСПРАВЛЕНИЕ: объявляем url перед отправкой запроса
-                let url = '/catalog/api/frame-colors/?series=' + seriesId;
-                if (familyId) url += '&family=' + familyId;
-
-                const currentVal = $basicColorFramesSelect.val();
-                const initialVal = $basicColorFramesSelect.attr('data-initial-value');
-                const isNew = $modalEl.length > 0 && $modalEl.data('mode') === 'add';
-
-                fetch(url)
-                    .then(function (response) {
-                        return response.json();
-                    })
-                    .then(function (data) {
-                        let options = '<option value="">---------</option>';
-                        const colors = (Array.isArray(data) ? data : data['results']) || [];
-
-                        if (colors.length === 0) {
-                            $basicColorFramesSelect.prop('disabled', true);
-                            $basicColorFramesSelect.html(options).val('').trigger('change');
-                        } else {
-                            $basicColorFramesSelect.prop('disabled', false);
-                            colors.forEach(function (color) {
-                                const desc = color['sku'] || color['description'] || '';
-                                options += '<option value="' + color['id'] + '" data-description="' + desc + '" title="' + desc + '">' + color['name'] + '</option>';
-                            });
-                            $basicColorFramesSelect.html(options);
-
-                            if (currentVal && colors.some(function (c) {
-                                return String(c['id']) === String(currentVal);
-                            })) {
-                                $basicColorFramesSelect.val(currentVal);
-                            } else if (!isNew && initialVal && colors.some(function (c) {
-                                return String(c['id']) === String(initialVal);
-                            })) {
-                                $basicColorFramesSelect.val(initialVal);
-                            } else if (colors.length > 0) {
-                                $basicColorFramesSelect.val(colors[0]['id']);
-                            }
-                            $basicColorFramesSelect.trigger('change');
-                        }
-                    })
-                    .catch(function (error) {
-                        console.error('Error fetching frame colors:', error);
-                        $basicColorFramesSelect.prop('disabled', true);
-                    });
-            }
-
-            $(document).on('change', 'select[name="product_type"]', function () {
-                const $typeSelect = $(this);
-                const typeId = $typeSelect.val();
-                const $container = $typeSelect.closest('.modal-body, form');
-                const $familySelect = $container.find('select[name="product_family"]');
-
-                if (!typeId) {
-                    $familySelect.html('<option value="">---------</option>').trigger('change');
-                    return;
-                }
-
-                const currentVal = $familySelect.val();
-                const initialVal = $familySelect.attr('data-initial-value');
-
-                fetch('/catalog/api/families/?type=' + typeId)
-                    .then(function (response) {
-                        return response.json();
-                    })
-                    .then(function (data) {
-                        let options = '<option value="">---------</option>';
-                        const families = (Array.isArray(data) ? data : data['results']) || [];
-                        families.forEach(function (family) {
-                            const desc = family['description'] || '';
-                            options += '<option value="' + family['id'] + '" data-description="' + desc + '" title="' + desc + '">' + family['name'] + '</option>';
-                        });
-                        $familySelect.html(options);
-
-                        if (currentVal && families.some(function (f) {
-                            return String(f['id']) === String(currentVal);
-                        })) {
-                            $familySelect.val(currentVal);
-                        } else if (initialVal && families.some(function (f) {
-                            return String(f['id']) === String(initialVal);
-                        })) {
-                            $familySelect.val(initialVal);
-                        }
-
-                        $familySelect.trigger('change');
-                    })
-                    .catch(function (error) {
-                        console.error('Error fetching families:', error);
-                    });
-            });
-
-            // Выделенная функция для обновления модели двери
-            function updateProductModel($container) {
-                const $seriesSelect = $container.find('select[name="series"]');
-                const $familySelect = $container.find('select[name="product_family"]');
-                const $productSelect = $container.find('select[name="product"]');
-                const $splitCheckbox = $container.find('input[name="is_split_installation"]');
-                const $display = $container.find('.product-info-display');
-                const $submitBtn = $container.closest('form').find('button[type="submit"]');
-
-                if (!$seriesSelect.length || !$familySelect.length || !$productSelect.length) return;
-
-                const seriesId = $seriesSelect.val();
-                const familyId = $familySelect.val();
-
-                // Если хотя бы одно поле не выбрано — сбрасываем модель
-                if (!seriesId || !familyId) {
-                    if ($display.length) {
-                        $display.html('<small class="text-muted">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
-                    }
-                    if ($productSelect.val() !== '') {
-                        $productSelect.val('');
-                        if ($productSelect.hasClass('select2-hidden-accessible')) {
-                            $productSelect.trigger('change.select2'); // Безопасное обновление Select2
-                        }
-                    }
-                    if ($splitCheckbox.length) {
-                        $splitCheckbox.prop('disabled', true).prop('checked', false);
-                    }
-                    return;
-                }
-
-                // Запускаем поиск модели
-                fetch('/catalog/api/models/?series=' + seriesId + '&family=' + familyId)
-                    .then(function (response) {
-                        if (!response.ok) throw new Error('Network response was not ok');
-                        return response.json();
-                    })
-                    .then(function (data) {
-                        const models = (Array.isArray(data) ? data : data['results']) || [];
-
-                        if (models.length > 0) {
-                            const model = models[0];
-                            const desc = model['description'] || '';
-                            const supportsSplit = Boolean(model['supports_split_installation']);
-
-                            // Обновляем визуальную плашку
-                            if ($display.length) {
-                                $display.html('<strong class="text-success-emphasis" data-bs-toggle="tooltip" title="' + (desc || model['name']) + '"><i class="bi bi-check-circle-fill me-1"></i> ' + model['name'] + ' (' + model['code'] + ')</strong>');
-                                if (window['initTooltips']) window['initTooltips']($display[0]);
-                            }
-
-                            // Добавляем опцию в скрытый селект, если ее там нет
-                            if ($productSelect.find('option[value="' + model['id'] + '"]').length === 0) {
-                                $productSelect.append('<option value="' + model['id'] + '" data-description="' + desc + '">' + model['name'] + '</option>');
-                            }
-
-                            // Устанавливаем значение только если оно изменилось
-                            if ($productSelect.val() !== model['id']) {
-                                $productSelect.val(model['id']);
-                                if ($productSelect.hasClass('select2-hidden-accessible')) {
-                                    $productSelect.trigger('change.select2'); // Безопасное обновление
-                                }
-                            }
-                            // --- Управление тумблером на основе флага модели ---
-                            if ($splitCheckbox.length) {
-                                // Проверяем статус заказа (передаем из шаблона, например, order.status)
-                                const orderStatus = "{{ order.status }}";
-                                const canUseSplit = ['NEW', 'PHASE1_PRODUCTION'].includes(orderStatus);
-
-                                if (canUseSplit && supportsSplit) {
-                                    $splitCheckbox.prop('disabled', false).prop('checked', true);
-                                } else {
-                                    $splitCheckbox.prop('disabled', true).prop('checked', false);
-                                }
-                            }
-                            $submitBtn.prop('disabled', false);
-
-                        } else {
-                            // Модель не найдена
-                            if ($display.length) {
-                                $display.html('<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> מוצר לא נמצא לשילוב זה</span>');
-                            }
-                            if ($productSelect.val() !== '') {
-                                $productSelect.val('');
-                                if ($productSelect.hasClass('select2-hidden-accessible')) {
-                                    $productSelect.trigger('change.select2');
-                                }
-                            }
-                            $submitBtn.prop('disabled', true);
-                        }
-                    })
-                    .catch(function (error) {
-                        console.error('Error fetching product model:', error);
-                        $submitBtn.prop('disabled', false); // Не блокируем намертво при ошибке сети
-                    });
-            }
-
-            // Оптимизированный обработчик изменения
-            $(document).on('change', 'select[name="series"], select[name="product_family"]', function (e) {
-                // Если событие вызвано программно самим Select2, ИГНОРИРУЕМ (это решает проблему "замерзания")
-                if (e.namespace === 'select2') return;
-
-                const $container = $(this).closest('.modal-body, form');
-                if (!$container.length) return;
-
-                updateProductModel($container);
-            });
-
-            $('.modal:not(#groupModal)').on('shown.bs.modal', function () {
-                const $modal = $(this);
-                const $seriesSelect = $modal.find('select[name="series"]');
-                const $familySelect = $modal.find('select[name="product_family"]');
-                const $typeSelect = $modal.find('select[name="product_type"]');
-
-                if ($seriesSelect.val()) {
-                    $seriesSelect.trigger('change');
-                } else if ($familySelect.val()) {
-                    $familySelect.trigger('change');
-                } else if ($typeSelect.val()) {
-                    $typeSelect.trigger('change');
-                }
-            });
-
-            if ($editHeaderForm.length) {
-                const $colorPanels = $editHeaderForm.find('input[name="color_panels"]');
-                const $colorFrames = $editHeaderForm.find('input[name="color_frames"]');
-                const $isFramesToPaint = $editHeaderForm.find('input[name="is_frames_to_paint"]');
-
-                function updateHeaderFramesState() {
-                    const isChecked = $isFramesToPaint.is(':checked');
-                    $colorFrames.prop('disabled', !isChecked);
-                    if (isChecked && !$colorFrames.val()) {
-                        $colorFrames.val($colorPanels.val());
-                    }
-                }
-
-                $isFramesToPaint.on('change', updateHeaderFramesState);
-                updateHeaderFramesState();
-
-                $editHeaderForm.on('submit', function () {
-                    $colorFrames.prop('disabled', false);
-                });
-            }
-
-            function setupGroupPaintingLogic($modal) {
-                const $frameSelect = $modal.find('select[name="frame_paint_option"]');
-                const $frameWrap = $modal.find('#group-frame-special-color-wrap');
-
-                const $panelSelect = $modal.find('select[name="panel_paint_option"]');
-                const $panelWrap = $modal.find('#group-panel-special-color-wrap');
-                const $diffWrap = $modal.find('#group-diff-sides-switch-wrap');
-                const $diffToggle = $modal.find('input[name="is_door_inside_different_color"]');
-                const $insideWrap = $modal.find('#group-panel-inside-wrap');
-                const $labelOut = $modal.find('#group-label-panel-out');
-                const $labelIn = $modal.find('#group-panel-inside-wrap label');
-                const $inputOut = $modal.find('input[name="color_panel_outside"]');
-                const $inputIn = $modal.find('input[name="color_panel_inside"]');
-                const $frontSelect = $modal.find('select[name="front"]');
-                const $panelTitle = $panelSelect.closest('.col-md-6').find('.form-label').first();
-
-                function syncColors() {
-                    // 1. Покраска коробки
-                    if ($frameSelect.val() === 'SPECIAL_COLOR') {
-                        $frameWrap.show();
-                    } else {
-                        $frameWrap.hide();
-                    }
-
-                    // 2. Отделка полотна (читаем finish_type напрямую из выбранного option)
-                    const $selectedFront = $frontSelect.find('option:selected');
-                    const finishType = $selectedFront.attr('data-finish-type') || 'PAINT';
-                    const isDiff = $diffToggle.is(':checked');
-
-                    $('#group-no-paint-notice').remove();
-
-                    if (finishType === 'NO_PAINT') {
-                        $panelTitle.html('גימור כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
-                        $panelSelect.hide().val('NO_PAINT');
-                        $panelWrap.hide();
-                        $diffWrap.hide();
-                        $insideWrap.hide();
-                        $inputOut.val('');
-                        $inputIn.val('');
-                        $panelSelect.after('<div id="group-no-paint-notice" class="badge bg-secondary p-2 mt-1">ללא צבע (בסיס)</div>');
-                    } else {
-                        // FORMICA или PAINT: селектор опции всегда активен
-                        $panelSelect.show();
-
-                        if (finishType === 'FORMICA') {
-                            $panelTitle.html('גימור פורמייקה: <i class="bi bi-info-circle help-hint-icon"></i>');
-                            $inputOut.attr('placeholder', 'מספר פורמייקה');
-                            $inputIn.attr('placeholder', 'מספר פורמייקה פנים');
-                            $labelOut.text(isDiff ? 'מספר פורמייקה (חוץ):' : 'מספר פורמייקה:');
-                            $labelIn.text('מספר פורמייקה (פנים):');
-                        } else {
-                            $panelTitle.html('צביעת כנף: <i class="bi bi-info-circle help-hint-icon"></i>');
-                            $inputOut.attr('placeholder', 'קוד צבע');
-                            $inputIn.attr('placeholder', 'קוד צבע פנים');
-                            $labelOut.text(isDiff ? 'גוון כנף חוץ:' : 'גוון כנף (דו-צדדי):');
-                            $labelIn.text('גוון כנף צד פנים:');
-                        }
-
-                        // Поля ввода номера открываются ТОЛЬКО если выбрана спец-отделка (SPECIAL_COLOR)
-                        if ($panelSelect.val() === 'SPECIAL_COLOR') {
-                            $panelWrap.show();
-                            $diffWrap.show();
-                            if (isDiff) {
-                                $insideWrap.show();
-                            } else {
-                                $insideWrap.hide();
-                            }
-                        } else {
-                            // При MAIN_COLOR или NO_PAINT поля ввода скрыты
-                            $panelWrap.hide();
-                            $diffWrap.hide();
-                            $insideWrap.hide();
-                        }
-                    }
-                }
-
-                $frameSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
-                $panelSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
-                $diffToggle.off('change.groupPaint').on('change.groupPaint', syncColors);
-                $frontSelect.off('change.groupPaint').on('change.groupPaint', syncColors);
-
-                $modal.find('#btn-group-copy-door').off('click.groupCopy').on('click.groupCopy', function () {
-                    const outVal = $modal.find('input[name="color_panel_outside"]').val();
-                    $modal.find('input[name="color_frames"]').val(outVal);
-                });
-
-                syncColors();
-            }
-
-            if ($groupModal.length) {
-                setupGroupPaintingLogic($groupModal);
             }
 
             $(document).on('click', '.btn-open-save-spec', function (e) {
@@ -1392,16 +1340,13 @@
                 const $btn = $(this);
                 const groupId = $btn.data('group-id');
                 const groupName = $btn.data('group-name') || '';
-                const groupDetails = $btn.data('group-details') || '';
-                const groupQty = $btn.data('group-qty') || 1;
 
                 $saveSpecGroupName.text(groupName);
-                $saveSpecGroupDetails.text(groupDetails);
-                $saveSpecGroupQty.text(groupQty + ' דלתות');
+                $saveSpecGroupDetails.text($btn.data('group-details') || '');
+                $saveSpecGroupQty.text(($btn.data('group-qty') || 1) + ' דלתות');
                 $saveSpecNameInput.val(groupName ? ('מפרט ' + groupName) : '');
                 $saveSpecDescInput.val('');
                 $saveSpecForm.attr('action', '/orders/groups/' + groupId + '/save-specification/');
-                $saveSpecForm.data('group-id', groupId);
 
                 const modalEl = document.getElementById('saveSpecificationModal');
                 const modal = window.bootstrap ? new window.bootstrap.Modal(modalEl) : null;
@@ -1410,11 +1355,9 @@
 
             $saveSpecForm.on('submit', function (e) {
                 e.preventDefault();
-                const $form = $(this);
-                const url = $form.attr('action');
+                const url = $(this).attr('action');
                 const name = $saveSpecNameInput.val().trim();
                 const description = $saveSpecDescInput.val().trim();
-                const csrfToken = $form.find('input[name="csrfmiddlewaretoken"]').val() || $csrfTokenInput.first().val();
 
                 if (!name) {
                     alert('נא להזין שם למפרט');
@@ -1424,22 +1367,7 @@
                 const $btn = $('#btnSubmitSaveSpec');
                 $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> שומר...');
 
-                fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: new URLSearchParams({
-                        name: name,
-                        description: description,
-                        csrfmiddlewaretoken: csrfToken
-                    })
-                })
-                    .then(function (res) {
-                        return res.json();
-                    })
+                postFormAjax(url, {name: name, description: description})
                     .then(function (data) {
                         $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
                         if (data['status'] === 'ok') {
@@ -1473,11 +1401,9 @@
                     let customizersHtml;
                     if (spec['customizers'] && spec['customizers'].length > 0) {
                         customizersHtml = spec['customizers'].map(function (c) {
-                            let params = [];
-                            if (c['par1']) params.push(c['par1']);
-                            if (c['par2']) params.push(c['par2']);
-                            if (c['par3']) params.push(c['par3']);
-                            if (c['par4']) params.push(c['par4']);
+                            const params = ['par1', 'par2', 'par3', 'par4'].map(function (k) {
+                                return c[k];
+                            }).filter(Boolean);
                             const paramsStr = params.length ? (' (' + params.join(', ') + ')') : '';
                             return '<span class="badge bg-secondary-subtle text-secondary border me-1 mb-1">' + c['customizer_name'] + paramsStr + '</span>';
                         }).join(' ');
@@ -1494,26 +1420,20 @@
                         actionButtons =
                             '<div class="d-flex flex-column gap-2 mt-3">' +
                             '<button type="button" class="btn btn-primary btn-sm btn-apply-spec" data-spec-id="' + spec['id'] + '" data-spec-name="' + spec['name'] + '">' +
-                            '<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו' +
-                            '</button>' +
+                            '<i class="bi bi-arrow-repeat me-1"></i>החל על קבוצה זו</button>' +
                             '<div class="input-group input-group-sm">' +
                             '<input type="number" class="form-control spec-create-qty" value="' + (spec['quantity'] || 1) + '" min="1" placeholder="כמות">' +
                             '<button type="button" class="btn btn-outline-success btn-create-from-spec" data-spec-id="' + spec['id'] + '">' +
-                            '<i class="bi bi-plus-circle me-1"></i>הוסף כקבוצה חדשה' +
-                            '</button>' +
-                            '</div>' +
-                            '</div>';
+                            '<i class="bi bi-plus-circle me-1"></i>הוסף כקבוצה חדשה</button>' +
+                            '</div></div>';
                     } else {
                         actionButtons =
-                            '<div class="d-flex gap-2 mt-3">' +
-                            '<div class="input-group input-group-sm">' +
+                            '<div class="d-flex gap-2 mt-3"><div class="input-group input-group-sm">' +
                             '<span class="input-group-text">כמות</span>' +
                             '<input type="number" class="form-control spec-create-qty" value="' + (spec['quantity'] || 1) + '" min="1">' +
                             '<button type="button" class="btn btn-success btn-create-from-spec" data-spec-id="' + spec['id'] + '">' +
-                            '<i class="bi bi-plus-circle me-1"></i>הוסף להזמנה' +
-                            '</button>' +
-                            '</div>' +
-                            '</div>';
+                            '<i class="bi bi-plus-circle me-1"></i>הוסף להזמנה</button>' +
+                            '</div></div>';
                     }
 
                     const descHtml = spec['description'] ? ('<p class="small text-muted mb-2">' + spec['description'] + '</p>') : '';
@@ -1604,7 +1524,10 @@
                     return;
                 }
                 const filtered = currentSpecifications.filter(function (spec) {
-                    const str = (spec['name'] + ' ' + (spec['description'] || '') + ' ' + (spec['product_name'] || '') + ' ' + (spec['series_name'] || '') + ' ' + (spec['front_name'] || '')).toLowerCase();
+                    const str = (
+                        spec['name'] + ' ' + (spec['description'] || '') + ' ' +
+                        (spec['product_name'] || '') + ' ' + (spec['series_name'] || '') + ' ' + (spec['front_name'] || '')
+                    ).toLowerCase();
                     return str.indexOf(q) !== -1;
                 });
                 renderSpecificationCards(filtered, targetGroupId);
@@ -1615,30 +1538,15 @@
                 const specId = $btn.data('spec-id');
                 const specName = $btn.data('spec-name');
                 const groupId = $loadSpecTargetGroupId.val();
-                const csrfToken = $csrfTokenInput.first().val();
 
                 if (!groupId || !specId) return;
-
                 if (!confirm('האם להחיל את מפרט "' + specName + '" על הקבוצה? פעולה זו תעדכן את הגדרות הקבוצה והשדרוגים.')) {
                     return;
                 }
 
                 $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> מחיל...');
 
-                fetch('/orders/groups/' + groupId + '/apply-specification/' + specId + '/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: new URLSearchParams({
-                        csrfmiddlewaretoken: csrfToken
-                    })
-                })
-                    .then(function (res) {
-                        return res.json();
-                    })
+                postFormAjax('/orders/groups/' + groupId + '/apply-specification/' + specId + '/')
                     .then(function (data) {
                         if (data['status'] === 'ok') {
                             window.location.reload();
@@ -1657,28 +1565,11 @@
             $(document).on('click', '.btn-create-from-spec', function () {
                 const $btn = $(this);
                 const specId = $btn.data('spec-id');
-                const orderId = '{{ order.pk }}';
-                const csrfToken = $csrfTokenInput.first().val();
-                const $card = $btn.closest('.card');
-                const qty = $card.find('.spec-create-qty').val() || 1;
+                const qty = $btn.closest('.card').find('.spec-create-qty').val() || 1;
 
                 $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> מוסיף...');
 
-                fetch('/orders/' + orderId + '/groups/create-from-specification/' + specId + '/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: new URLSearchParams({
-                        quantity: qty,
-                        csrfmiddlewaretoken: csrfToken
-                    })
-                })
-                    .then(function (res) {
-                        return res.json();
-                    })
+                postFormAjax('/orders/{{ order.pk }}/groups/create-from-specification/' + specId + '/', {quantity: qty})
                     .then(function (data) {
                         if (data['status'] === 'ok') {
                             window.location.reload();
@@ -1695,32 +1586,15 @@
             });
 
             $(document).on('click', '.btn-delete-spec', function () {
-                const $btn = $(this);
-                const specId = $btn.data('spec-id');
-                const csrfToken = $csrfTokenInput.first().val();
-
+                const specId = $(this).data('spec-id');
                 if (!confirm('האם אתה בטוח שברצונך למחוק מפרט שמור זה לצמיתות?')) {
                     return;
                 }
 
-                fetch('/orders/specifications/' + specId + '/delete/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: new URLSearchParams({
-                        csrfmiddlewaretoken: csrfToken
-                    })
-                })
-                    .then(function (res) {
-                        return res.json();
-                    })
+                postFormAjax('/orders/specifications/' + specId + '/delete/')
                     .then(function (data) {
                         if (data['status'] === 'ok') {
-                            const targetGroupId = $loadSpecTargetGroupId.val();
-                            loadSpecifications(targetGroupId);
+                            loadSpecifications($loadSpecTargetGroupId.val());
                         } else {
                             alert(data['message'] || 'שגיאה במחיקת המפרט');
                         }
@@ -1731,70 +1605,60 @@
                     });
             });
 
-            function showSuccessNotification(message) {
-                const toastHtml =
-                    '<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 11000">' +
-                    '<div class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">' +
-                    '<div class="d-flex">' +
-                    '<div class="toast-body"><i class="bi bi-check-circle-fill me-2"></i> ' + message + '</div>' +
-                    '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>' +
-                    '</div></div></div>';
+            // --- Модалка печати отчётов и выбора партий (#reportsModal) ---
+            function syncBatchesSelectionState() {
+                const $allCheckboxes = $('#reportsModal .batch-checkbox');
+                const checkedCount = $allCheckboxes.filter(':checked').length;
+                const total = $allCheckboxes.length;
+                const selectAllEl = document.getElementById('selectAllBatches');
 
-                const $wrapper = $(toastHtml);
-                $('body').append($wrapper);
-
-                const toastEl = $wrapper.find('.toast')[0];
-                if (window.bootstrap && window.bootstrap.Toast) {
-                    const toast = new window.bootstrap.Toast(toastEl, {delay: 3000});
-                    toast.show();
-                    toastEl.addEventListener('hidden.bs.toast', function () {
-                        $wrapper.remove();
-                    });
-                } else {
-                    setTimeout(function () {
-                        $wrapper.remove();
-                        $wrapper.remove();
-                    }, 3500);
+                if (selectAllEl) {
+                    selectAllEl.checked = total > 0 && checkedCount === total;
+                    selectAllEl.indeterminate = checkedCount > 0 && checkedCount < total;
                 }
+
+                const $counter = $('#selectedBatchesCounter');
+                if ($counter.length) {
+                    $counter.text('נבחרו ' + checkedCount + ' מתוך ' + total);
+                }
+
+                $allCheckboxes.each(function () {
+                    $(this).closest('tr').toggleClass('table-active', this.checked);
+                });
+
+                // Разблокируем только активные по текущей фазе кнопки (не трогаем заблокированные классом .disabled)
+                $('#reportsModal .btn-generate-action:not(.disabled)').prop('disabled', checkedCount === 0);
             }
 
-            // 1. Отрисовка чекбоксов батчей при открытии окна
             $('#reportsModal').on('show.bs.modal', function () {
-                // order.current_batch - это счетчик, который увеличивается на 1 при каждом запуске.
-                // Если current_batch = 3, значит есть батчи 1 и 2.
-                const currentBatchCounter = parseInt("{{ order.current_batch|default:1 }}", 10);
-                const $batchContainer = $('#batchSelectionContainer');
-
-                if (currentBatchCounter > 1) {
-                    let html = '';
-                    for (let i = 1; i < currentBatchCounter; i++) {
-                        // По умолчанию ставим галочку только на последний запущенный батч
-                        const isChecked = (i === currentBatchCounter - 1) ? 'checked' : '';
-                        html += `
-                            <input type="checkbox" class="btn-check batch-checkbox" name="selected_batches" id="batch_${i}" value="${i}" ${isChecked}>
-                            <label class="btn btn-outline-primary rounded-pill px-3 py-1 fw-bold" for="batch_${i}">
-                                אצווה ${i}
-                            </label>
-                        `;
-                    }
-                    $batchContainer.html(html);
-                    $('.btn-generate-action').prop('disabled', false);
-                } else {
-                    $batchContainer.html('<span class="text-muted small">אין עדיין אצוות בייצור</span>');
-                    // Блокируем кнопки, если технически печатать нечего
-                    $('.btn-generate-action').prop('disabled', true);
-                }
+                $('#reportsModal .batch-checkbox').prop('checked', true);
+                syncBatchesSelectionState();
             });
 
-            // 2. Обработка клика по любой кнопке отчета/файла
+            $(document).on('change', '#selectAllBatches', function () {
+                $('#reportsModal .batch-checkbox').prop('checked', this.checked);
+                syncBatchesSelectionState();
+            });
+
+            $(document).on('change', '#reportsModal .batch-checkbox', function () {
+                syncBatchesSelectionState();
+            });
+
+            $(document).on('click', '#reportsModal .batch-row', function (e) {
+                if ($(e.target).is('input[type="checkbox"]')) return;
+                const $cb = $(this).find('.batch-checkbox');
+                $cb.prop('checked', !$cb.prop('checked')).trigger('change');
+            });
+
             $(document).on('click', '.btn-generate-action', function (e) {
                 e.preventDefault();
-                const baseUrl = $(this).data('url');
-                const target = $(this).data('target') || '_blank'; // По умолчанию открываем в новой вкладке
+                if ($(this).prop('disabled')) return;
 
-                // Собираем все выбранные батчи
-                let selectedBatches = [];
-                $('.batch-checkbox:checked').each(function () {
+                const baseUrl = $(this).data('url');
+                const target = $(this).data('target') || '_blank';
+
+                const selectedBatches = [];
+                $('#reportsModal .batch-checkbox:checked').each(function () {
                     selectedBatches.push($(this).val());
                 });
 
@@ -1803,93 +1667,35 @@
                     return;
                 }
 
-                // Формируем финальный URL, приклеивая каждый чекбокс (например ?batch=1&batch=2)
                 const urlObj = new URL(baseUrl, window.location.origin);
                 selectedBatches.forEach(function (batchNum) {
                     urlObj.searchParams.append('batch', batchNum);
                 });
 
-                // Переходим
                 if (target === '_self') {
                     window.location.href = urlObj.toString();
                 } else {
                     window.open(urlObj.toString(), target);
                 }
 
-                // Скрываем окно после клика
                 $('#reportsModal').modal('hide');
             });
 
-            // --- Логика сворачивания карточек групп ---
+            // --- Массовое сворачивание / разворачивание карточек групп ---
             const $collapseBodies = $('.group-collapse-body');
 
-// 1. Показ/скрытие свернутой плашки по событиям Bootstrap Collapse
-            $collapseBodies.on('hidden.bs.collapse', function () {
-                const $wrapper = $(this).closest('.group-wrapper');
-                $wrapper.find('.group-collapsed-bar').removeClass('d-none');
-            });
-
-            $collapseBodies.on('show.bs.collapse', function () {
-                const $wrapper = $(this).closest('.group-wrapper');
-                $wrapper.find('.group-collapsed-bar').addClass('d-none');
-            });
-
-// 2. Кнопка «+» (Развернуть все)
             $('#btnExpandAllGroups').on('click', function () {
                 $collapseBodies.each(function () {
-                    const collapseInst = bootstrap.Collapse.getOrCreateInstance(this, {toggle: false});
-                    collapseInst.show();
+                    bootstrap.Collapse.getOrCreateInstance(this, {toggle: false}).show();
                 });
             });
 
-// 3. Кнопка «−» (Свернуть все)
             $('#btnCollapseAllGroups').on('click', function () {
                 $collapseBodies.each(function () {
-                    const collapseInst = bootstrap.Collapse.getOrCreateInstance(this, {toggle: false});
-                    collapseInst.hide();
+                    bootstrap.Collapse.getOrCreateInstance(this, {toggle: false}).hide();
                 });
             });
-
         });
-
-        function transferOrderToProduction(btn, url) {
-            if (!confirm('האם להעביר את ההזמנה לתהליך ייצור?')) {
-                return;
-            }
-
-            const originalHtml = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>מעביר לייצור...';
-
-            fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json'
-                }
-            })
-                .then(function (response) {
-                    return response.json().then(function (data) {
-                        if (response.ok && data['status'] === 'ok') {
-                            window.open(data['master_report_url'], '_blank');
-                            window.location.reload();
-                        } else {
-                            const errors = data['errors'] || [data['message'] || 'שגיאה בהעברה לייצור'];
-                            alert('לא ניתן להעביר לייצור:\n• ' + errors.join('\n• '));
-                            btn.disabled = false;
-                            btn.innerHTML = originalHtml;
-                        }
-                    });
-                })
-                .catch(function (err) {
-                    console.error(err);
-                    alert('שגיאת תקשורת עם השרת');
-                    btn.disabled = false;
-                    btn.innerHTML = originalHtml;
-                });
-        }
-
     </script>
     <style>
         .cursor-pointer {
