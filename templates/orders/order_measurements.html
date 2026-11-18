@@ -119,8 +119,8 @@
                         data-custom-hinge4="{{ item.custom_hinge4|default:'' }}"
                         data-custom-hinge5="{{ item.custom_hinge5|default:'' }}"
                         data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
-                        data-has-door="{{ group.product.product_family.product_type.has_door|yesno:'true,false' }}"
-                        data-has-frame="{{ group.product.product_family.product_type.has_frame|yesno:'true,false' }}">
+                        data-has-door="{{ group.product.product_family.has_door|yesno:'true,false' }}"
+                        data-has-frame="{{ group.product.product_family.has_frame|yesno:'true,false' }}">
                         <td class="fw-bold bg-light">{{ item.mark }}</td>
                         <td class="field-place small text-start">{{ item.place|default:'' }}</td>
                         <td class="field-width">{{ item.w_fmt }}</td>

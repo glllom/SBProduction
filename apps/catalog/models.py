@@ -12,8 +12,6 @@ class ProductType(models.Model):
     name = models.CharField('שם', max_length=100, unique=True)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
-    has_door = models.BooleanField('יש דלת', default=True)
-    has_frame = models.BooleanField('יש משקוף', default=True)
 
     class Meta:
         verbose_name = 'סוג מוצר'
@@ -41,6 +39,9 @@ class ProductFamily(models.Model):
     active = models.BooleanField('פעיל', default=True)
     supports_split_installation = models.BooleanField('ניתן להתקין בשני שלבים', default=False)
     default_value_for_frame = models.CharField('עובי משקוף ברירת מחדל', max_length=255, blank=True, default='')
+    has_handle = models.BooleanField('ידית', default=True)
+    has_door = models.BooleanField('יש דלת', default=True)
+    has_frame = models.BooleanField('יש משקוף', default=True)
 
     thickness = models.FloatField('עובי', default=0.0)
     frame_inner_height_reduction = models.FloatField(
@@ -202,9 +203,13 @@ class Hardware(models.Model):
         STANDARD = 'STANDARD', 'רגיל (לפי יחידות)'
         MATCH_LEAF_WIDTH = 'MATCH_LEAF_WIDTH', 'התאמת מידה לפי רוחב כנף (par1 = אורך בס"מ)'
         MATCH_LEAF_HEIGHT = 'MATCH_LEAF_HEIGHT', 'התאמת מידה לפי גובה כנף (par1 = אורך בס"מ)'
+        HEIGHT_METERS = 'HEIGHT_METERS', 'התאמת מידה לפי גובה (עיגול ל-0.5 מ׳)'
         PERIMETER_METERS = 'PERIMETER_METERS', 'חישוב מטראז׳ היקף (אטמים / גומי)'
-        ONLY_IF_PANEL_PAINTED = 'ONLY_IF_PANEL_PAINTED', 'רק אם הכנף בצבע (ציר פאפא / כנף)'
-        ONLY_IF_FRAME_PAINTED = 'ONLY_IF_FRAME_PAINTED', 'רק אם המשקוף בצבע (ציר מאמא / משקוף)'
+        ONLY_IF_PANEL_PAINTED = 'ONLY_IF_PANEL_PAINTED', 'רק אם הכנף צבועה'
+        ONLY_IF_FRAME_PAINTED = 'ONLY_IF_FRAME_PAINTED', 'רק אם המשקוף צבוע'
+        ONLY_IF_HAS_FRAME = 'ONLY_IF_HAS_FRAME', 'רק אם יש משקוף'
+        BUNDLE = 'BUNDLE', 'ערכה וירטואלית (כמות מ-par1, ללא תנאי)'
+        CONDITIONAL_BUNDLE = 'CONDITIONAL_BUNDLE', 'סט וירטואלי (לפי חוקי צביעה של הרכיבים)'
 
     class HardwareRole(models.TextChoices):
         LOCK = 'LOCK', 'מנעול'
@@ -224,6 +229,11 @@ class Hardware(models.Model):
     sku = models.CharField('מק"ט', max_length=100, unique=True)
     price = models.DecimalField('מחיר', max_digits=10, decimal_places=2, default=0)
     description = models.TextField('תיאור', blank=True)
+    is_warehouse_item = models.BooleanField(
+        'ניפוק מהמחסן',
+        default=True,
+        help_text='',
+    )
     active = models.BooleanField('פעיל', default=True)
     product_types = models.ManyToManyField(
         ProductType,
@@ -432,11 +442,11 @@ class ProductModel(models.Model):
 
     @property
     def has_door(self) -> bool:
-        return self.product_family.product_type.has_door
+        return self.product_family.has_door
 
     @property
     def has_frame(self) -> bool:
-        return self.product_family.product_type.has_frame
+        return self.product_family.has_frame
 
     @property
     def effective_bom(self):

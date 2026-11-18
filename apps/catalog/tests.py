@@ -18,11 +18,11 @@ class CatalogTooltipTests(TestCase):
         self.client.force_login(self.user)
 
         self.pt = ProductType.objects.create(
-            code='INT', name='Interior Doors', description='High quality interior doors',
-            has_door=True, has_frame=True
+            code='INT', name='Interior Doors', description='High quality interior doors'
         )
         self.pf = ProductFamily.objects.create(
-            product_type=self.pt, code='FLAT', name='Flat Family', description='Flat flush door models'
+            product_type=self.pt, code='FLAT', name='Flat Family', description='Flat flush door models',
+            has_door=True, has_frame=True
         )
         self.series = Series.objects.create(
             code='S100', name='Series 100', description='Standard hidden aluminum frame series'

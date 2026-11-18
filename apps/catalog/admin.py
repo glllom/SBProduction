@@ -23,15 +23,12 @@ JSON_FORMFIELD_OVERRIDES = {
 
 @admin.register(ProductType)
 class ProductTypeAdmin(ModelAdmin):
-    list_display = ('id', 'name', 'code', 'active', 'has_door', 'has_frame')
-    list_filter = ('active', 'has_door', 'has_frame')
+    list_display = ('id', 'name', 'code', 'active')
+    list_filter = ('active',)
     search_fields = ('name', 'code', 'description')
     fieldsets = (
         ('מידע כללי', {
             'fields': ('name', 'code', 'description', 'active')
-        }),
-        ('מבנה', {
-            'fields': ('has_door', 'has_frame')
         }),
     )
 
@@ -46,8 +43,11 @@ class ProductFamilyAdmin(ModelAdmin):
         ('מידע כללי', {
             'fields': (
                 'product_type', 'name', 'code', 'description',
-                'active', 'allowed_direction', 'supports_split_installation',
+                'active', 'allowed_direction', 'supports_split_installation', 'has_handle',
             )
+        }),
+        ('מבנה', {
+            'fields': ('has_door', 'has_frame')
         }),
         ('גיאומטריה ועובי', {
             'fields': (
@@ -227,11 +227,11 @@ class ProductTechnicalDataInline(StackedInline):
 class ProductAdmin(ModelAdmin):
     list_display = (
         'id', 'code', 'name', 'product_family', 'series',
-        'parent_model', 'active', 'has_door', 'has_frame',
+        'parent_model', 'active',
     )
     list_select_related = ('product_family__product_type', 'series', 'parent_model')
     list_filter = ('active', 'product_family__product_type', 'product_family', 'series')
-    search_fields = ('code', 'name', 'description', 'series__code', 'product_family__code')
+    search_fields = ('code', 'name', 'description', 'product_family__code')
     autocomplete_fields = ('parent_model',)
     filter_horizontal = ('required_customizers',)
     save_as = True

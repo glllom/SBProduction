@@ -741,7 +741,11 @@ class ProductionDataService:
             for c in raw_cmz:
                 c_name = c.get('name') if isinstance(c, dict) else getattr(c, 'name', '')
                 c_params = c.get('params', []) if isinstance(c, dict) else getattr(c, 'params', [])
-                p_strs = [f"{p.get('label')}:{p.get('value')}" for p in c_params]
+                p_strs = [
+                    f"{p.get('label') if isinstance(p, dict) else getattr(p, 'label', '')}:"
+                    f"{p.get('value') if isinstance(p, dict) else getattr(p, 'value', '')}"
+                    for p in c_params
+                ]
                 cmz_signature.append(f"{c_name}({', '.join(p_strs)})")
             cmz_key = " + ".join(cmz_signature)
             raw_hinges = getattr(item, 'hinge_heights', []) if hasattr(item, 'hinge_heights') else item.get(

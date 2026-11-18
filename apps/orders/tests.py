@@ -32,15 +32,15 @@ class GroupDuplicationAndSpecificationTests(TestCase):
         # Catalog setup
         self.product_type = ProductType.objects.create(
             code='INTERIOR',
-            name='דלתות פנים',
-            has_door=True,
-            has_frame=True
+            name='דלתות פנים'
         )
         self.product_family = ProductFamily.objects.create(
             product_type=self.product_type,
             name='משפחה 1',
             code='FAM1',
-            default_value_for_frame='100'
+            default_value_for_frame='100',
+            has_door=True,
+            has_frame=True
         )
         self.series = Series.objects.create(
             name='סדרה 100',
@@ -380,8 +380,10 @@ class RequiredCustomizersOrderTests(TestCase):
         )
         self.client.login(username='custmgr', password='password123')
 
-        self.pt = ProductType.objects.create(code='PT1', name='Type 1', has_door=True, has_frame=True)
-        self.pf = ProductFamily.objects.create(product_type=self.pt, code='PF1', name='Family 1')
+        self.pt = ProductType.objects.create(code='PT1', name='Type 1')
+        self.pf = ProductFamily.objects.create(
+            product_type=self.pt, code='PF1', name='Family 1', has_door=True, has_frame=True
+        )
         self.series = Series.objects.create(code='SR1', name='Series 1')
         self.front = Front.objects.create(series=self.series, code='FR1', name='Front 1')
         self.product = ProductModel.objects.create(
