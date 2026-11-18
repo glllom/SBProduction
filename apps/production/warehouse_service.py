@@ -110,7 +110,9 @@ class WarehousePackingSlipService:
         # Предзагружаем справочник Hardware для быстрого доступа по ID из bom_items
         hw_cache = {
             h.id: h
-            for h in Hardware.objects.filter(active=True).select_related('color').prefetch_related('components')
+            for h in Hardware.objects.filter(active=True)
+            .select_related('color')
+            .prefetch_related('components', 'product_types', 'product_families', 'product_models')
         }
 
         aggregated = defaultdict(lambda: {
@@ -121,8 +123,10 @@ class WarehousePackingSlipService:
             'sku': '',
             'qty': 0.0,
             'comment': '',
+            'cut_dims': [],
             'is_color_required': False,
             'is_perimeter': False,
+            'is_half_meter': False,
         })
 
         def process_hardware(
@@ -135,8 +139,30 @@ class WarehousePackingSlipService:
                 visited=None,
                 force_unconditional: bool = False,
         ):
-            if not hw or qty <= 0:
+            if not hw or not hw.active or qty <= 0:
                 return
+            if not getattr(hw, 'is_warehouse_item', True):
+                return
+            # Фильтрация по применимости к типу, семейству и модели двери
+            if group and group.product:
+                prod = group.product
+                fam = getattr(prod, 'product_family', None)
+                prod_type_id = getattr(prod, 'product_type_id', None) or getattr(fam, 'product_type_id', None)
+                prod_fam_id = getattr(prod, 'product_family_id', None)
+                prod_model_id = getattr(prod, 'product_model_id', None) or getattr(prod, 'model_id', None)
+
+                allowed_types = {t.id for t in hw.product_types.all()}
+                if allowed_types and prod_type_id not in allowed_types:
+                    return
+
+                allowed_families = {f.id for f in hw.product_families.all()}
+                if allowed_families and prod_fam_id not in allowed_families:
+                    return
+
+                allowed_models = {m.id for m in hw.product_models.all()}
+                if allowed_models and prod_model_id not in allowed_models:
+                    return
+                
             if visited is None:
                 visited = set()
             if hw.id in visited:
@@ -144,7 +170,19 @@ class WarehousePackingSlipService:
             visited.add(hw.id)
 
             rule = hw.rule_tag or Hardware.RuleTag.STANDARD
+            # Если позиция пришла в OTHER (например, из bom.additional), но у неё есть явная роль (HINGE/LOCK/HANDLE)
+            if category == OrderWarehouseItem.Category.OTHER and getattr(hw, 'role', None):
+                role_to_cat = {
+                    'HINGE': OrderWarehouseItem.Category.HINGES,
+                    'LOCK': OrderWarehouseItem.Category.LOCKS,
+                    'CYLINDER': OrderWarehouseItem.Category.LOCKS,
+                    'HANDLE': OrderWarehouseItem.Category.HANDLES,
+                }
+                category = role_to_cat.get(hw.role, category)
+
             has_frame = group.product.has_frame if (group and group.product) else True
+            item_sp = effective_specs.get(item.id) if item is not None else None
+            is_double_door = bool(getattr(item_sp, 'is_double_door', False))
 
             # 0. Виртуальные комплекты (сам комплект в накладную не попадает, выдаются только его components)
             if rule == Hardware.RuleTag.BUNDLE:
@@ -164,8 +202,14 @@ class WarehousePackingSlipService:
                     )
                 return
 
-            # 1. Фильтрация по покраске и наличию коробки (вкручиваемые петли pipe мама/папа)
+            # 1. Фильтрация по покраске и наличию коробки
             if not force_unconditional:
+                if rule == Hardware.RuleTag.ONLY_IF_HAS_FRAME:
+                    if not has_frame:
+                        for comp in hw.components.filter(active=True):
+                            process_hardware(comp, category, qty, group, item, panel_dims, visited.copy())
+                        return
+
                 if rule == Hardware.RuleTag.ONLY_IF_PANEL_PAINTED:
                     if group.panel_paint_option == OrderItemsGroup.PaintOption.NO_PAINT:
                         for comp in hw.components.filter(active=True):
@@ -198,7 +242,7 @@ class WarehousePackingSlipService:
                     has_rebate = bool(routing_obj and routing_obj.edge_shape)
 
                 if size_pool:
-                    for dim in dims_to_check:
+                    for idx_dim, dim in enumerate(dims_to_check):
                         raw_target = dim.get('width') if rule == Hardware.RuleTag.MATCH_LEAF_WIDTH else dim.get(
                             'height')
                         if raw_target is None:
@@ -206,29 +250,36 @@ class WarehousePackingSlipService:
 
                         target_dim = float(raw_target)
                         if rule == Hardware.RuleTag.MATCH_LEAF_WIDTH:
-                            cut_dim = round(target_dim - 0.2 - (2.0 if has_rebate else 0.0), 2)
+                            is_passive_leaf = (idx_dim > 0) or (dim.get('leaf_role') == 'passive')
+                            if is_passive_leaf:
+                                rebate_deduction = 0.0 if has_rebate else 1.0
+                            else:
+                                rebate_deduction = 2.0 if has_rebate else 0.0
+
+                            cut_dim = round(target_dim - rebate_deduction - 0.2, 2)
                             dim_label = 'מידת חיתוך'
                         else:
                             cut_dim = round(target_dim, 2)
                             dim_label = 'גובה כנף'
 
                         suitable = [(sz, h) for sz, h in size_pool if sz >= cut_dim]
-                        if suitable:
-                            chosen_size = suitable[0][0]
-                            note = f"{dim_label}: {cls._fmt_num(cut_dim)}"
-                        else:
-                            chosen_size = size_pool[-1][0]
-                            note = f"חריג מידה! {dim_label}: {cls._fmt_num(cut_dim)}"
+                        is_oversize = not bool(suitable)
+                        chosen_size = suitable[0][0] if suitable else size_pool[-1][0]
 
                         same_size_items = [h for sz, h in size_pool if sz == chosen_size]
                         has_color_choices = len({h.color_id for h in same_size_items if h.color_id}) > 1
 
-                        key = (category, f"sized_{c_name}_{chosen_size}_{cut_dim}")
+                        # Группируем по категории и размеру заготовки (без cut_dim в ключе!)
+                        key = (category, f"sized_{c_name}_{chosen_size}")
                         entry = aggregated[key]
                         entry['category'] = category
                         entry['common_name'] = c_name
-                        entry['comment'] = note
                         entry['qty'] += qty
+
+                        dim_entry = f"{'חריג! ' if is_oversize else ''}{cls._fmt_num(cut_dim)}"
+                        # Добавляем размер пиления с учётом количества (если qty > 1)
+                        for _ in range(int(round(qty))):
+                            entry['cut_dims'].append((cut_dim, dim_entry))
 
                         if has_color_choices:
                             entry['name'] = f"{c_name} ({cls._fmt_num(chosen_size)})"
@@ -244,19 +295,29 @@ class WarehousePackingSlipService:
                     return
 
             # 3. Расчёт погонажа уплотнителя по периметру (в метрах)
-            if rule == Hardware.RuleTag.PERIMETER_METERS and item is not None:
+            if rule in (Hardware.RuleTag.PERIMETER_METERS,
+                        Hardware.RuleTag.HEIGHT_METERS) and item is not None:
+                if rule == Hardware.RuleTag.HEIGHT_METERS and not is_double_door:
+                    return
+
                 raw_w = float(item.width or 80)
                 raw_h = float(item.height or 210)
-                meters = ((2 * raw_h) + raw_w) / 100.0 * qty
+                is_half = (rule == Hardware.RuleTag.HEIGHT_METERS)
+
+                meters = ((raw_h / 100.0) * qty) if is_half else ((((2 * raw_h) + raw_w) / 100.0) * qty)
 
                 has_color_choices = bool(c_name and len(color_variants_map.get((c_name, None, mode_key), [])) > 1)
-                key = (category, f"perim_{c_name}" if has_color_choices else f"perim_hw_{hw.id}")
+                prefix_key = 'half_perim' if is_half else 'perim'
+                key = (category, f"{prefix_key}_{c_name}" if has_color_choices else f"{prefix_key}_hw_{hw.id}")
                 entry = aggregated[key]
                 entry['category'] = category
                 entry['common_name'] = c_name
                 entry['name'] = c_name if has_color_choices else hw.name
                 entry['is_color_required'] = has_color_choices
-                entry['is_perimeter'] = True
+                if is_half:
+                    entry['is_half_meter'] = True
+                else:
+                    entry['is_perimeter'] = True
                 if not has_color_choices:
                     entry['hardware'] = hw
                     entry['sku'] = hw.sku or ''
@@ -311,16 +372,16 @@ class WarehousePackingSlipService:
                         eff_hinge_hw = hw_cache.get(b_it.item_id) or Hardware.objects.filter(pk=b_it.item_id).first()
 
             # 1. Ручки (из эффективного BOM пайплайна — с учётом подмены WC <-> CYLINDER)
-            if has_door:
-                target_handle = eff_handle_hw or order.handle
+            has_handle = sp.has_handle if sp is not None else getattr(group, 'has_handle', True)
+            if has_door and has_handle:
+                target_handle = eff_handle_hw if sp is not None else order.handle
                 if target_handle:
                     process_hardware(target_handle, OrderWarehouseItem.Category.HANDLES, 1, group, item, panel_dims)
 
-            # Fallback на базовый BOM, если пайплайн не вернул результат
-            if not eff_lock_hw and group.product and group.product.effective_bom:
-                eff_lock_hw = group.product.effective_bom.lock
-            if not eff_hinge_hw and group.product and group.product.effective_bom:
-                eff_hinge_hw = group.product.effective_bom.hinges
+            # Fallback на базовый BOM только если пайплайн не вернул результат (sp is None)
+            if sp is None and group.product and group.product.effective_bom:
+                eff_lock_hw = eff_lock_hw or group.product.effective_bom.lock
+                eff_hinge_hw = eff_hinge_hw or group.product.effective_bom.hinges
 
             # 2. Эффективный замок и цилиндр
             if eff_lock_hw:
@@ -328,25 +389,25 @@ class WarehousePackingSlipService:
             if eff_cyl_hw:
                 process_hardware(eff_cyl_hw, OrderWarehouseItem.Category.LOCKS, 1, group, item, panel_dims)
 
-                # 3. Эффективные петли (кол-во берём из рассчитанных высот петель пайплайна)
-                if eff_hinge_hw:
-                    if sp and sp.hinge_heights:
-                        hinges_per_door = len([h for h in sp.hinge_heights if h is not None]) or 3
-                    else:
-                        custom_h = [
-                            getattr(item, f'custom_hinge{i}', None)
-                            for i in range(1, 6)
-                            if getattr(item, f'custom_hinge{i}', None) is not None
-                        ]
-                        hinges_per_door = len(custom_h) if custom_h else 3
+            # 3. Эффективные петли (на одном уровне с блоком 2, НЕ внутри if eff_cyl_hw!)
+            if eff_hinge_hw:
+                if sp and sp.hinge_heights:
+                    hinges_per_door = len([h for h in sp.hinge_heights if h is not None]) or 3
+                else:
+                    custom_h = [
+                        getattr(item, f'custom_hinge{i}', None)
+                        for i in range(1, 6)
+                        if getattr(item, f'custom_hinge{i}', None) is not None
+                    ]
+                    hinges_per_door = len(custom_h) if custom_h else 3
 
-                    if sp and getattr(sp, 'is_double_door', False):
-                        hinges_per_door *= 2
+                if sp and getattr(sp, 'is_double_door', False):
+                    hinges_per_door *= 2
 
-                    process_hardware(
-                        eff_hinge_hw, OrderWarehouseItem.Category.HINGES,
-                        hinges_per_door, group, item, panel_dims,
-                    )
+                process_hardware(
+                    eff_hinge_hw, OrderWarehouseItem.Category.HINGES,
+                    hinges_per_door, group, item, panel_dims,
+                )
 
             # 4. Доп. аксессуары и уплотнители из BOM
             bom = group.product.effective_bom if group.product else None
@@ -393,7 +454,30 @@ class WarehousePackingSlipService:
             if data['is_perimeter']:
                 final_qty = math.ceil(final_qty + cls.PERIMETER_RESERVE_METERS)
                 if not comment_str:
-                    comment_str = f'מטר רץ (כולל {int(cls.PERIMETER_RESERVE_METERS)} מ\' רזרבה)'
+                    comment_str = ''
+            elif data['is_half_meter']:
+                # 2.4 * 2 = 4.8 -> math.ceil(4.8) = 5 -> 5 / 2.0 = 2.5
+                final_qty = math.ceil(final_qty * 2.0) / 2.0
+                if float(final_qty).is_integer():
+                    final_qty = int(final_qty)
+                if not comment_str:
+                    comment_str = ''
+
+            if data['cut_dims']:
+                from collections import Counter
+
+                total_cuts = len(data['cut_dims'])
+                counts = Counter(data['cut_dims'])
+                # Сортируем уникальные пары (числовой_размер, текстовая_метка) от меньшего к большему
+                formatted_parts = []
+                for (_, label), cnt in sorted(counts.items(), key=lambda x: x[0][0]):
+                    if cnt > 1:
+                        formatted_parts.append(f"{label} [{cnt} יח']")
+                    else:
+                        formatted_parts.append(label)
+
+                prefix = 'מידות חיתוך' if total_cuts > 1 else 'מידת חיתוך'
+                comment_str = f"{prefix}: {' ; '.join(formatted_parts)}"
 
             items_to_create.append(OrderWarehouseItem(
                 order=order,
@@ -486,7 +570,7 @@ class WarehousePackingSlipService:
                     (r['obj'].name or '').strip().lower(),
                 )
             )
-            
+
         return [
             {
                 'code': cat,

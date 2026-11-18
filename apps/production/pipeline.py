@@ -21,6 +21,32 @@ def format_spec_date(d) -> str:
     return d.strftime("%d/%m/%y") if d else ""
 
 
+def _find_hardware_variant(
+        base_hw: Optional[Hardware],
+        role: str,
+        target_mode: str,
+        match_color: bool = False,
+) -> Optional[Hardware]:
+    """Подбирает вариант фурнитуры (WC / CYLINDER / KEY) по common_name и par1_value."""
+    if not base_hw or not base_hw.common_name or target_mode not in ('WC', 'CYLINDER', 'KEY'):
+        return base_hw
+
+    curr_mode = (base_hw.par1_value or '').strip().upper()
+    if curr_mode == target_mode:
+        return base_hw
+
+    qs = Hardware.objects.filter(
+        active=True,
+        role=role,
+        common_name=base_hw.common_name,
+        par1_value__iexact=target_mode,
+    )
+    if match_color and base_hw.color_id:
+        return qs.filter(color_id=base_hw.color_id).first() or qs.order_by('id').first() or base_hw
+
+    return qs.order_by('id').first() or base_hw
+
+
 class PipelineError(Exception):
     """Base class for pipeline errors that should be collected and shown to the user."""
     pass
@@ -283,132 +309,91 @@ class LockSelectionStep(SpecStep):
 class LockOptionSelectionStep(SpecStep):
     priority = 460
 
+    MODE_LABELS = {
+        'WC': 'תפוס/פנוי',
+        'CYLINDER': 'צילינדר',
+        'KEY': 'מפתח אפס',
+        'NONE': 'ללא',
+    }
+
+    MODE_KEYWORDS = (
+        (('CYLINDER', 'צילינדר', 'צילימדר'), 'CYLINDER'),
+        (('WC', 'תפוס', 'פנוי'), 'WC'),
+        (('KEY', 'מפתח'), 'KEY'),
+        (('NONE', 'WITHOUT_LOCK', 'ללא'), 'NONE'),
+    )
+
     def process(self, context: SpecContext):
         spec = context.spec
         if not getattr(spec, 'has_door', True):
             return
 
-        curr_lock = Hardware.objects.filter(pk=spec.lock_id).first() if spec.lock_id else None
+        if not spec.lock_id or spec.lock_name == 'ללא מנעול':
+            spec.lock_option_type = self.MODE_LABELS['NONE']
+            context.data['lock_mode'] = 'NONE'
+            context.set_bom_hardware_slot('cylinder', 'צילינדר', None)
+            return
 
-        # Базовый режим берём из текущего замка (если в его par1_value задан WC/CYLINDER/KEY), иначе WC
-        base_lock_mode = (curr_lock.par1_value or '').strip().upper() if curr_lock else ''
-        target_mode = base_lock_mode if base_lock_mode in ('WC', 'CYLINDER', 'KEY') else 'WC'
+        curr_lock = Hardware.objects.filter(pk=spec.lock_id).first()
+        base_mode = (curr_lock.par1_value or '').strip().upper() if curr_lock else ''
+        target_mode = base_mode if base_mode in ('WC', 'CYLINDER', 'KEY') else 'WC'
         cylinder_hw: Optional[Hardware] = None
 
-        # Проверяем все кастомизаторы запирания (включая прямой cmz_008 и комбинированный cmz_004)
-        relevant_gcs = context.find_customizers({'LOCK', 'LOCK_OPTION', 'CYLINDER', 'KEY_LOCK', 'WC_LOCK'})
-
-        for gc in relevant_gcs:
+        for gc in context.find_customizers({'LOCK', 'LOCK_OPTION', 'CYLINDER', 'KEY_LOCK', 'WC_LOCK'}):
             c = gc.customizer
-            tag_str = (c.tag or '').upper()
-            item_tags = {t.strip() for t in tag_str.replace(',', ' ').split() if t.strip()}
+            tags = {t.strip() for t in (c.tag or '').upper().replace(',', ' ').split() if t.strip()}
 
-            # 1. Прямой кастомизатор цилиндра без параметров (например, cmz_008)
-            if c.hardware and (getattr(c.hardware, 'role', '') == 'CYLINDER' or 'CYLINDER' in item_tags):
+            if c.hardware and (getattr(c.hardware, 'role', '') == 'CYLINDER' or 'CYLINDER' in tags):
                 cylinder_hw = c.hardware
                 target_mode = 'CYLINDER'
+                continue
 
-            # 2. Параметр выбора типа запирания (например, "סוג נעילה" в комбинированном cmz_004)
-            raw_opt_val = self._extract_option_param(gc, item_tags)
-            if raw_opt_val:
-                resolved_hw = self._resolve_cylinder_hardware(raw_opt_val)
-                if resolved_hw:
-                    cylinder_hw = resolved_hw
+            raw_val = self._extract_option_param(gc, tags)
+            if raw_val:
+                resolved_cyl = self._resolve_cylinder_hardware(raw_val)
+                if resolved_cyl:
+                    cylinder_hw = resolved_cyl
                     target_mode = 'CYLINDER'
                 else:
-                    up_val = raw_opt_val.upper()
-                    if any(k in up_val for k in ('CYLINDER', 'צילינדר', 'צילימדר')):
-                        target_mode = 'CYLINDER'
-                    elif any(k in up_val for k in ('WC', 'תפוס', 'פנוי')):
-                        target_mode = 'WC'
-                    elif any(k in up_val for k in ('KEY', 'מפתח')):
-                        target_mode = 'KEY'
-                    elif any(k in up_val for k in ('NONE', 'WITHOUT_LOCK', 'ללא')):
-                        target_mode = 'NONE'
+                    target_mode = self._parse_mode_text(raw_val, target_mode)
             elif not cylinder_hw:
-                if 'CYLINDER' in item_tags:
+                if 'CYLINDER' in tags:
                     target_mode = 'CYLINDER'
-                elif 'KEY_LOCK' in item_tags:
+                elif 'KEY_LOCK' in tags:
                     target_mode = 'KEY'
-                elif 'WC_LOCK' in item_tags:
+                elif 'WC_LOCK' in tags:
                     target_mode = 'WC'
 
-        if spec.lock_id is None or spec.lock_name == 'ללא מנעול':
-            target_mode = 'NONE'
+        context.data['lock_mode'] = target_mode
+        spec.lock_option_type = self.MODE_LABELS.get(target_mode, self.MODE_LABELS['WC'])
+        if cylinder_hw and getattr(spec, 'is_double_door', False):
+            cylinder_hw = self._resolve_double_door_cylinder(cylinder_hw)
 
-        mode_labels = {
-            'WC': 'תפוס/פנוי',
-            'CYLINDER': 'צילינדר',
-            'KEY': 'מפתח אפס',
-            'NONE': 'ללא',
-        }
-        spec.lock_option_type = mode_labels.get(target_mode, 'תפוס/פנוי')
-
-        # 3. Запись слота цилиндра в bom_items
         context.set_bom_hardware_slot('cylinder', 'צילינדר', cylinder_hw)
 
-        # 4. Автоподмена модификации замка (WC <-> CYLINDER <-> KEY) по common_name + par1_value
-        if curr_lock and curr_lock.common_name and target_mode in ('WC', 'CYLINDER', 'KEY'):
-            curr_mode = (curr_lock.par1_value or '').strip().upper()
-            if curr_mode != target_mode:
-                matched_lock = (
-                    Hardware.objects.filter(
-                        active=True,
-                        role='LOCK',
-                        common_name=curr_lock.common_name,
-                        par1_value__iexact=target_mode,
-                    )
-                    .order_by('id')
-                    .first()
-                )
-                if matched_lock:
-                    spec.lock_id = matched_lock.id
-                    spec.lock_name = (matched_lock.common_name or '').strip() or matched_lock.name
-                    context.set_bom_hardware_slot('lock', 'Lock', matched_lock)
+        matched_lock = _find_hardware_variant(curr_lock, 'LOCK', target_mode, match_color=False)
+        if matched_lock and matched_lock.id != spec.lock_id:
+            spec.lock_id = matched_lock.id
+            spec.lock_name = (matched_lock.common_name or '').strip() or matched_lock.name
+            context.set_bom_hardware_slot('lock', 'Lock', matched_lock)
 
-        # 5. Автоподмена модификации ручки (WC <-> CYLINDER <-> KEY) по common_name + par1_value
-        base_handle = getattr(context.order, 'handle', None)
-        if base_handle:
-            eff_handle = base_handle
-            if target_mode in ('WC', 'CYLINDER', 'KEY') and base_handle.common_name:
-                curr_h_mode = (base_handle.par1_value or '').strip().upper()
-                if curr_h_mode != target_mode:
-                    qs = Hardware.objects.filter(
-                        active=True,
-                        role='HANDLE',
-                        common_name=base_handle.common_name,
-                        par1_value__iexact=target_mode,
-                    )
-                    if base_handle.color_id:
-                        matched_handle = qs.filter(color_id=base_handle.color_id).first() or qs.order_by('id').first()
-                    else:
-                        matched_handle = qs.order_by('id').first()
-
-                    if matched_handle:
-                        eff_handle = matched_handle
-
-            spec.handle_name = eff_handle.name
-            context.set_bom_hardware_slot('handle', 'ידיות', eff_handle)
+    @classmethod
+    def _parse_mode_text(cls, raw_val: str, default: str) -> str:
+        up_val = raw_val.upper()
+        for keywords, mode in cls.MODE_KEYWORDS:
+            if any(k in up_val for k in keywords):
+                return mode
+        return default
 
     @staticmethod
     def _extract_option_param(group_customizer, item_tags: set[str]) -> str:
-        """Извлекает значение параметра типа запирания, не путая его с высотой замка."""
         c = group_customizer.customizer
         for i in range(1, 6):
             label = (getattr(c, f'par{i}_label') or '').lower()
             if 'גובה' in label or 'height' in label:
                 continue
-            if any(k in label for k in ('נעילה', 'סוג', 'צילינדר', 'option', 'type', 'lock')):
-                val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
-                if val is not None and str(val).strip():
-                    return str(val).strip()
-
-        # Fallback для кастомизаторов опций без подписи параметра (кроме чистого LOCK, где par1 может быть высотой)
-        if 'LOCK' not in item_tags:
-            for i in range(1, 6):
-                label = (getattr(c, f'par{i}_label') or '').lower()
-                if 'גובה' in label or 'height' in label:
-                    continue
+            is_option_label = any(k in label for k in ('נעילה', 'סוג', 'צילינדר', 'option', 'type', 'lock'))
+            if is_option_label or 'LOCK' not in item_tags:
                 val = getattr(group_customizer, f'par{i}') or getattr(c, f'par{i}_value')
                 if val is not None and str(val).strip():
                     return str(val).strip()
@@ -416,20 +401,75 @@ class LockOptionSelectionStep(SpecStep):
 
     @staticmethod
     def _resolve_cylinder_hardware(raw_val: str) -> Optional[Hardware]:
-        """Находит артикул цилиндра в Hardware по SKU=..., ID, sku или названию."""
         val = raw_val.strip()
         if not val:
             return None
         if val.upper().startswith('SKU='):
             return Hardware.objects.filter(sku=val.split('=', 1)[1].strip(), active=True).first()
         if val.isdigit():
-            hw = Hardware.objects.filter(pk=int(val), role='CYLINDER', active=True).first()
-            if hw:
-                return hw
+            return Hardware.objects.filter(pk=int(val), role='CYLINDER', active=True).first()
         return (
                 Hardware.objects.filter(sku=val, role='CYLINDER', active=True).first()
                 or Hardware.objects.filter(name=val, role='CYLINDER', active=True).first()
         )
+
+    @staticmethod
+    def _resolve_double_door_cylinder(cylinder_hw: Hardware) -> Hardware:
+        replacement_sku = ''
+        for i in (2, 1, 3):
+            val = (getattr(cylinder_hw, f'par{i}_value') or '').strip()
+            if val and val.upper() not in ('WC', 'CYLINDER', 'KEY'):
+                replacement_sku = val.split('=', 1)[1].strip() if val.upper().startswith('SKU=') else val
+                break
+
+        if not replacement_sku:
+            return cylinder_hw
+
+        replacement_hw = Hardware.objects.filter(
+            sku=replacement_sku,
+            role='CYLINDER',
+            active=True,
+        ).first()
+
+        return replacement_hw or cylinder_hw
+
+
+class HandleSelectionStep(SpecStep):
+    priority = 470
+
+    CANCEL_TAGS = {'NO_LOCK', 'WITHOUT_LOCK', 'NO_HANDLE', 'WITHOUT_HANDLE', 'INTEGRAL_HANDLE'}
+
+    def process(self, context: SpecContext):
+        spec = context.spec
+        if not getattr(spec, 'has_door', True):
+            return
+
+        # 1. Базовое значение из группы (при создании группы унаследовано от ProductFamily)
+        has_handle = getattr(context.item.group, 'has_handle', True)
+
+        # 2. Если замка нет или кастомизатор отменил замок / поставил интегральную ручку
+        if not spec.lock_id or context.find_customizers(self.CANCEL_TAGS):
+            has_handle = False
+
+        spec.has_handle = has_handle
+
+        if not has_handle:
+            spec.handle_name = 'ללא ידית'
+            context.set_bom_hardware_slot('handle', 'ידיות', None)
+            return
+
+        # 3. Подбор модификации ручки (WC / CYLINDER / KEY) с учётом цвета
+        base_handle = getattr(context.order, 'handle', None)
+        if not base_handle:
+            spec.handle_name = 'ללא ידית'
+            context.set_bom_hardware_slot('handle', 'ידיות', None)
+            return
+
+        target_mode = context.data.get('lock_mode', 'WC')
+        eff_handle = _find_hardware_variant(base_handle, 'HANDLE', target_mode, match_color=True)
+
+        spec.handle_name = eff_handle.name
+        context.set_bom_hardware_slot('handle', 'ידיות', eff_handle)
 
 
 class HingeSelectionStep(SpecStep):
@@ -1776,6 +1816,7 @@ class SpecPipeline:
             MaterialSelectionStep(),
             LockSelectionStep(),
             LockOptionSelectionStep(),
+            HandleSelectionStep(),
             HingeSelectionStep(),
             LockPositionStep(),
             HingePositionStep(),

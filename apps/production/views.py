@@ -825,7 +825,18 @@ def station_report(request, pk):
     )
 
     if is_wood_frames_station:
-        frame_groups = service.prepare_wood_frames_report_data(report_items)
+        if station:
+            filtered_items = service.get_filtered_items(station=station)
+        else:
+            filtered_items = service.get_filtered_items(report_type=station_code)
+
+        filtered_item_ids = {item.id for item in filtered_items}
+        station_items = [
+            it for it in report_items
+            if (getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')) in filtered_item_ids
+        ]
+
+        frame_groups = service.prepare_wood_frames_report_data(station_items)
         template_name = station.template_name if (
                 station and station.template_name) else 'production/reports/report_wood_frames.html'
         report_label = (station.label if station else None) or 'דו"ח משקופי עץ'
@@ -1363,8 +1374,28 @@ def report_wood_frames(request, pk):
     report_items = res[0] if res[0] is not None else []
 
     service = ProductionDataService(order)
-    frame_groups = service.prepare_wood_frames_report_data(report_items)
+    station = ProductionStation.objects.filter(
+        code__in=['FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES']
+    ).first()
+    filtered_items = service.get_filtered_items(station=station) if station else service.get_filtered_items(
+        report_type='WOOD_FRAMES')
+    filtered_item_ids = {item.id for item in filtered_items}
+    station_items = [
+        it for it in report_items
+        if (getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')) in filtered_item_ids
+    ]
+
+    frame_groups = service.prepare_wood_frames_report_data(station_items)
     barcode_data = f"{order.order_number};FRAMES"
+
+    return render(request, 'production/reports/report_wood_frames.html', {
+        'order': order,
+        'order_spec': order_spec,
+        'batches_label': res[1] if res[0] is not None else "לא נבחרה אצווה",
+        'frame_groups': frame_groups,
+        'order_qr': get_qr_base64(barcode_data),
+        'now': timezone.now(),
+    })
 
     return render(request, 'production/reports/report_wood_frames.html', {
         'order': order,

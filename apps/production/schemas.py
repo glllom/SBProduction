@@ -89,6 +89,7 @@ class ProductionSpec(BaseModel):
     series: str = ""
     has_door: bool = True
     has_frame: bool = True
+    has_handle: bool = True
 
     # Geometry
     height: float = 0.0

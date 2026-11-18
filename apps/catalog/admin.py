@@ -46,7 +46,7 @@ class ProductFamilyAdmin(ModelAdmin):
         ('מידע כללי', {
             'fields': (
                 'product_type', 'name', 'code', 'description',
-                'active', 'allowed_direction', 'supports_split_installation',
+                'active', 'allowed_direction', 'supports_split_installation', 'has_handle',
             )
         }),
         ('גיאומטריה ועובי', {
