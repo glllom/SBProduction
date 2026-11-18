@@ -48,50 +48,58 @@ def extract_items_from_batches(batches_dict: dict, batch_filter: str = None) -> 
 def enrich_report_doors_spec(items):
     """
     Размечает элементы для вывода в таблице дверей:
-    1. Помечает элементы сменившейся фурнитуры (show_hardware_subhead).
+    1. Помечает элементы сменившейся фурнитуры или основной группы (show_hardware_subhead).
     2. Вычисляет addons_rowspan для одинаковых идущих подряд кастомизаторов/комментариев.
     """
+    if not items:
+        return []
+
+    def get_group_key(item_dict):
+        return (
+            item_dict.get('product_family'),
+            item_dict.get('series'),
+            item_dict.get('front_name'),
+        )
+
+    def get_hw_key(item_dict):
+        return (
+            item_dict.get('lock_name'),
+            item_dict.get('hinge_name'),
+        )
 
     def get_addons_signature(item_dict):
-        cmz = item_dict.get('doors_report_customizers', []) or []
-        comment = item_dict.get('comment', '') or ''
+        cmz = item_dict.get('doors_report_customizers') or []
+        comment = (item_dict.get('comment') or '').strip()
         return json.dumps({
-            'c': str(comment),
-            'cmz': cmz
+            'c': comment,
+            'cmz': cmz,
         }, sort_keys=True, default=str)
 
     items_data = [
-        item.model_dump() if hasattr(item, 'model_dump') else (item if isinstance(item, dict) else item.dict())
+        item.model_dump() if hasattr(item, 'model_dump') else (dict(item) if isinstance(item, dict) else item.dict())
         for item in items
     ]
-    n = len(items_data)
 
-    current_key = None
+    prev_key = None
     for item in items_data:
-        group_key = (item.get('product_family'), item.get('series'))
-        hw_key = (item.get('lock_name'), item.get('hinge_name'))
+        curr_key = (get_group_key(item), get_hw_key(item))
+        item['show_hardware_subhead'] = (curr_key != prev_key)
+        prev_key = curr_key
 
-        if current_key is None or current_key[0] != group_key or current_key[1] != hw_key:
-            item['show_hardware_subhead'] = True
-            current_key = (group_key, hw_key)
-        else:
-            item['show_hardware_subhead'] = False
-
+    n = len(items_data)
     i = 0
     while i < n:
-        sig = get_addons_signature(items_data[i])
-        curr_group = (items_data[i].get('product_family'), items_data[i].get('series'))
-        curr_hw = (items_data[i].get('lock_name'), items_data[i].get('hinge_name'))
+        curr_group = get_group_key(items_data[i])
+        curr_hw = get_hw_key(items_data[i])
+        curr_sig = get_addons_signature(items_data[i])
 
         run_len = 1
-        while i + run_len < n:
-            next_group = (items_data[i + run_len].get('product_family'), items_data[i + run_len].get('series'))
-            next_hw = (items_data[i + run_len].get('lock_name'), items_data[i + run_len].get('hinge_name'))
-
-            if (next_group != curr_group or
-                    next_hw != curr_hw or
-                    get_addons_signature(items_data[i + run_len]) != sig):
-                break
+        while (
+                i + run_len < n
+                and get_group_key(items_data[i + run_len]) == curr_group
+                and get_hw_key(items_data[i + run_len]) == curr_hw
+                and get_addons_signature(items_data[i + run_len]) == curr_sig
+        ):
             run_len += 1
 
         items_data[i]['addons_rowspan'] = run_len
