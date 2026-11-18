@@ -291,11 +291,11 @@
         const orderFrontId = "{{ order.front_id|default:'' }}";
         const orderStatus = "{{ order.status }}";
         const csrfToken = "{{ csrf_token }}";
-        const productTypeConfig = {};
-        {% for pt in product_types %}
-            productTypeConfig["{{ pt.id }}"] = {
-                has_door: Boolean({{ pt.has_door|yesno:"1,0" }}),
-                has_frame: Boolean({{ pt.has_frame|yesno:"1,0" }})
+        const familyConfig = {};
+        {% for f in families %}
+            familyConfig["{{ f.id }}"] = {
+                has_door: Boolean({{ f.has_door|yesno:"1,0" }}),
+                has_frame: Boolean({{ f.has_frame|yesno:"1,0" }})
             };
         {% endfor %}
 
@@ -396,7 +396,7 @@
             $('.btn-edit-item').on('click', function () {
                 const $btn = $(this);
                 const itemId = $btn.data('item-id');
-                const typeId = $btn.data('type-id');
+                const familyId = $btn.data('family-id');
                 const mark = $btn.data('item-mark');
                 const sketchUrl = $btn.data('sketch-url');
 
@@ -425,7 +425,7 @@
                     $('#currentSketchDisplay').addClass('d-none');
                 }
 
-                const config = productTypeConfig[typeId] || {has_door: true, has_frame: true};
+                const config = familyConfig[familyId] || {has_door: true, has_frame: true};
                 const showDims = config.has_door || config.has_frame;
                 $('.field-wall').toggle(config.has_frame);
                 $('.field-door').toggle(config.has_door);

@@ -141,10 +141,10 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
         if not instance or not instance.group or not instance.group.product:
             return cleaned_data
 
-        product_type = instance.group.product.product_family.product_type
+        product_family = instance.group.product.product_family
 
         # 1. Dimensions (width, height) - needed if it has_door OR has_frame
-        if not (product_type.has_door or product_type.has_frame):
+        if not (product_family.has_door or product_family.has_frame):
             # For Wall Cladding, dimensions might be optional or hidden
             pass
         else:
@@ -154,14 +154,14 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
                 self.add_error('height', 'גובה נדרש עבור סוג מוצר זה')
 
         # 2. Wall thickness dependency
-        if product_type.has_frame:
+        if product_family.has_frame:
             if not cleaned_data.get('wall'):
                 self.add_error('wall', 'עובי קיר נדרש עבור סוג מוצר זה')
         else:
             cleaned_data['wall'] = None
 
         # 3. Door parameters dependency
-        if not product_type.has_door:
+        if not product_family.has_door:
             # Clear door-only fields if they were somehow submitted
             cleaned_data['direction'] = None
             cleaned_data['opening'] = None

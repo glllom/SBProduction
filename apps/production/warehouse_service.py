@@ -15,7 +15,7 @@ class WarehousePackingSlipService:
         OrderWarehouseItem.Category.HINGES,
         OrderWarehouseItem.Category.OTHER,
     ]
-    PERIMETER_RESERVE_METERS = 2.0
+    PERIMETER_RESERVE_RATIO = 0.02
 
     @classmethod
     def ensure_initialized(cls, order: Order):
@@ -162,7 +162,7 @@ class WarehousePackingSlipService:
                 allowed_models = {m.id for m in hw.product_models.all()}
                 if allowed_models and prod_model_id not in allowed_models:
                     return
-                
+
             if visited is None:
                 visited = set()
             if hw.id in visited:
@@ -452,7 +452,7 @@ class WarehousePackingSlipService:
             comment_str = data['comment']
 
             if data['is_perimeter']:
-                final_qty = math.ceil(final_qty + cls.PERIMETER_RESERVE_METERS)
+                final_qty = math.ceil(round(final_qty * (1.0 + cls.PERIMETER_RESERVE_RATIO), 4))
                 if not comment_str:
                     comment_str = ''
             elif data['is_half_meter']:

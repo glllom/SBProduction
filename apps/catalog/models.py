@@ -12,8 +12,6 @@ class ProductType(models.Model):
     name = models.CharField('שם', max_length=100, unique=True)
     description = models.TextField('תיאור', blank=True)
     active = models.BooleanField('פעיל', default=True)
-    has_door = models.BooleanField('יש דלת', default=True)
-    has_frame = models.BooleanField('יש משקוף', default=True)
 
     class Meta:
         verbose_name = 'סוג מוצר'
@@ -42,6 +40,8 @@ class ProductFamily(models.Model):
     supports_split_installation = models.BooleanField('ניתן להתקין בשני שלבים', default=False)
     default_value_for_frame = models.CharField('עובי משקוף ברירת מחדל', max_length=255, blank=True, default='')
     has_handle = models.BooleanField('ידית', default=True)
+    has_door = models.BooleanField('יש דלת', default=True)
+    has_frame = models.BooleanField('יש משקוף', default=True)
 
     thickness = models.FloatField('עובי', default=0.0)
     frame_inner_height_reduction = models.FloatField(
@@ -442,11 +442,11 @@ class ProductModel(models.Model):
 
     @property
     def has_door(self) -> bool:
-        return self.product_family.product_type.has_door
+        return self.product_family.has_door
 
     @property
     def has_frame(self) -> bool:
-        return self.product_family.product_type.has_frame
+        return self.product_family.has_frame
 
     @property
     def effective_bom(self):

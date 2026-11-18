@@ -640,13 +640,13 @@ class OrderItemsGroup(models.Model):
                                 wall_default = None
 
                         # Определяем флаги наличия коробки и двери у продукта
-                        product_type = (
-                            self.product.product_family.product_type
+                        product_family = (
+                            self.product.product_family
                             if self.product and self.product.product_family
                             else None
                         )
-                        has_door = product_type.has_door if product_type else True
-                        has_frame = product_type.has_frame if product_type else True
+                        has_door = product_family.has_door if product_family else True
+                        has_frame = product_family.has_frame if product_family else True
 
                         # 3. Создаем недостающие позиции с учетом особенностей типа продукта
                         items_to_create = []
