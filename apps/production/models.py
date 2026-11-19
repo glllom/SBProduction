@@ -192,6 +192,14 @@ class LockStandardHeight(models.Model):
         help_text='שינוי בגובה המנעול לכל יחידת גובה דלת'
     )
 
+    alignment_tolerance = models.DecimalField(
+        'סבילות התאמת גובה (ס"מ)',
+        max_digits=5,
+        decimal_places=2,
+        default=2.5,
+        help_text='הפרש גובה מקסימלי (בס"מ) לאיחוד אוטומטי של גובה מנעול בין דלתות סמוכות'
+    )
+
     class Meta:
         verbose_name = 'גובה מנעול סטנדרטי'
         verbose_name_plural = 'גבהי מנעול סטנדרטיים'

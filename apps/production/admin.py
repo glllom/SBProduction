@@ -129,7 +129,7 @@ class LockStandardHeightAdmin(ModelAdmin):
             'fields': ('product_families', 'locks')
         }),
         ('חישוב גובה מנעול', {
-            'fields': ('base_door_height', 'base_lock_height', 'step')
+            'fields': ('base_door_height', 'base_lock_height', 'step', 'alignment_tolerance')
         }),
     )
 

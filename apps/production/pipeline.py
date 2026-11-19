@@ -551,6 +551,8 @@ class LockPositionStep(SpecStep):
             return
 
         effective_height = None
+        is_manual_override = False
+        std_rule_meta = None
 
         # Приоритет 1: Прямая высота позиции (Item) — разрешены отрицательные значения
         if item.custom_lock_height is not None and str(item.custom_lock_height).strip() != '':
@@ -558,6 +560,7 @@ class LockPositionStep(SpecStep):
                 val = float(item.custom_lock_height)
                 if val != 0:
                     effective_height = val
+                    is_manual_override = True
             except (ValueError, TypeError):
                 pass
 
@@ -569,12 +572,13 @@ class LockPositionStep(SpecStep):
                     val = float(override_h)
                     if val != 0:
                         effective_height = val
+                        is_manual_override = True
                 except (ValueError, TypeError):
                     pass
 
         # Приоритет 3: Нормативная таблица
         if effective_height is None:
-            effective_height = self._get_effective_lock_height(item, spec.lock_id)
+            effective_height, std_rule_meta = self._get_effective_lock_height(item, spec.lock_id)
 
         if effective_height is None or effective_height == 0:
             raise PipelineError(
@@ -582,12 +586,16 @@ class LockPositionStep(SpecStep):
             )
 
         spec.lock_height = effective_height
+        spec.context['lock_alignment_meta'] = {
+            'is_manual': is_manual_override,
+            'rule': std_rule_meta,
+        }
 
     @staticmethod
-    def _get_effective_lock_height(item: OrderItem, lock_id: int) -> Optional[float]:
+    def _get_effective_lock_height(item: OrderItem, lock_id: int) -> tuple[Optional[float], Optional[dict]]:
         product = getattr(item.group, 'product', None)
         if not product or not product.product_family or not lock_id:
-            return None
+            return None, None
 
         std = LockStandardHeight.objects.filter(
             product_families=product.product_family,
@@ -595,20 +603,30 @@ class LockPositionStep(SpecStep):
         ).first()
 
         if not std:
-            return None
+            return None, None
 
         door_h = float(item.height or 0)
         base_h = float(std.base_door_height)
         base_lock = float(std.base_lock_height)
         step = float(std.step)
+        tolerance = float(getattr(std, 'alignment_tolerance', 2.5) or 0)
 
         # Отрицательное значение означает фиксированный размер от низа двери
         if base_lock < 0:
-            return float(base_lock)
+            return float(base_lock), None
 
         diff = door_h - base_h
         intervals = math.ceil(diff / step) if step > 0 else 0
-        return float(base_lock + (intervals * step))
+        calculated_lock_h = float(base_lock + (intervals * step))
+
+        rule_meta = {
+            'id': std.id,
+            'base_door_height': base_h,
+            'base_lock_height': base_lock,
+            'step': step,
+            'alignment_tolerance': tolerance,
+        }
+        return calculated_lock_h, rule_meta
 
 
 class HingePositionStep(SpecStep):
@@ -1890,16 +1908,132 @@ class OrderItemsStep(OrderStep):
             customizers_by_group[gc.group_id].append(gc)
 
         item_pipeline = SpecPipeline()
+        context.data['item_inputs'] = {}
 
         # Группируем позиции по номеру партии и наполняем batches
         for item in context.items:
-            batch_num = str(item.group.batch_number if (item.group and item.group.batch_number) else 1)
+            raw_batch = item.group.batch_number if item.group else None
+            batch_num = str(raw_batch) if raw_batch else 'NEW'
             if batch_num not in context.spec.batches:
                 context.spec.batches[batch_num] = []
 
             group_customizers = customizers_by_group.get(item.group_id, [])
+            context.data['item_inputs'][item.id] = (item, group_customizers)
+
             item_spec = item_pipeline.execute(item, customizers=group_customizers, phase=context.phase)
             context.spec.batches[batch_num].append(item_spec)
+
+
+class OrderLockHeightAlignmentStep(OrderStep):
+    """
+    Автоматическое выравнивание высот замков внутри партии (батча) в рамках
+    одной записи LockStandardHeight и блокирующая проверка при неразрешимом конфликте.
+    """
+    ERROR_MESSAGE = "לא ניתן לקבוע גובה מנעול אוטומטית עבור חלק מהדלתות — נא להגדיר ידנית"
+
+    def process(self, context: OrderSpecContext):
+        item_inputs = context.data.get('item_inputs', {})
+
+        for batch_specs in context.spec.batches.values():
+            buckets = collections.defaultdict(list)
+
+            for spec in batch_specs:
+                if (
+                        not getattr(spec, 'has_door', True)
+                        or not spec.lock_id
+                        or spec.lock_height is None
+                        or spec.lock_height <= 0
+                ):
+                    continue
+
+                meta = spec.context.get('lock_alignment_meta') or {}
+                if meta.get('is_manual'):
+                    continue
+
+                rule = meta.get('rule')
+                if not rule or rule.get('step', 0) <= 0 or rule.get('alignment_tolerance', 0) <= 0:
+                    continue
+
+                buckets[rule['id']].append((spec, rule))
+
+            for bucket in buckets.values():
+                if len(bucket) < 2:
+                    continue
+                self._process_bucket(bucket, context.phase, item_inputs)
+
+    def _process_bucket(self, bucket: list, phase: str, item_inputs: dict):
+        # Сортируем двери по высоте полотна по возрастанию
+        bucket.sort(key=lambda pair: (float(pair[0].height or 0), pair[0].item_id))
+        rule = bucket[0][1]
+        tolerance = float(rule['alignment_tolerance'])
+        base_h = float(rule['base_door_height'])
+        base_lock = float(rule['base_lock_height'])
+        step = float(rule['step'])
+
+        # 1. Первичная проверка: есть ли стык < tolerance с разными высотами замков
+        has_conflict = any(
+            (float(bucket[i + 1][0].height or 0) - float(bucket[i][0].height or 0)) < tolerance
+            and bucket[i + 1][0].lock_height != bucket[i][0].lock_height
+            for i in range(len(bucket) - 1)
+        )
+        if not has_conflict:
+            return
+
+        # 2. Разбиваем на смежные кластеры (разница между соседями < tolerance)
+        clusters = [[bucket[0][0]]]
+        for i in range(1, len(bucket)):
+            prev_spec = bucket[i - 1][0]
+            curr_spec = bucket[i][0]
+            if (float(curr_spec.height or 0) - float(prev_spec.height or 0)) < tolerance:
+                clusters[-1].append(curr_spec)
+            else:
+                clusters.append([curr_spec])
+
+        # 3. Внутри каждого кластера подтягиваем более высокие двери к меньшему lock_height
+        #    в пределах tolerance от опорной границы шага
+        for cluster in clusters:
+            if len(cluster) < 2:
+                continue
+
+            target_lock_h = min(float(s.lock_height) for s in cluster)
+            k = round((target_lock_h - base_lock) / step)
+            threshold_h = base_h + (k * step)
+
+            for s in cluster:
+                if float(s.lock_height) == target_lock_h:
+                    continue
+                door_h = float(s.height or 0)
+                if abs(door_h - threshold_h) <= tolerance:
+                    self._apply_lock_height(s, target_lock_h, phase, item_inputs)
+
+        # 4. Финальный валидатор: повторный проход по отсортированному списку
+        for i in range(len(bucket) - 1):
+            s1 = bucket[i][0]
+            s2 = bucket[i + 1][0]
+            if (
+                    (float(s2.height or 0) - float(s1.height or 0)) < tolerance
+                    and s1.lock_height != s2.lock_height
+            ):
+                if self.ERROR_MESSAGE not in s1.errors:
+                    s1.errors.append(self.ERROR_MESSAGE)
+                if self.ERROR_MESSAGE not in s2.errors:
+                    s2.errors.append(self.ERROR_MESSAGE)
+
+    @staticmethod
+    def _apply_lock_height(spec: ProductionSpec, new_lock_h: float, phase: str, item_inputs: dict):
+        spec.lock_height = new_lock_h
+        spec.lock_height_on_frame = new_lock_h - float(spec.leaf_top_clearance or 0)
+
+        drafts = spec.context.get('label_drafts')
+        if phase != 'phase1' and drafts and spec.item_id in item_inputs:
+            from .label_services import DoorLabelService
+            item, customizers = item_inputs[spec.item_id]
+            DoorLabelService.enrich_hardware_and_cnc(
+                drafts=drafts,
+                spec=spec,
+                item=item,
+                customizers=customizers,
+            )
 
 
 class OrderHeaderStep(OrderStep):
@@ -1924,7 +2058,8 @@ class OrderSpecPipeline:
         self.steps = steps or [
             OrderHeaderStep(),  # 1. Header mapping
             OrderItemsStep(),  # 2. Door items processing
-            OrderDoorLabelsStep(),  # 3. Сохранение наклеек (при save_labels=True)
+            OrderLockHeightAlignmentStep(),  # 3. Lock height alignment & conflict check
+            OrderDoorLabelsStep(),  # 4. Сохранение наклеек (при save_labels=True)
         ]
 
     def execute(self, order, items=None, phase: str = 'phase2', save_labels: bool = False) -> OrderSpec:
