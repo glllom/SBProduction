@@ -159,16 +159,7 @@ class Order(models.Model):
     comments = models.TextField(
         blank=True, null=True, verbose_name="הערות"
     )
-    press_notes = models.TextField(
-        'הערות למכבש',
-        blank=True,
-        default=''
-    )
-    frames_notes = models.TextField(
-        'הערות למשקופים',
-        blank=True,
-        default=''
-    )
+
     warehouse_notes = models.TextField(
         'הערות למחסן',
         blank=True,
@@ -225,20 +216,22 @@ class Order(models.Model):
         """
         Returns all unique production stations for all items in this order,
         considering their routes and customizers.
-        Also, filters are based on order status for phased production.
+        Also attaches saved report comments (s.note_text) for each station.
         """
-        from apps.production.models import ProductionRoute
+        from apps.production.models import ProductionRoute, OrderStationNote
         all_stations = []
         seen_ids = set()
 
-        # Prefetch groups and their customizers for efficiency
+        notes_map = dict(
+            OrderStationNote.objects.filter(order=self).values_list('station_id', 'comment')
+        )
+
         groups = self.groups.all().prefetch_related('customizers__customizer', 'product__product_family__product_type')
 
         for group in groups:
             group_stations = ProductionRoute.get_stations_for_group(group)
             for s in group_stations:
                 if s.id not in seen_ids:
-                    # Filter for staged production
                     if self.status == OrderStatus.PHASE1_PRODUCTION:
                         if not s.is_phase1:
                             continue
@@ -246,6 +239,7 @@ class Order(models.Model):
                         if s.is_phase1:
                             continue
 
+                    s.note_text = notes_map.get(s.id, '')
                     all_stations.append(s)
                     seen_ids.add(s.id)
 
@@ -594,7 +588,7 @@ class OrderItemsGroup(models.Model):
                     fam = getattr(self.product, 'product_family', None)
                     if fam is not None:
                         self.has_handle = fam.has_handle
-                        
+
         # 3. Сохранение группы, синхронизация дверей и пересчет позиций
         with transaction.atomic():
             super().save(*args, **kwargs)

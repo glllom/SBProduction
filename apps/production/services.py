@@ -1201,6 +1201,13 @@ class ProductionDataService:
         else:
             stage_label = "קומפלט"
 
+        from .models import OrderStationNote
+        station_notes_by_code = dict(
+            OrderStationNote.objects.filter(order=self.order)
+            .select_related('station')
+            .values_list('station__code', 'comment')
+        )
+        station_comment = station_notes_by_code.get(station.code, '') if station else ''
         context = {
             'order': self.order,
             'batch_number': batch_number,
@@ -1210,6 +1217,8 @@ class ProductionDataService:
             'svg_patterns': SvgPattern.objects.all(),
             'report_type': report_type,
             'station': station,
+            'station_comment': station_comment,
+            'station_notes_by_code': station_notes_by_code,
             'report_label': label,
             'stage_label': stage_label,
             'groups_data': self.prepare_grouped_data(target_items),

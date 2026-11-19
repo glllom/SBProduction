@@ -385,6 +385,45 @@ class CustomizerProductionStation(models.Model):
         verbose_name = 'ניתוב התאמה אישית לתחנה'
         verbose_name_plural = 'ניתוב התאמות אישיות לתחנות'
 
+class OrderStationNote(models.Model):
+    """
+    Адресные комментарии менеджера к печатным отчётам производственных участков.
+    """
+    order = models.ForeignKey(
+        'orders.Order',
+        on_delete=models.CASCADE,
+        related_name='station_notes',
+        verbose_name='הזמנה'
+    )
+    station = models.ForeignKey(
+        'production.ProductionStation',
+        on_delete=models.CASCADE,
+        related_name='order_notes',
+        verbose_name='תחנת ייצור'
+    )
+    comment = models.TextField(
+        'הערה לדו"ח',
+        blank=True,
+        default=''
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='עודכן לאחרונה')
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='עודכן ע"י'
+    )
+
+    class Meta:
+        db_table = 'production_order_station_notes'
+        verbose_name = 'הערה לדו"ח תחנה'
+        verbose_name_plural = 'הערות לדוחות תחנות'
+        unique_together = ('order', 'station')
+
+    def __str__(self):
+        return f"{self.order.order_number} @ {self.station.code}"
+
 
 class ProductionRoute(models.Model):
     """

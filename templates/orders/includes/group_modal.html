@@ -81,30 +81,6 @@
                                 </div>
                                 <div class="card-body p-3">
                                     <div class="row g-3">
-                                        <!-- משקוף -->
-                                        <div class="col-md-6 border-start">
-                                            <label class="form-label fw-semibold mb-1">
-                                                צביעת משקוף: <i class="bi bi-info-circle help-hint-icon"></i>
-                                            </label>
-                                            {{ group_form.frame_paint_option }}
-                                            <div id="group-frame-special-color-wrap"
-                                                 class="mt-2"
-                                                 style="display: none">
-                                                <label class="form-label small text-muted mb-1">
-                                                    גוון משקוף
-                                                    מותאם:
-                                                </label>
-                                                <div class="input-group input-group-sm">
-                                                    {{ group_form.color_frames }}
-                                                    <button class="btn btn-outline-secondary"
-                                                            type="button"
-                                                            id="btn-group-copy-door">כמו הכנף</button>
-                                                    <button class="btn btn-outline-secondary"
-                                                            type="button"
-                                                            onclick="setColorTBD('id_color_frames')">לבחירה</button>
-                                                </div>
-                                            </div>
-                                        </div>
                                         <!-- כנף -->
                                         <div class="col-md-6">
                                             <div class="d-flex justify-content-between align-items-center mb-1">
@@ -147,6 +123,30 @@
                                                             לבחירה
                                                         </button>
                                                     </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- משקוף -->
+                                        <div class="col-md-6 border-start">
+                                            <label class="form-label fw-semibold mb-1">
+                                                צביעת משקוף: <i class="bi bi-info-circle help-hint-icon"></i>
+                                            </label>
+                                            {{ group_form.frame_paint_option }}
+                                            <div id="group-frame-special-color-wrap"
+                                                 class="mt-2"
+                                                 style="display: none">
+                                                <label class="form-label small text-muted mb-1">
+                                                    גוון משקוף
+                                                    מותאם:
+                                                </label>
+                                                <div class="input-group input-group-sm">
+                                                    {{ group_form.color_frames }}
+                                                    <button class="btn btn-outline-secondary"
+                                                            type="button"
+                                                            id="btn-group-copy-door">כמו הכנף</button>
+                                                    <button class="btn btn-outline-secondary"
+                                                            type="button"
+                                                            onclick="setColorTBD('id_color_frames')">לבחירה</button>
                                                 </div>
                                             </div>
                                         </div>

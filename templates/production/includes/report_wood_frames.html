@@ -59,30 +59,35 @@
                 <div class="d-flex justify-content-between align-items-baseline">
                     <h4 class="mb-0">
                         הזמנה: <strong>{{ order.order_number }}</strong>
+                        {% if batch_number %}
+                            <span class="text-secondary fs-6 fst-italic">[{{ batch_number }}]</span>
+                            <span class="text-secondary mx-2">|</span>
+                        {% elif batches_label %}
+                            <span class="text-secondary fs-6 fst-italic">[{{ batches_label }}]</span>
+                        {% endif %}
                         <span class="text-secondary mx-2">|</span>
                         <span class="text-primary">{{ report_label|default:"משקופי עץ" }}</span>
                     </h4>
                     <!-- Номер батча и страницы по центру -->
-                    <div class="fs-5 fw-bold text-dark">
-                        {% if batch_number %}
-                            <span>באץ' {{ batch_number }}</span>
-                            <span class="text-secondary mx-2">|</span>
-                        {% elif batches_label %}
-                            <span>באץ' {{ batches_label }}</span>
-                            <span class="text-secondary mx-2">|</span>
-                        {% endif %}
+                    <div class="fs-6 text-dark">
                         <span>עמוד {{ page.page_num }} מתוך {{ page.total_pages }}</span>
                     </div>
                     <span class="fs-5 text-muted">תאריך: {{ now|date:"d/m/y" }}</span>
                 </div>
             </div>
-            <!-- Адресный комментарий для коробок и общий комментарий заказа (показываются только если заполнены) -->
-            {% if order.frames_notes %}
+            <!-- Комментарий участка и общий комментарий заказа (показываются только если заполнены) -->
+            {% if station_comment or order.comments %}
                 <div class="mt-2 px-2 py-1 rounded bg-light border d-flex flex-column gap-1">
-                    {% if order.frames_notes %}
+                    {% if station_comment %}
                         <div class="d-flex align-items-baseline gap-2">
                             <span class="fw-bold text-secondary small">הערות למשקופים:</span>
-                            <span class="fw-semibold text-dark">{{ order.frames_notes }}</span>
+                            <span class="fw-semibold text-dark">{{ station_comment }}</span>
+                        </div>
+                    {% endif %}
+                    {% if order.comments %}
+                        <div class="d-flex align-items-baseline gap-2">
+                            <span class="fw-bold text-secondary small">הערות להזמנה:</span>
+                            <span class="fw-semibold text-dark">{{ order.comments }}</span>
                         </div>
                     {% endif %}
                 </div>
@@ -132,7 +137,7 @@
                                         <div class="dim-row-item">
                                             <div class="dim-main-specs font-monospace">
                                                 <!-- Направление + толщина стены -->
-                                                <span class="fs-5 fw-bold text-secondary" dir="ltr" style="min-width: 48px">
+                                                <span class="fs-5 fw-bold text-muted" dir="ltr" style="min-width: 48px">
                                                     {{ row.wall|floatformat }}{{ row.direction }}
                                                 </span>
                                                 <!-- Ширина / Высота с тонким слэшем -->
@@ -141,7 +146,7 @@
                                                 </span>
                                                 <!-- Количество (если > 1) -->
                                                 {% if row.qty > 1 %}
-                                                    <span class="badge bg-success text-white fs-6">{{ row.qty }}x</span>
+                                                    <span class="text-success fw-bold fs-5">{{ row.qty }}x</span>
                                                 {% endif %}
                                             </div>
                                             <!-- Кастомизаторы коробки (מזוזה, מחזיר שמן и т.д.) -->

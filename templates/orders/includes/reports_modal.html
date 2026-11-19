@@ -100,21 +100,43 @@
                                 <!-- Участки (ТОЛЬКО станции с типом REPORT = 10) -->
                                 {% for station in order.get_production_stations %}
                                     {% if station.is_report %}
-                                        {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' and not station.is_phase1 %}
+                                        <div class="d-flex align-items-stretch gap-1">
+                                            {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' and not station.is_phase1 %}
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary btn-sm text-start flex-grow-1 btn-generate-action disabled opacity-50"
+                                                        disabled
+                                                        title="זמין בשלב ב' בלבד"
+                                                        data-url="{% url 'production:station-report' order.pk %}?station={{ station.code }}">
+                                                    <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
+                                                </button>
+                                            {% else %}
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary btn-sm text-start flex-grow-1 btn-generate-action"
+                                                        data-url="{% url 'production:station-report' order.pk %}?station={{ station.code }}">
+                                                    <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
+                                                </button>
+                                            {% endif %}
                                             <button type="button"
-                                                    class="btn btn-outline-secondary btn-sm text-start btn-generate-action disabled opacity-50"
-                                                    disabled
-                                                    title="זמין בשלב ב' בלבד"
-                                                    data-url="{% url 'production:station-report' order.pk %}?station={{ station.code }}">
-                                                <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
+                                                    class="btn btn-sm {% if station.note_text %}btn-warning{% else %}btn-outline-secondary{% endif %} px-2 d-flex align-items-center justify-content-center btn-edit-station-note"
+                                                    style="width: 31px;
+                                                           flex-shrink: 0"
+                                                    data-station-id="{{ station.id }}"
+                                                    data-station-name="{{ station.label|default:station.name }}"
+                                                    data-note="{{ station.note_text|default:'' }}"
+                                                    title="{% if station.note_text %}הערה קיימת:
+
+
+
+
+
+
+
+
+
+												        {{ station.note_text }}{% else %}הוסף הערה לדו&quot;ח {{ station.label|default:station.name }}{% endif %}">
+                                                <i class="bi bi-pencil"></i>
                                             </button>
-                                        {% else %}
-                                            <button type="button"
-                                                    class="btn btn-outline-secondary btn-sm text-start btn-generate-action"
-                                                    data-url="{% url 'production:station-report' order.pk %}?station={{ station.code }}">
-                                                <i class="bi bi-printer me-1"></i>{{ station.label|default:station.name }}
-                                            </button>
-                                        {% endif %}
+                                        </div>
                                     {% endif %}
                                 {% endfor %}
                                 <!-- Скетчи -->
@@ -198,11 +220,6 @@
                                         <i class="bi bi-tag-fill me-1"></i><strong>כל המדבקות</strong>
                                     </button>
                                 {% endif %}
-                                <button type="button"
-                                        class="btn btn-outline-dark btn-sm text-start btn-generate-action"
-                                        data-url="{% url 'production:station-report' order.pk %}?station=FRAMES">
-                                    <i class="bi bi-tag me-1"></i>מדבקות משקופים
-                                </button>
                                 {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' %}
                                     <button type="button"
                                             class="btn btn-outline-secondary btn-sm text-start btn-generate-action disabled opacity-50"
@@ -228,6 +245,42 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Модальное окно комментария к отчёту станции -->
+<div class="modal fade"
+     id="stationNoteModal"
+     tabindex="-1"
+     aria-hidden="true"
+     style="z-index: 1065">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-2">
+            <div class="modal-header py-2 bg-body-tertiary">
+                <h6 class="modal-title fw-bold mb-0">
+                    <i class="bi bi-pencil-square me-1 text-primary"></i>
+                    הערה לדו"ח: <span id="stationNoteModalTitle"></span>
+                </h6>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="stationNoteStationId">
+                <textarea class="form-control"
+                          id="stationNoteTextarea"
+                          rows="4"
+                          placeholder="הקלד הערה מיוחדת שתופיע בראש הדו&quot;ח..."></textarea>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        data-bs-dismiss="modal">ביטול</button>
+                <button type="button"
+                        class="btn btn-primary btn-sm px-3"
+                        id="btnSaveStationNote">אישור</button>
             </div>
         </div>
     </div>

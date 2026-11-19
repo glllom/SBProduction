@@ -19,7 +19,7 @@ from apps.catalog.models import Hardware
 from apps.orders.models import (
     Order, OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus
 )
-from apps.production.models import ProductionStation, StationProgressSource
+from apps.production.models import StationProgressSource, ProductionStation, OrderStationNote
 from apps.production.tracking_services import StationTrackingService
 from .models import DoorLabel, SvgPattern
 from .services import (
@@ -30,6 +30,15 @@ from .services import (
     TechnicalSpecService, get_qr_base64,
 )
 from .usb_sync import run_usb_sync
+
+
+def get_station_comment(order, station) -> str:
+    if not order or not station:
+        return ''
+    if hasattr(station, 'note_text'):
+        return station.note_text or ''
+    note = OrderStationNote.objects.filter(order=order, station=station).first()
+    return note.comment if note else ''
 
 
 def extract_items_from_batches(batches_dict: dict, batch_filter: str = None) -> list:
@@ -770,6 +779,7 @@ def station_report(request, pk):
                 sections.append({
                     'station': station,
                     'station_code': station.code,
+                    'station_comment': get_station_comment(order, station),
                     'report_label': station.label or station.name,
                     'batches_label': batches_label,
                     'order_spec': spec_obj,
@@ -855,6 +865,7 @@ def station_report(request, pk):
             'batches_label': batches_label,
             'frame_groups': frame_groups,
             'station': station,
+            'station_comment': get_station_comment(order, station),
             'report_label': report_label,
             'now': timezone.now(),
             'order_qr': get_qr_base64(barcode_data),
@@ -897,6 +908,7 @@ def station_report(request, pk):
         'order_spec': spec_obj,
         'spec_json': spec_obj.model_dump(by_alias=True) if hasattr(spec_obj, 'model_dump') else spec_obj,
         'station': station,
+        'station_comment': get_station_comment(order, station),
         'report_label': report_label,
         'batches_label': batches_label,
         'groups_data': service.prepare_grouped_data(station_items),
@@ -1622,6 +1634,7 @@ def report_facing(request, pk):
         'order': order,
         'facings_data': facings_data,
         'station': station,
+        'station_comment': get_station_comment(order, station),
         'report_label': (station.label if station else "דוח חיפויים"),
         'batches_label': batches_label,
         'order_qr': get_qr_base64(barcode_data),
@@ -1810,3 +1823,38 @@ class StationsBatchDailyPrintView(LoginRequiredMixin, TemplateView):
 
         context['sheets'] = printable_sheets
         return context
+
+
+@login_required
+@require_POST
+def save_station_note(request, order_id):
+    order = get_object_or_404(Order, pk=order_id)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        payload = request.POST
+
+    station_id = payload.get('station_id')
+    comment = (payload.get('comment') or '').strip()
+    station = get_object_or_404(ProductionStation, pk=station_id)
+
+    if comment:
+        note, _ = OrderStationNote.objects.update_or_create(
+            order=order,
+            station=station,
+            defaults={
+                'comment': comment,
+                'updated_by': request.user,
+            }
+        )
+        saved_comment = note.comment
+    else:
+        OrderStationNote.objects.filter(order=order, station=station).delete()
+        saved_comment = ''
+
+    return JsonResponse({
+        'status': 'ok',
+        'station_id': station.id,
+        'comment': saved_comment,
+    })

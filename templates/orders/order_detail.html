@@ -1650,6 +1650,7 @@
                 $cb.prop('checked', !$cb.prop('checked')).trigger('change');
             });
 
+
             $(document).on('click', '.btn-generate-action', function (e) {
                 e.preventDefault();
                 if ($(this).prop('disabled')) return;
@@ -1681,6 +1682,82 @@
                 $('#reportsModal').modal('hide');
             });
 
+            // --- Комментарии к отчётам станций (#stationNoteModal поверх #reportsModal) ---
+            let activeStationNoteBtn = null;
+
+            $(document).on('click', '.btn-edit-station-note', function () {
+                activeStationNoteBtn = $(this);
+                const stationId = activeStationNoteBtn.attr('data-station-id');
+                const stationName = activeStationNoteBtn.attr('data-station-name');
+                const currentNote = activeStationNoteBtn.attr('data-note') || '';
+
+                $('#stationNoteStationId').val(stationId);
+                $('#stationNoteModalTitle').text(stationName);
+                $('#stationNoteTextarea').val(currentNote);
+
+                const modalEl = document.getElementById('stationNoteModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+
+                // Поднимаем backdrop второго модального окна выше первого (#reportsModal = 1055)
+                setTimeout(function () {
+                    $('.modal-backdrop').last().css('z-index', 1060);
+                    $('#stationNoteTextarea').trigger('focus');
+                }, 50);
+            });
+
+            $('#btnSaveStationNote').on('click', function () {
+                const $saveBtn = $(this);
+                const stationId = $('#stationNoteStationId').val();
+                const comment = $('#stationNoteTextarea').val();
+
+                $saveBtn.prop('disabled', true);
+
+                fetch("{% url 'production:save-station-note' order.pk %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({
+                        station_id: stationId,
+                        comment: comment
+                    })
+                })
+                    .then(function (res) {
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        $saveBtn.prop('disabled', false);
+                        if (data.status === 'ok') {
+                            const savedText = data.comment || '';
+                            if (activeStationNoteBtn) {
+                                activeStationNoteBtn.attr('data-note', savedText);
+                                if (savedText) {
+                                    activeStationNoteBtn
+                                        .removeClass('btn-outline-secondary')
+                                        .addClass('btn-warning')
+                                        .attr('title', 'הערה קיימת: ' + savedText);
+                                } else {
+                                    activeStationNoteBtn
+                                        .removeClass('btn-warning')
+                                        .addClass('btn-outline-secondary')
+                                        .attr('title', 'הוסף הערה לדו"ח');
+                                }
+                            }
+                            const modalEl = document.getElementById('stationNoteModal');
+                            bootstrap.Modal.getInstance(modalEl).hide();
+                        } else {
+                            alert(data.message || 'שגיאה בשמירת ההערה');
+                        }
+                    })
+                    .catch(function () {
+                        $saveBtn.prop('disabled', false);
+                        alert('שגיאת תקשורת עם השרת');
+                    });
+            });
+            
             // --- Массовое сворачивание / разворачивание карточек групп ---
             const $collapseBodies = $('.group-collapse-body');
 

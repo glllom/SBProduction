@@ -94,34 +94,6 @@
                         <div class="card mb-4 bg-body-tertiary">
                             <div class="card-body p-3">
                                 <div class="row g-3">
-                                    <!-- 1. Покраска коробок -->
-                                    <div class="col-md-6 border-start">
-                                        <div class="form-check form-switch mb-2 pt-1">
-                                            {{ form.is_frames_to_paint }}
-                                            <label class="form-check-label fw-bold"
-                                                   for="{{ form.is_frames_to_paint.id_for_label }}"
-                                                   data-bs-toggle="tooltip"
-                                                   title="{{ form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים' }}">
-                                                לצבוע משקופים <i class="bi bi-info-circle help-hint-icon"></i>
-                                            </label>
-                                        </div>
-                                        <div id="frame-color-wrapper" style="display: none;">
-                                            <label class="form-label small text-muted mb-1">גוון צבע משקוף:</label>
-                                            <div class="input-group input-group-sm">
-                                                {{ form.color_frames }}
-                                                <button class="btn btn-outline-secondary"
-                                                        type="button"
-                                                        id="btn-copy-door-color"
-                                                        title="העתק מצבע כנף">כמו הכנף</button>
-                                                <button class="btn btn-outline-secondary"
-                                                        type="button"
-                                                        onclick="setColorTBD('id_color_frames')">לבחירה</button>
-                                            </div>
-                                            {% if form.color_frames.errors %}
-                                                <div class="text-danger small mt-1">{{ form.color_frames.errors }}</div>
-                                            {% endif %}
-                                        </div>
-                                    </div>
                                     <!-- 2. Покраска полотна -->
                                     <div class="col-md-6">
                                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -157,6 +129,34 @@
                                             </div>
                                             {% if form.color_panel_inside.errors %}
                                                 <div class="text-danger small mt-1">{{ form.color_panel_inside.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <!-- 1. Покраска коробок -->
+                                    <div class="col-md-6 border-start">
+                                        <div class="form-check form-switch mb-2 pt-1">
+                                            {{ form.is_frames_to_paint }}
+                                            <label class="form-check-label fw-bold"
+                                                   for="{{ form.is_frames_to_paint.id_for_label }}"
+                                                   data-bs-toggle="tooltip"
+                                                   title="{{ form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים' }}">
+                                                לצבוע משקופים <i class="bi bi-info-circle help-hint-icon"></i>
+                                            </label>
+                                        </div>
+                                        <div id="frame-color-wrapper" style="display: none;">
+                                            <label class="form-label small text-muted mb-1">גוון צבע משקוף:</label>
+                                            <div class="input-group input-group-sm">
+                                                {{ form.color_frames }}
+                                                <button class="btn btn-outline-secondary"
+                                                        type="button"
+                                                        id="btn-copy-door-color"
+                                                        title="העתק מצבע כנף">כמו הכנף</button>
+                                                <button class="btn btn-outline-secondary"
+                                                        type="button"
+                                                        onclick="setColorTBD('id_color_frames')">לבחירה</button>
+                                            </div>
+                                            {% if form.color_frames.errors %}
+                                                <div class="text-danger small mt-1">{{ form.color_frames.errors }}</div>
                                             {% endif %}
                                         </div>
                                     </div>

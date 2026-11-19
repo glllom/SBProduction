@@ -111,7 +111,7 @@
                         <li>
                             <hr class="dropdown-divider">
                         </li>
-                        <!-- 4. Сохранить в избранное (Минфарт) -->
+                        <!-- 4. Сохранить в избранное -->
                         <li>
                             <button type="button"
                                     class="dropdown-item btn-open-save-spec"
@@ -260,9 +260,13 @@
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-light small text-muted">
                             <tr>
-                                <th class="ps-3" data-bs-toggle="tooltip" title="סימון פריט">#</th>
-                                <th data-bs-toggle="tooltip" title="מיקום ההתקנה">מיקום</th>
-                                <th data-bs-toggle="tooltip" title="מידות רוחב × גובה (מ''מ)">מידות</th>
+                                <th class="ps-3"
+                                    data-bs-toggle="tooltip"
+                                    title="סימון פריט"
+                                    style="width: 8%">#</th>
+                                <th data-bs-toggle="tooltip" title="מיקום ההתקנה" style="width: 12%">מיקום</th>
+                                <th style="width: 8%"></th>
+                                <th data-bs-toggle="tooltip" title="מידות" style="width: 50%">מידות</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -275,8 +279,8 @@
                                     <td class="ps-2">
                                         <span class="">{{ item.place|default:"" }}</span>
                                     </td>
+                                    <td class="text-end">{{ item.wall_fmt|default:"" }}{{ item.get_direction_display|default:"" }}</td>
                                     <td>{{ item.w_fmt|default:"-" }}×{{ item.h_fmt|default:"-" }}</td>
-                                    <td>{{ item.wall_fmt|default:"" }}{{ item.get_direction_display|default:"" }}</td>
                                     <td></td>
                                 </tr>
                             {% empty %}
@@ -349,7 +353,7 @@
             <div id="paint-{{ group.id }}" class="tab-pane fade p-4">
                 <div class="row">
                     <div class="col-md-6 border-end">
-                        <h6 class="fw-bold text-primary mb-3">צביעת פנל (דלת)</h6>
+                        <h6 class="fw-bold text-primary mb-3">צבע כנף</h6>
                         <div class="mb-2" data-bs-toggle="tooltip" title="אופציית צביעת כנף הדלת">
                             <span class="text-muted small">אופציית צביעה:</span>
                             <span class="fw-medium">{{ group.get_panel_paint_option_display }}</span>
