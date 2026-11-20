@@ -7,7 +7,7 @@
     /* ==== BRAND: change ONLY here (меняется только здесь) ====
        --sb-primary      main colour (hex)
        --bs-primary-rgb  same colour in RGB (the only manual duplicate, keep it next to the hex)
-       --sb-accent       second, sage accent
+       --sb-accent       second, muted indigo accent
        Everything else below is derived with color-mix() ==== */
     --sb-primary: #157485;
     --bs-primary-rgb: 21, 116, 133;
@@ -50,8 +50,9 @@
     /* Neutrals: light grey base, white cards, soft borders */
     --sb-bg: #f3f6f5;
     --sb-surface: #ffffff;
-    --sb-surface-muted: #f8faf9;
-    --sb-surface-subtle: #eef3f2;
+    --sb-surface-muted: #e1e9ec;
+    --sb-surface-subtle: #dae4e8;
+    --sb-row-hover: color-mix(in srgb, var(--sb-primary) 6%, #ffffff);
     --sb-border: #e0e8e6;
     --sb-border-strong: #cbd8d5;
     --sb-text: #1c2b28;
@@ -137,6 +138,7 @@
     --bs-border-radius-lg: 0.9rem;
     --bs-border-radius-xl: 1.1rem;
     --bs-border-radius-pill: 50rem;
+
 
     --bs-font-sans-serif: 'Heebo', 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -446,6 +448,11 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--sb-primary-text);
 }
 
+.sb-badge-soft.sb-accent {
+    background: var(--sb-accent-soft);
+    color: var(--sb-accent-text);
+}
+
 .sb-badge-soft.sb-success {
     background: var(--sb-success-soft);
     color: var(--sb-success-text);
@@ -493,9 +500,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .card-header {
-    background-color: var(--sb-surface);
-    border-bottom: 1px solid var(--sb-border);
-    padding: 0.75rem 1.1rem;
+    background-color: var(--sb-surface-muted);
+    border-bottom: 1px solid var(--sb-border-strong);
+    padding: 0.7rem 1.25rem;
     font-weight: 700;
     color: var(--sb-text);
     border-top-left-radius: var(--sb-radius) !important;
@@ -536,23 +543,28 @@ h1, h2, h3, h4, h5, h6 {
 /* ---------- Tables (dense, for ERP work) ---------- */
 .table {
     --bs-table-bg: transparent;
-    --bs-table-hover-bg: var(--sb-sidebar-hover);
+    --bs-table-hover-bg: var(--sb-row-hover);
     --bs-table-border-color: var(--sb-border);
     font-size: 0.875rem;
 }
 
+.table thead,
+.table thead.table-light {
+    --bs-table-bg: var(--sb-surface-muted);
+}
+
 .table > :not(caption) > * > * {
-    padding: 0.5rem 0.7rem;
+    padding: 0.55rem 0.75rem;
 }
 
 .table thead th {
     background-color: var(--sb-surface-muted);
-    color: var(--sb-muted);
-    font-size: 0.74rem;
+    color: var(--sb-text-soft);
+    font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    border-bottom: 1px solid var(--sb-border);
+    border-bottom: 1px solid var(--sb-border-strong);
     white-space: nowrap;
 }
 
@@ -560,66 +572,164 @@ h1, h2, h3, h4, h5, h6 {
     border-radius: var(--sb-radius);
 }
 
-/* ---------- Sidebar (light, RTL: sits on the right edge) ---------- */
+/* ---------- Sidebar (exact 1:1 geometry with Unfold #nav-sidebar-inner) ---------- */
 #sidebar {
     background: var(--sb-sidebar-bg);
     border-inline-end: 1px solid var(--sb-border);
-    box-shadow: var(--sb-shadow-sm);
-    overflow-y: auto;
+    box-shadow: -2px 0 8px rgba(20, 50, 45, 0.06), -1px 0 2px rgba(20, 50, 45, 0.04);
+    overflow: visible;
 }
 
+/* Header: 65px height, 24px horizontal padding, 12px gap */
 #sidebar .sidebar-header {
-    background: transparent;
-    padding: 1rem 0.9rem;
-    border-bottom: 1px solid var(--sb-border) !important;
+    position: relative;
+    height: 65px;
+    min-height: 65px;
+    padding: 0;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--sb-border);
+    flex-shrink: 0;
 }
 
-#sidebar .sidebar-header .dropdown-toggle::after {
+.sb-brand-btn {
+    width: 100%;
+    height: 64px;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    background: transparent;
+    border: 0;
+    text-align: start;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.sb-brand-btn:hover,
+.sb-brand-btn[aria-expanded="true"] {
+    background-color: var(--sb-bg);
+}
+
+.sb-brand-logo {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+
+.sb-brand-logo img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    background-color: var(--sb-surface);
+    border: 1px solid var(--sb-border);
+    border-radius: var(--sb-radius-sm);
+    padding: 2px;
+    box-shadow: var(--sb-shadow-sm);
+}
+
+.sb-brand-info {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    text-align: start;
+}
+
+.sb-brand-title {
+    width: 100%;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.25rem;
+    color: var(--sb-text-strong);
+}
+
+.sb-brand-subtitle {
+    width: 100%;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1rem;
     color: var(--sb-muted);
 }
 
-#sidebar .sidebar-header .dropdown-toggle:hover {
-    background: var(--sb-sidebar-hover);
+.sb-brand-chevron {
+    margin-inline-start: auto;
+    font-size: 1rem;
+    color: var(--sb-sidebar-text);
+    flex-shrink: 0;
+}
+
+/* Header dropdown: left-3 right-3 top-[73px] */
+.sb-brand-menu {
+    inset-inline: 12px !important;
+    top: 73px !important;
+    transform: none !important;
+    width: auto !important;
+    padding: 4px 0;
+    border: 1px solid var(--sb-border);
+    border-radius: var(--sb-radius);
+    box-shadow: var(--sb-shadow-dropdown);
+}
+
+.sb-brand-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 4px;
+    padding: 6px 8px;
+    font-size: 0.875rem;
+    color: var(--sb-sidebar-text);
     border-radius: var(--sb-radius-sm);
 }
 
-#sidebar .sidebar-header > .dropdown > a > div:first-child {
-    box-shadow: 0 0 0 1px var(--sb-border), var(--sb-shadow-sm);
+.sb-brand-menu-item:hover,
+.sb-brand-menu-item:focus {
+    background-color: var(--sb-bg);
+    color: var(--sb-text-strong);
 }
 
-#sidebar .sidebar-header .text-light,
-#sidebar .sidebar-header .text-white,
-#sidebar .sidebar-header .text-white-50 {
-    color: var(--sb-text) !important;
-}
-
-#sidebar .sidebar-header .text-white-50 {
-    color: var(--sb-muted) !important;
-}
-
+/* Navigation: pill starts at 12px, icon aligns at 24px (same as logo & avatar) */
 #sidebar .nav-section-title {
-    padding: 1rem 1.1rem 0.35rem;
-    font-size: 0.7rem;
+    padding: 0.85rem 12px 0.35rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     color: var(--sb-sidebar-section);
 }
 
 #sidebar ul.components {
-    padding: 0.5rem 0.6rem 1.5rem;
+    padding: 0 12px 1.5rem;
     margin: 0;
 }
 
 #sidebar ul li a {
     position: relative;
-    padding: 0.5rem 0.8rem;
+    height: 38px;
+    padding: 0 12px;
     margin: 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     font-size: 0.9rem;
     font-weight: 500;
     color: var(--sb-sidebar-text);
     border-radius: var(--sb-radius-sm);
     text-decoration: none;
     transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+#sidebar ul li a i {
+    margin: 0 !important;
+    width: 18px;
+    text-align: center;
+    opacity: 0.8;
+    flex-shrink: 0;
 }
 
 #sidebar ul li a:hover {
@@ -643,40 +753,93 @@ h1, h2, h3, h4, h5, h6 {
     background: var(--sb-primary);
 }
 
-#sidebar ul li a i {
-    opacity: 0.8;
-}
-
 #sidebar ul li.active > a i {
     opacity: 1;
     color: var(--sb-primary);
 }
 
-#sidebar form button.btn-link {
-    color: var(--sb-sidebar-text);
-    text-decoration: none;
-    font-size: 0.85rem;
+/* Bottom User Footer: min-h-[64px], px-24px, gap-12px, avatar 38x38 */
+#sidebar .sidebar-footer {
+    position: relative;
+    border-top: 1px solid var(--sb-border);
+    padding: 0;
+    background: var(--sb-sidebar-bg);
+    flex-shrink: 0;
 }
 
-#sidebar form button.btn-link:hover {
-    color: var(--sb-primary-text);
+.sb-user-btn {
+    width: 100%;
+    min-height: 64px;
+    padding: 12px 24px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    background: transparent;
+    border: 0;
+    text-align: start;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
 }
 
-#sidebar .dropdown-menu-dark {
-    --bs-dropdown-bg: var(--sb-surface);
-    --bs-dropdown-color: var(--sb-text);
-    --bs-dropdown-border-color: var(--sb-border);
-    --bs-dropdown-link-color: var(--sb-text);
-    --bs-dropdown-link-hover-color: var(--sb-primary-text);
-    --bs-dropdown-link-hover-bg: var(--sb-sidebar-hover);
-    --bs-dropdown-link-active-color: var(--sb-surface);
-    --bs-dropdown-link-active-bg: var(--sb-primary);
-    --bs-dropdown-header-color: var(--sb-muted);
-    --bs-dropdown-divider-bg: var(--sb-border);
+.sb-user-btn:hover,
+.sb-user-btn[aria-expanded="true"] {
+    background: var(--sb-bg);
 }
 
-#sidebar .dropdown-menu-dark .dropdown-item.text-danger {
-    color: var(--sb-danger-text) !important;
+.sb-user-avatar {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    border-radius: var(--sb-radius-sm);
+    background: var(--sb-border);
+    color: var(--sb-text-strong);
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.sb-user-info {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    text-align: start;
+}
+
+.sb-user-name {
+    width: 100%;
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    color: var(--sb-text-strong);
+}
+
+.sb-user-role {
+    width: 100%;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    color: var(--sb-muted);
+    margin-top: 2px;
+}
+
+.sb-user-menu {
+    inset-inline: 12px !important;
+    bottom: 73px !important;
+    top: auto !important;
+    transform: none !important;
+    width: auto !important;
+    padding: 4px 0;
+    border: 1px solid var(--sb-border);
+    border-radius: var(--sb-radius);
+    box-shadow: var(--sb-shadow-dropdown);
 }
 
 /* ---------- Topbar & layout ---------- */
@@ -697,6 +860,11 @@ h1, h2, h3, h4, h5, h6 {
 
 .main-content {
     padding: 1.4rem 1.75rem 2.25rem;
+}
+
+.main-content > .container-fluid {
+    padding-inline: 0;
+    width: 100%;
 }
 
 /* ---------- Page header helper ---------- */
@@ -853,20 +1021,77 @@ h1, h2, h3, h4, h5, h6 {
     background-color: var(--sb-primary);
 }
 
-/* ---------- Select2 (aligned with the palette) ---------- */
+/* ---------- Select2 (aligned with the palette & RTL) ---------- */
 .select2-container--bootstrap-5 .select2-selection {
     border-color: var(--sb-border-strong);
     border-radius: var(--sb-radius-sm);
+    background-color: var(--sb-surface);
+    color: var(--sb-text);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Фирменный тиловый фокус вместо стандартного синего Bootstrap */
 .select2-container--bootstrap-5.select2-container--focus .select2-selection,
-.select2-container--bootstrap-5.select2-container--open .select2-selection {
+.select2-container--bootstrap-5.select2-container--open .select2-selection,
+.select2-container--bootstrap-5 .select2-dropdown .select2-search .select2-search__field:focus {
     border-color: var(--sb-primary);
     box-shadow: 0 0 0 0.2rem var(--sb-primary-ring);
+    outline: 0;
 }
 
-.select2-container--bootstrap-5 .select2-results__option--highlighted[aria-selected] {
+.select2-container--bootstrap-5 .select2-dropdown {
+    border-color: var(--sb-border-strong);
+    border-radius: var(--sb-radius-sm);
+    box-shadow: var(--sb-shadow-dropdown);
+    overflow: hidden;
+}
+
+.select2-container--bootstrap-5 .select2-dropdown .select2-search .select2-search__field {
+    border-color: var(--sb-border-strong);
+    border-radius: var(--sb-radius-xs);
+}
+
+/* Подсветка пункта при наведении и выбранного элемента */
+.select2-container--bootstrap-5 .select2-results__option--highlighted,
+.select2-container--bootstrap-5 .select2-results__option--highlighted.select2-results__option--selectable {
+    background-color: var(--sb-primary-soft);
+    color: var(--sb-primary-text);
+}
+
+.select2-container--bootstrap-5 .select2-results__option--selected,
+.select2-container--bootstrap-5 .select2-results__option[aria-selected="true"] {
     background-color: var(--sb-primary);
+    color: #ffffff;
+}
+
+/* RTL: корректная позиция крестика очистки и отступ только когда крестик есть */
+[dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single {
+    background-position: left 0.75rem center;
+}
+
+[dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single .select2-selection__clear {
+    position: absolute;
+    left: 2.1rem;
+    right: auto;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+    float: none;
+    font-size: 0.9rem;
+    color: var(--sb-muted);
+}
+
+[dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single.select2-selection--clearable .select2-selection__rendered {
+    padding-left: 3.1rem !important;
+}
+
+/* Единый вид заблокированных полей и Select2 */
+.form-control:disabled,
+.form-control[readonly],
+.select2-container--bootstrap-5.select2-container--disabled .select2-selection {
+    background-color: var(--sb-surface-muted) !important;
+    opacity: 1 !important;
+    color: var(--sb-muted) !important;
 }
 
 /* ---------- Utilities ---------- */
@@ -894,6 +1119,110 @@ h1, h2, h3, h4, h5, h6 {
     .main-content {
         padding: 1rem 0.9rem 1.75rem;
     }
+}
+
+/* Clickable table rows (used in order_list.html and similar lists) */
+.sb-clickable-row {
+    cursor: pointer;
+}
+
+.sb-order-link {
+    color: var(--sb-primary);
+    transition: color 0.15s ease;
+}
+
+.sb-clickable-row:hover .sb-order-link {
+    color: var(--sb-primary-hover);
+    text-decoration: underline !important;
+}
+
+.sb-row-chevron {
+    color: var(--sb-border-strong);
+    font-size: 0.85rem;
+    transition: transform 0.15s ease, color 0.15s ease;
+    display: inline-block;
+}
+
+.sb-clickable-row:hover .sb-row-chevron {
+    color: var(--sb-primary);
+    transform: translateX(-3px);
+}
+
+/* Filter pills */
+.sb-filter-pills {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.sb-filter-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.36rem 0.8rem;
+    font-size: 0.84rem;
+    font-weight: 500;
+    line-height: 1.25;
+    color: var(--sb-text-soft);
+    background-color: var(--sb-surface);
+    border: 1px solid var(--sb-border-strong);
+    border-radius: var(--bs-border-radius-pill);
+    text-decoration: none;
+    box-shadow: var(--sb-shadow-sm);
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.sb-filter-pill:hover {
+    background-color: var(--sb-sidebar-hover);
+    color: var(--sb-text-strong);
+}
+
+.sb-filter-pill.active {
+    background-color: var(--sb-primary-soft);
+    border-color: var(--sb-primary-border);
+    color: var(--sb-primary-text);
+    font-weight: 600;
+}
+
+/* Clickable table rows */
+.sb-clickable-row {
+    cursor: pointer;
+}
+
+.sb-order-link {
+    color: var(--sb-primary);
+    transition: color 0.15s ease;
+}
+
+.sb-clickable-row:hover .sb-order-link {
+    color: var(--sb-primary-hover);
+    text-decoration: underline !important;
+}
+
+.sb-row-chevron {
+    color: var(--sb-border-strong);
+    font-size: 0.85rem;
+    transition: transform 0.15s ease, color 0.15s ease;
+    display: inline-block;
+}
+
+.sb-clickable-row:hover .sb-row-chevron {
+    color: var(--sb-primary);
+    transform: translateX(-3px);
+}
+
+/* Truncated list ellipsis indicator */
+.sb-list-ellipsis {
+    margin-top: 0.85rem;
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0.35em;
+    padding-inline-start: 0.35em;
+    line-height: 1;
+    color: var(--sb-muted);
+    opacity: 0.7;
+    user-select: none;
 }
 
 /* ---------- Print: lists, cards and detail pages (not the shop-floor reports) ---------- */

@@ -1,16 +1,366 @@
-/* Django admin overrides (django-unfold). Colours are defined in settings.UNFOLD['COLORS']. */
+/* Django admin overrides (django-unfold) aligned with theme.css */
+
+:root {
+    --sb-primary: #157485;
+    --sb-primary-soft: color-mix(in srgb, var(--sb-primary) 14%, #fff);
+    --sb-primary-text: color-mix(in srgb, var(--sb-primary) 70%, #000);
+
+    --sb-bg: #f3f6f5;
+    --sb-surface: #ffffff;
+    --sb-surface-muted: #f8faf9;
+    --sb-surface-subtle: #e8efed;
+    --sb-border: #e0e8e6;
+
+    --sb-sidebar-hover: #f0f6f5;
+    --sb-sidebar-text: #4b5e5a;
+    --sb-sidebar-text-strong: #15201e;
+    --sb-sidebar-section: #8aa09b;
+
+    --sb-text: #1c2b28;
+    --sb-muted: #69807b;
+    --sb-radius-sm: 0.5rem;
+    --sb-shadow-sm: 0 1px 2px rgba(20, 50, 45, 0.05);
+
+    --font-sans: 'Heebo', 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --default-font-family: var(--font-sans);
+    --sb-radius: 0.75rem;
+    --sb-shadow: 0 1px 3px rgba(20, 50, 45, 0.06), 0 6px 18px rgba(20, 50, 45, 0.05);
+}
 
 html {
     scrollbar-gutter: stable;
 }
 
-body {
-    font-family: 'Heebo', 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+html,
+body,
+body.font-sans,
+button,
+input,
+select,
+textarea {
+    font-family: var(--font-sans), sans-serif !important;
+    -webkit-font-smoothing: antialiased;
 }
 
-/* Фикс обрезки английского placeholder в поиске сайдбара при RTL */
+/* ---------- 1. Основное полотно страницы (#f3f6f5, как в дашборде) ---------- */
+html,
+body,
+#page,
+#main {
+    background-color: var(--sb-bg) !important;
+    color: var(--sb-text);
+}
+
+/* Верхняя шапка внутри #main — белая с нижней рамкой и лёгкой тенью, как .top-navbar */
+#main > div.border-b,
+#main > div:first-child:has(.h-16) {
+    height: 65px !important;
+    min-height: 65px !important;
+    box-sizing: border-box !important;
+    padding-block: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    background-color: color-mix(in srgb, var(--sb-surface) 92%, transparent) !important;
+    backdrop-filter: saturate(160%) blur(8px);
+    border-bottom-color: var(--sb-border) !important;
+    box-shadow: var(--sb-shadow-sm) !important;
+}
+
+#main > div.border-b > div,
+#main > div:first-child:has(.h-16) .h-16 {
+    width: 100%;
+    height: 64px !important;
+    min-height: 64px !important;
+}
+
+/* Заголовок страницы в шапке (как .top-navbar h5) */
+#main > div.border-b h1,
+#main > div.border-b .text-base.font-semibold {
+    font-size: 1.2rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.01em;
+    color: var(--sb-text) !important;
+}
+
+
+/* Плашки заголовков разделов на главной админки */
+#content-main .bg-base-100 {
+    background-color: var(--sb-surface-subtle) !important;
+    border: 1px solid var(--sb-border);
+}
+
+/* Скрываем левую панель «פעולות אחרונות» на главной админки и растягиваем основной список */
+body.dashboard #content .flex-col.lg\:flex-row > :not(.grow),
+body.dashboard #content-related {
+    display: none !important;
+}
+
+/* ---------- 2. Боковая панель и шапка бренда (один в один с base.html) ---------- */
+#nav-sidebar {
+    z-index: 40 !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+#nav-sidebar,
+#nav-sidebar > div,
+#nav-sidebar .bg-base-50,
+#nav-sidebar-inner,
+#nav-sidebar-apps {
+    background-color: var(--sb-surface) !important;
+}
+
+/* Фиксированная панель сайдбара Unfold: 1px граница + мягкая тень влево */
+#nav-sidebar-inner,
+#nav-sidebar > .w-72,
+#nav-sidebar > .border-e {
+    border-inline-end: 1px solid var(--sb-border) !important;
+    box-shadow: -2px 0 6px rgba(20, 50, 45, 0.06), -1px 0 2px rgba(20, 50, 45, 0.04) !important;
+}
+
+/* Убираем ползунок изменения ширины сайдбара в Unfold */
+#nav-sidebar [class*="cursor-col-resize"],
+#nav-sidebar [class*="cursor-ew-resize"] {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* Жёстко фиксируем ширину 288px на десктопе (перебиваем inline-стили Alpine.js) */
+@media (min-width: 1280px) {
+    #nav-sidebar,
+    #nav-sidebar > div,
+    #nav-sidebar-inner {
+        width: 288px !important;
+        min-width: 288px !important;
+        max-width: 288px !important;
+    }
+}
+
+/* Контейнер шапки сайдбара (64px, горизонтальные отступы 1rem как в .sidebar-header) */
+#nav-sidebar .h-16 {
+    height: 64px !important;
+    min-height: 64px !important;
+    padding-inline: 1rem !important;
+    border-bottom-color: var(--sb-border) !important;
+}
+
+#nav-sidebar .h-16 button,
+#nav-sidebar .h-16 a {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 1rem !important;
+    width: 100% !important;
+    padding: 0 !important;
+    text-align: right !important;
+}
+
+/* Рамка логотипа (идентична .sb-brand-logo в theme.css) */
+#nav-sidebar .h-16 img,
+#nav-sidebar img[src*="logo"] {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    box-sizing: border-box !important;
+    object-fit: contain !important;
+    background-color: var(--sb-surface) !important;
+    border: 1px solid var(--sb-border) !important;
+    border-radius: var(--sb-radius-sm) !important;
+    padding: 2px !important;
+    box-shadow: var(--sb-shadow-sm) !important;
+    flex-shrink: 0 !important;
+}
+
+/* Текстовый блок бренда рядом с логотипом (выравнивание по правому краю) */
+#nav-sidebar .h-16 button > div,
+#nav-sidebar .h-16 a > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    text-align: right !important;
+    flex-grow: 1 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+}
+
+/* Заголовок SB Production (как .sb-brand-title) */
+#nav-sidebar .h-16 button > div > :first-child,
+#nav-sidebar .h-16 a > div > :first-child {
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+    color: var(--sb-text) !important;
+}
+
+/* Подзаголовок ניהול ייצור ומוצרים (как .sb-brand-subtitle) */
+#nav-sidebar .h-16 button > div > :nth-child(2),
+#nav-sidebar .h-16 a > div > :nth-child(2) {
+    font-size: 0.74rem !important;
+    font-weight: 400 !important;
+    line-height: 1.2 !important;
+    color: var(--sb-muted) !important;
+    margin-top: 2px !important;
+}
+
+/* Стрелки выпадающего меню уводим в левый край */
+#nav-sidebar .h-16 button > span.material-symbols-outlined {
+    margin-inline-start: auto !important;
+    color: var(--sb-muted) !important;
+}
+
+/* Поле поиска внутри белого сайдбара */
 #nav-sidebar input[type="search"],
 #nav-sidebar input[type="text"] {
+    background-color: var(--sb-surface-muted) !important;
+    border-color: var(--sb-border) !important;
     text-overflow: ellipsis;
     padding-inline-end: 3.2rem;
+}
+
+/* ---------- 3. Типографика и активные пункты меню ---------- */
+#nav-sidebar h2,
+#nav-sidebar [data-sidebar-section-title],
+#nav-sidebar button > span.text-xs {
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em;
+    color: var(--sb-sidebar-section) !important;
+}
+
+#nav-sidebar nav a,
+#nav-sidebar ul a {
+    position: relative;
+    font-size: 0.9rem !important;
+    font-weight: 500 !important;
+    color: var(--sb-sidebar-text) !important;
+    border-radius: var(--sb-radius-sm) !important;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+#nav-sidebar nav a:hover,
+#nav-sidebar ul a:hover {
+    background-color: var(--sb-sidebar-hover) !important;
+    color: var(--sb-sidebar-text-strong) !important;
+}
+
+/* Активный пункт меню */
+#nav-sidebar nav a.bg-base-100,
+#nav-sidebar nav a[aria-current="page"],
+#nav-sidebar nav a.active,
+#nav-sidebar ul a.bg-base-100,
+#nav-sidebar ul a[aria-current="page"],
+#nav-sidebar ul a.active {
+    background-color: var(--sb-primary-soft) !important;
+    color: var(--sb-primary-text) !important;
+    font-weight: 600 !important;
+}
+
+#nav-sidebar nav a.bg-base-100::before,
+#nav-sidebar nav a[aria-current="page"]::before,
+#nav-sidebar nav a.active::before,
+#nav-sidebar ul a.bg-base-100::before,
+#nav-sidebar ul a[aria-current="page"]::before,
+#nav-sidebar ul a.active::before {
+    content: '';
+    position: absolute;
+    inset-block: 7px;
+    inset-inline-start: 0;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--sb-primary);
+}
+
+/* Убираем ложную подсветку ссылки на корень "/" внутри админки */
+#nav-sidebar a[href="/"] {
+    background-color: transparent !important;
+    color: var(--sb-sidebar-text) !important;
+    font-weight: 500 !important;
+}
+
+#nav-sidebar a[href="/"]::before {
+    display: none !important;
+}
+
+#nav-sidebar a[href="/"]:hover {
+    background-color: var(--sb-sidebar-hover) !important;
+    color: var(--sb-sidebar-text-strong) !important;
+}
+
+/* ---------- 4. Единые горизонтальные отступы рабочей области и таблиц ---------- */
+#main > div:not(:first-child) {
+    padding-inline: 0 !important;
+}
+
+#content {
+    padding-inline: 1.75rem !important;
+}
+
+#content-main table th:first-child,
+#content-main table td:first-child {
+    padding-inline-start: 1.25rem !important;
+}
+
+#content-main table th:last-child,
+#content-main table td:last-child {
+    padding-inline-end: 1.25rem !important;
+}
+
+/* ---------- 5. Шапка страницы: единый отступ 28px и скрытие кнопки сворачивания на десктопе ---------- */
+#main > div:first-child > div {
+    padding-inline: 1.75rem !important;
+}
+
+@media (min-width: 1280px) {
+    #main > div:first-child [x-on\:click*="sidebar"],
+    #main > div:first-child div:has(> [x-on\:click*="sidebar"]):not(:has(h1)),
+    #main > div:first-child .h-5.w-px,
+    #main > div:first-child .w-px {
+        display: none !important;
+    }
+}
+
+#main > div.border-b h1,
+#main > div.border-b .text-base.font-semibold {
+    font-size: 1.25rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.01em;
+    color: var(--sb-text) !important;
+}
+
+/* ---------- 6. Укрупнённые заголовки разделов и текст в карточках админки ---------- */
+body.dashboard #content h2,
+#content-main h2 {
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.01em;
+    color: var(--sb-text) !important;
+    margin-bottom: 0.65rem !important;
+}
+
+body.dashboard #content div.border.rounded-default {
+    font-size: 0.9375rem;
+}
+
+/* ---------- 7. Белые карточки с рамкой, тенью и границами строк (как .card в theme.css) ---------- */
+body.dashboard #content div.border.rounded-default,
+#content div.border.rounded-default:has(> table),
+#content div.border.rounded-default:has(> div > table) {
+    background-color: var(--sb-surface) !important;
+    border-color: var(--sb-border) !important;
+    border-radius: var(--sb-radius) !important;
+    box-shadow: var(--sb-shadow) !important;
+    overflow: hidden;
+}
+
+body.dashboard #content div.border.rounded-default tr,
+body.dashboard #content div.border.rounded-default > div,
+#content table tbody tr {
+    background-color: var(--sb-surface);
+    border-color: var(--sb-border) !important;
+}
+
+body.dashboard #content div.border.rounded-default tr:hover,
+#content table tbody tr:hover {
+    background-color: var(--sb-sidebar-hover) !important;
 }

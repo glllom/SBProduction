@@ -18,16 +18,15 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
               rel="stylesheet">
+        <!-- Select2 Bootstrap 5 Theme -->
+        <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
+              rel="stylesheet" />
+        <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.rtl.min.css" />
         <!-- Custom CSS -->
         <link rel="stylesheet" href="{% static 'css/custom.css' %}">
         <!-- Design system (palette, components) -->
         <link rel="stylesheet" href="{% static 'css/theme.css' %}">
-        <!-- Select2 CSS -->
-        <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
-              rel="stylesheet" />
-        <!-- Select2 Bootstrap 5 Theme -->
-        <link rel="stylesheet"
-              href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.rtl.min.css" />
         {% block extra_css %}{% endblock %}
     </head>
     <body>
@@ -35,89 +34,124 @@
             {% if user.is_authenticated %}
                 <!-- Sidebar -->
                 <nav id="sidebar">
-                    <div class="sidebar-header border-bottom border-secondary border-opacity-25">
-                        <div class="dropdown container-fluid">
-                            <a href="#"
-                               class="d-flex justify-content-between align-items-center text-white text-decoration-none dropdown-toggle w-100"
-                               id="userDropdownSidebar"
-                               data-bs-toggle="dropdown"
-                               aria-expanded="false">
-                                <!-- Company Logo -->
-                                <div class="flex-shrink-0 bg-white rounded-2 d-flex align-items-center justify-content-center shadow-sm"
-                                     style="width: 44px;
-                                            height: 44px">
-                                    <img src="{% static 'logo_large.jpg' %}"
-                                         alt="SB Doors"
-                                         class="img-fluid rounded"
-                                         style="max-height: 100%;
-                                                object-fit: contain">
-                                </div>
-                                <!-- User Info -->
-                                <div class="d-flex flex-column text-end overflow-hidden flex-grow-1">
-                                    <span class="fw-semibold text-truncate text-light small">{{ user.get_full_name|default:user.username }}</span>
-                                    <span class="text-white-50" style="font-size: 0.72rem;">
-                                        {% if user.is_superuser %}
-                                            מנהל מערכת
-                                        {% elif user.is_staff %}
-                                            צוות ייצור
-                                        {% else %}
-                                            משתמש מחובר
-                                        {% endif %}
-                                    </span>
-                                </div>
-                            </a>
-                            <!-- User Menu -->
-                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow border-0 text-end w-100 mt-2"
-                                aria-labelledby="userDropdownSidebar">
-                                <li>
-                                    <h6 class="dropdown-header text-white-50 small mb-0">{{ user.username }}</h6>
-                                </li>
-                                <li>
-                                    <hr class="dropdown-divider my-1 border-secondary opacity-50">
-                                </li>
-                                <li>
-                                    <a class="dropdown-item py-2" href="#"><i class="bi bi-person ms-2"></i> פרופיל</a>
-                                </li>
-                                {% if user.is_staff %}
-                                    <li>
-                                        <a class="dropdown-item py-2" href="/admin/"><i class="bi bi-shield-lock ms-2"></i> פאנל
-                                        ניהול</a>
-                                    </li>
-                                {% endif %}
-                                <li>
-                                    <hr class="dropdown-divider my-1 border-secondary opacity-50">
-                                </li>
-                                <li>
-                                    <form action="{% url 'logout' %}" method="post">
-                                        {% csrf_token %}
-                                        <button type="submit" class="dropdown-item py-2 text-danger">
-                                            <i class="bi bi-box-arrow-right ms-2"></i> יציאה
-                                        </button>
-                                    </form>
-                                </li>
-                            </ul>
-                        </div>
+                    <!-- Brand Header (точная копия шапки Unfold: h-65px, px-24px, gap-12px) -->
+                    <div class="sidebar-header dropdown">
+                        <button type="button"
+                                class="sb-brand-btn"
+                                id="brandDropdownSidebar"
+                                data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                            <div class="sb-brand-logo">
+                                <img src="{% static 'logo_large.jpg' %}" alt="דף הבית">
+                            </div>
+                            <div class="sb-brand-info">
+                                <div class="sb-brand-title text-truncate">SB Production</div>
+                                <div class="sb-brand-subtitle text-truncate">ניהול ייצור ומוצרים</div>
+                            </div>
+                            <svg class="sb-brand-chevron"
+                                 xmlns="http://www.w3.org/2000/svg"
+                                 width="20"
+                                 height="20"
+                                 viewBox="0 0 24 24"
+                                 fill="currentColor"
+                                 aria-hidden="true">
+                                <path d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.42 1.41L12 21l4.59-4.59L15.17 15 12 18.17z" />
+                            </svg>
+                        </button>
+                        <ul class="dropdown-menu sb-brand-menu text-start"
+                            aria-labelledby="brandDropdownSidebar">
+                            <li>
+                                <a class="dropdown-item sb-brand-menu-item" href="/">
+                                    <i class="bi bi-speedometer2"></i>
+                                    <span class="text-truncate">לוח בקרה</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item sb-brand-menu-item"
+                                   href="{% url 'order-list' %}">
+                                    <i class="bi bi-cart3"></i>
+                                    <span class="text-truncate">הזמנות</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item sb-brand-menu-item"
+                                   href="{% url 'production:station_tracking_dashboard' %}">
+                                    <i class="bi bi-kanban"></i>
+                                    <span class="text-truncate">מעקב תחנות</span>
+                                </a>
+                            </li>
+                        </ul>
                     </div>
-                    <ul class="list-unstyled components">
+                    <!-- Navigation Links -->
+                    <ul class="list-unstyled components flex-grow-1 overflow-y-auto">
                         <li class="{% if request.path == '/' or request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
-                            <a href="/"><i class="bi bi-speedometer2"></i> לוח בקרה</a>
+                            <a href="/"><i class="bi bi-speedometer2"></i><span>לוח בקרה</span></a>
                         </li>
                         <div class="nav-section-title">תפעול וייצור</div>
                         <li class="{% if 'order' in request.path and 'catalog' not in request.path %}active{% endif %}">
-                            <a href="{% url 'order-list' %}"><i class="bi bi-cart3"></i> הזמנות</a>
+                            <a href="{% url 'order-list' %}"><i class="bi bi-cart3"></i><span>הזמנות</span></a>
                         </li>
                         <li class="{% if 'tracking' in request.path %}active{% endif %}">
                             <a href="{% url 'production:station_tracking_dashboard' %}">
-                                <i class="bi bi-kanban"></i> מעקב תחנות
+                                <i class="bi bi-kanban"></i><span>מעקב תחנות</span>
                             </a>
                         </li>
                         {% if user.is_staff %}
                             <div class="nav-section-title">ניהול מערכת</div>
                             <li>
-                                <a href="/admin/"><i class="bi bi-shield-lock"></i> פאנל ניהול</a>
+                                <a href="/admin/"><i class="bi bi-shield-lock"></i><span>פאנל ניהול</span></a>
                             </li>
                         {% endif %}
                     </ul>
+                    <!-- Bottom User Footer (точная копия футера Unfold: min-h-64px, px-24px, gap-12px) -->
+                    <div class="sidebar-footer dropup">
+                        <button type="button"
+                                class="sb-user-btn"
+                                id="userDropdownSidebar"
+                                data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                            <span class="sb-user-avatar rounded rounded-2">{{ user.username|slice:":1"|upper }}</span>
+                            <span class="sb-user-name text-truncate">{{ user.get_full_name|default:user.username }}</span>
+                            <svg class="sb-brand-chevron"
+                                 xmlns="http://www.w3.org/2000/svg"
+                                 width="20"
+                                 height="20"
+                                 viewBox="0 0 24 24"
+                                 fill="currentColor"
+                                 aria-hidden="true">
+                                <path d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.42 1.41L12 21l4.59-4.59L15.17 15 12 18.17z" />
+                            </svg>
+                        </button>
+                        <ul class="dropdown-menu sb-user-menu text-start"
+                            aria-labelledby="userDropdownSidebar">
+                            <li>
+                                <h6 class="dropdown-header small mb-0">{{ user.username }}</h6>
+                            </li>
+                            <li>
+                                <hr class="dropdown-divider my-1">
+                            </li>
+                            <li>
+                                <a class="dropdown-item py-2" href="#"><i class="bi bi-person ms-2"></i> פרופיל</a>
+                            </li>
+                            {% if user.is_staff %}
+                                <li>
+                                    <a class="dropdown-item py-2" href="/admin/"><i class="bi bi-shield-lock ms-2"></i> פאנל
+                                    ניהול</a>
+                                </li>
+                            {% endif %}
+                            <li>
+                                <hr class="dropdown-divider my-1">
+                            </li>
+                            <li>
+                                <form action="{% url 'logout' %}" method="post">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item py-2 text-danger">
+                                        <i class="bi bi-box-arrow-right ms-2"></i> יציאה
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
                 </nav>
             {% endif %}
             <!-- Page Content -->
@@ -173,17 +207,12 @@
         }
     });
 
-    /**
-     * Global Tooltip Initializer
-     * Configures tooltips with a slight, professional delay (show: 300ms, hide: 100ms)
-     */
     function initTooltips(container) {
         const root = container || document;
         const elements = root.querySelectorAll('[data-bs-toggle="tooltip"], [data-tooltip]');
 
         elements.forEach(function (el) {
             if (el.tagName === 'OPTION' || el.closest('.select2') || el.closest('.select2-container')) return;
-
             if (el.tagName === 'SELECT' && el.classList.contains('select2-hidden-accessible')) return;
 
             const titleText = el.getAttribute('data-bs-title') || el.getAttribute('title') || el.getAttribute('data-tooltip') || el.getAttribute('data-description');
@@ -210,9 +239,6 @@
 
     window.initTooltips = initTooltips;
 
-    /**
-     * Select2 Custom Formatting with Hints & Descriptions
-     */
     function formatSelectOption(state) {
         if (!state.id) return state.text;
         const $element = $(state.element);
@@ -230,7 +256,6 @@
         return state.text;
     }
 
-    // Initialize Select2 globally
     $(document).ready(function () {
         function initSelect2(container) {
             const root = container ? $(container) : $(document);
@@ -240,7 +265,8 @@
                         theme: 'bootstrap-5',
                         width: '100%',
                         dir: 'rtl',
-                        placeholder: $(this).attr('placeholder') || 'בחר אפשרות',
+                        placeholder: $(this).attr('placeholder') || 'בחר...',
+                        allowClear: $(this).find('option[value=""]').length > 0,
                         templateResult: formatSelectOption,
                         templateSelection: formatSelectSelection
                     };

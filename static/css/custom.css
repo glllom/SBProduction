@@ -1,7 +1,7 @@
 /* Layout geometry & functional helpers. Colours, fonts and component styling live in theme.css. */
 :root {
     --sidebar-width: 288px;
-    --topbar-height: 64px;
+    --topbar-height: 65px;
 }
 
 .wrapper {
@@ -16,15 +16,8 @@
     position: fixed;
     height: 100vh;
     z-index: 1000;
-}
-
-#sidebar .sidebar-header img {
-    max-height: 40px;
-    width: auto;
-}
-
-#sidebar ul li a {
-    display: block;
+    display: flex;
+    flex-direction: column;
 }
 
 @media (max-width: 768px) {
@@ -46,11 +39,6 @@
     }
 }
 
-#sidebar ul li a i {
-    margin-inline-end: 10px;
-    width: 20px;
-    text-align: center;
-}
 
 #content {
     width: calc(100% - var(--sidebar-width));

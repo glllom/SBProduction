@@ -1,25 +1,29 @@
 {% extends "base.html" %}
-{% block page_title %}{% if form.instance.pk %}עריכת הזמנה {{ form.instance.order_number }}{% else %}יצירת הזמנה
-{% endif %}
+{% block page_title %}
+    {% if form.instance.pk %}עריכת הזמנה {{ form.instance.order_number }}{% else %}יצירת הזמנה{% endif %}
 {% endblock %}
 {% block content %}
-    <div class="sb-page-header align-items-center gap-3 mb-4">
-        <span class="sb-stat-icon sb-accent flex-shrink-0">
-            <i class="bi bi-receipt"></i>
-        </span>
-        <h2 class="sb-page-title">{% if form.instance.pk %}עריכת הזמנה {{ form.instance.order_number }}{% else %}יצירת הזמנה{% endif %}</h2>
+    <div class="sb-page-header align-items-center gap-3 mb-3">
+        <div class="d-flex align-items-center gap-3">
+            <span class="sb-stat-icon sb-accent flex-shrink-0">
+                <i class="bi bi-receipt"></i>
+            </span>
+            <h2 class="sb-page-title mb-0">
+                {% if form.instance.pk %}עריכת הזמנה {{ form.instance.order_number }}{% else %}יצירת הזמנה{% endif %}
+            </h2>
+        </div>
     </div>
-    <div class="row justify-content-center">
-        <div class="col-md-9 col-lg-8">
+    <div class="row">
+        <div class="col-12 col-xl-9 col-xxl-8">
             <div class="card">
-                <div class="card-header bg-body-tertiary">
-                    <h5 class="mb-0">מידע בסיסי על ההזמנה</h5>
+                <div class="card-header">
+                    <h5 class="mb-0 fs-6 fw-bold">מידע בסיסי על ההזמנה</h5>
                 </div>
-                <div class="card-body p-4">
+                <div class="card-body p-3 p-md-4">
                     <form method="post">
                         {% csrf_token %}
                         <!-- Номер заказа и Имя клиента -->
-                        <div class="row g-3 mb-4">
+                        <div class="row g-3 mb-3">
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold"
                                        data-bs-toggle="tooltip"
@@ -28,7 +32,8 @@
                                 </label>
                                 {% if form.order_number.field.disabled or form.order_number.field.widget.attrs.readonly %}
                                     <input type="text"
-                                           class="form-control bg-body-tertiary text-muted"
+                                           class="form-control text-muted"
+                                           style="background-color: var(--sb-surface-muted)"
                                            value="{{ form.instance.order_number }}"
                                            readonly
                                            disabled>
@@ -54,8 +59,8 @@
                                 {% endif %}
                             </div>
                         </div>
-                        <!-- Серия, Хромировка/Хранилище (Front), Ручка -->
-                        <div class="row g-3 mb-4">
+                        <!-- Серия, Фасад (Front), Ручка -->
+                        <div class="row g-3 mb-3">
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold"
                                        data-bs-toggle="tooltip"
@@ -90,99 +95,97 @@
                                 {% endif %}
                             </div>
                         </div>
-                        <!-- Блок отделки и покраски -->
-                        <div class="card mb-4 bg-body-tertiary">
-                            <div class="card-body p-3">
-                                <div class="row g-3">
-                                    <!-- 2. Покраска полотна -->
-                                    <div class="col-md-6">
-                                        <div class="d-flex justify-content-between align-items-center mb-1">
-                                            <label class="form-label fw-bold mb-0" id="label-panel-outside">
-                                                צבע כנף
-                                                (דו-צדדי)
+                        <!-- Блок отделки и покраски (плоская панель без двойной тени) -->
+                        <div class="rounded-3 border p-3 mb-3"
+                             style="background-color: var(--sb-bg)">
+                            <div class="row g-5">
+                                <!-- Покраска полотна -->
+                                <div class="col-md-6">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <label class="form-label fw-bold mb-0" id="label-panel-outside">
+                                            צבע כנף
+                                            (דו-צדדי)
+                                        </label>
+                                        <div class="form-check form-switch m-0">
+                                            {{ form.is_door_inside_different_color }}
+                                            <label class="form-check-label small"
+                                                   for="{{ form.is_door_inside_different_color.id_for_label }}">
+                                                צדדים שונים
                                             </label>
-                                            <div class="form-check form-switch m-0">
-                                                {{ form.is_door_inside_different_color }}
-                                                <label class="form-check-label small"
-                                                       for="{{ form.is_door_inside_different_color.id_for_label }}">
-                                                    צדדים שונים
-                                                </label>
-                                            </div>
-                                        </div>
-                                        <div class="input-group input-group-sm mb-2">
-                                            {{ form.color_panel_outside }}
-                                            <button class="btn btn-outline-secondary"
-                                                    type="button"
-                                                    onclick="setColorTBD('id_color_panel_outside')">לבחירה</button>
-                                        </div>
-                                        {% if form.color_panel_outside.errors %}
-                                            <div class="text-danger small mb-1">{{ form.color_panel_outside.errors }}</div>
-                                        {% endif %}
-                                        <!-- Внутренняя сторона -->
-                                        <div id="panel-inside-wrapper" style="display: none;">
-                                            <label class="form-label small text-muted mb-1">צבע כנף צד פנים:</label>
-                                            <div class="input-group input-group-sm">
-                                                {{ form.color_panel_inside }}
-                                                <button class="btn btn-outline-secondary"
-                                                        type="button"
-                                                        onclick="setColorTBD('id_color_panel_inside')">לבחירה</button>
-                                            </div>
-                                            {% if form.color_panel_inside.errors %}
-                                                <div class="text-danger small mt-1">{{ form.color_panel_inside.errors }}</div>
-                                            {% endif %}
                                         </div>
                                     </div>
-                                    <!-- 1. Покраска коробок -->
-                                    <div class="col-md-6 border-start">
-                                        <div class="form-check form-switch mb-2 pt-1">
-                                            {{ form.is_frames_to_paint }}
-                                            <label class="form-check-label fw-bold"
-                                                   for="{{ form.is_frames_to_paint.id_for_label }}"
-                                                   data-bs-toggle="tooltip"
-                                                   title="{{ form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים' }}">
-                                                לצבוע משקופים <i class="bi bi-info-circle help-hint-icon"></i>
-                                            </label>
+                                    <div class="input-group input-group-sm">
+                                        {{ form.color_panel_outside }}
+                                        <button class="btn btn-outline-secondary"
+                                                type="button"
+                                                onclick="setColorTBD('id_color_panel_outside')">לבחירה</button>
+                                    </div>
+                                    {% if form.color_panel_outside.errors %}
+                                        <div class="text-danger small mt-1">{{ form.color_panel_outside.errors }}</div>
+                                    {% endif %}
+                                    <!-- Внутренняя сторона -->
+                                    <div id="panel-inside-wrapper" class="mt-2" style="display: none;">
+                                        <label class="form-label small text-muted mb-1">צבע כנף צד פנים:</label>
+                                        <div class="input-group input-group-sm">
+                                            {{ form.color_panel_inside }}
+                                            <button class="btn btn-outline-secondary"
+                                                    type="button"
+                                                    onclick="setColorTBD('id_color_panel_inside')">לבחירה</button>
                                         </div>
-                                        <div id="frame-color-wrapper" style="display: none;">
-                                            <label class="form-label small text-muted mb-1">גוון צבע משקוף:</label>
-                                            <div class="input-group input-group-sm">
-                                                {{ form.color_frames }}
-                                                <button class="btn btn-outline-secondary"
-                                                        type="button"
-                                                        id="btn-copy-door-color"
-                                                        title="העתק מצבע כנף">כמו הכנף</button>
-                                                <button class="btn btn-outline-secondary"
-                                                        type="button"
-                                                        onclick="setColorTBD('id_color_frames')">לבחירה</button>
-                                            </div>
-                                            {% if form.color_frames.errors %}
-                                                <div class="text-danger small mt-1">{{ form.color_frames.errors }}</div>
-                                            {% endif %}
+                                        {% if form.color_panel_inside.errors %}
+                                            <div class="text-danger small mt-1">{{ form.color_panel_inside.errors }}</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <!-- Покраска коробок -->
+                                <div class="col-md-6 border-start">
+                                    <div class="form-check form-switch mb-1 pt-1">
+                                        {{ form.is_frames_to_paint }}
+                                        <label class="form-check-label fw-bold"
+                                               for="{{ form.is_frames_to_paint.id_for_label }}"
+                                               data-bs-toggle="tooltip"
+                                               title="{{ form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים' }}">
+                                            לצבוע משקופים <i class="bi bi-info-circle help-hint-icon"></i>
+                                        </label>
+                                    </div>
+                                    <div id="frame-color-wrapper" class="mt-2" style="display: none;">
+                                        <label class="form-label small text-muted mb-1">גוון צבע משקוף:</label>
+                                        <div class="input-group input-group-sm">
+                                            {{ form.color_frames }}
+                                            <button class="btn btn-outline-secondary"
+                                                    type="button"
+                                                    id="btn-copy-door-color"
+                                                    title="העתק מצבע כנף">כמו הכנף</button>
+                                            <button class="btn btn-outline-secondary"
+                                                    type="button"
+                                                    onclick="setColorTBD('id_color_frames')">לבחירה</button>
                                         </div>
+                                        {% if form.color_frames.errors %}
+                                            <div class="text-danger small mt-1">{{ form.color_frames.errors }}</div>
+                                        {% endif %}
                                     </div>
                                 </div>
                             </div>
                         </div>
                         <!-- Комментарии -->
-                        <h6 class="text-primary mb-2"><i class="bi bi-chat-left-text ms-2"></i>הערות להזמנה</h6>
-                        <div class="row g-3 mb-4">
-                            <div class="col-12"
-                                 data-bs-toggle="tooltip"
-                                 title="{{ form.comments.help_text|default:'הערות והנחיות מיוחדות להזמנה' }}">
-                                {{ form.comments }}
-                            </div>
+                        <div class="mb-3"
+                             data-bs-toggle="tooltip"
+                             title="{{ form.comments.help_text|default:'הערות והנחיות מיוחדות להזמנה' }}">
+                            <label class="form-label fw-semibold d-flex align-items-center gap-2 mb-1">
+                                <i class="bi bi-chat-left-text text-primary"></i>
+                                <span>הערות להזמנה</span>
+                            </label>
+                            {{ form.comments }}
                         </div>
-                        <!-- Кнопки управления -->
-                        <div class="mt-4 pt-3 border-top d-flex justify-content-end gap-2">
+                        <!-- Кнопки управления (справа, по RTL-эргономике) -->
+                        <div class="mt-3 pt-3 border-top d-flex justify-content-start gap-2">
+                            <button type="submit"
+                                    class="btn btn-primary px-4 fw-semibold"
+                                    data-bs-toggle="tooltip"
+                                    title="שמירת ההזמנה">
+                                {% if form.instance.pk %}שמור שינויים{% else %}צור הזמנה{% endif %}
+                            </button>
                             <a href="
-
-
-
-
-
-
-
-
 
 
 
@@ -190,12 +193,6 @@
                                class="btn btn-outline-secondary"
                                data-bs-toggle="tooltip"
                                title="ביטול וחזרה">ביטול</a>
-                            <button type="submit"
-                                    class="btn btn-primary px-4 fw-semibold"
-                                    data-bs-toggle="tooltip"
-                                    title="שמירת ההזמנה">
-                                {% if form.instance.pk %}שמור שינויים{% else %}צור הזמנה{% endif %}
-                            </button>
                         </div>
                     </form>
                 </div>
@@ -217,47 +214,14 @@
             margin-left: 0;
         }
 
-        /* Коррекция кнопки очистки (X) для RTL в Select2 */
-        [dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single .select2-selection__clear {
-            position: absolute;
-            left: 2.2rem;
-            right: auto;
-            top: 50%;
-            transform: translateY(-50%);
-            margin: 0;
-            float: none;
-            font-size: 0.9rem;
-            color: #6c757d;
-            cursor: pointer;
-        }
-
-        [dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
-            padding-left: 3rem !important;
-            padding-right: 0.75rem !important;
-        }
-
-        [dir="rtl"] .select2-container--bootstrap-5 .select2-selection--single {
-            background-position: left 0.75rem center;
-        }
-
-        /* Единый вид для заблокированных Select2 и инпутов в Bootstrap 5 */
-        .form-control:disabled, .form-control[readonly],
-        .select2-container--bootstrap-5.select2-container--disabled .select2-selection {
-            background-color: #e9ecef !important;
-            opacity: 1 !important;
-            color: #6c757d !important;
+        /* Компактная высота поля комментариев, чтобы форма не вызывала скролл */
+        textarea[name="comments"] {
+            min-height: 68px;
+            max-height: 140px;
         }
 
     </style>
-    <!-- Select2 CSS & Theme -->
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
-          rel="stylesheet" />
-    <link rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
-    <!-- Select2 JS -->
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
-        // Глобальная переменная для совместимости со всеми функциями страницы (updateFronts и др.)
         var frontsCache = window.frontsCache = (window.frontsCache || {});
 
         function setColorTBD(fieldId) {
@@ -285,7 +249,6 @@
             const $diffSidesWrapper = $toggleSides.closest('.form-check');
             const $btnCopy = $('#btn-copy-door-color');
 
-            // Предзаполнение кэша из серверной HTML-разметки (при первом открытии формы)
             $frontSelect.find('option').each(function () {
                 const val = $(this).val();
                 const fType = $(this).attr('data-finish-type');
@@ -294,7 +257,6 @@
                 }
             });
 
-            // 1. Инициализация Select2
             $('select[name="series"], select[name="front"], select[name="handle"]').each(function () {
                 $(this).select2({
                     theme: 'bootstrap-5',
@@ -305,7 +267,6 @@
                 });
             });
 
-            // 2. Декларативная карта состояний
             const FINISH_CONFIG = {
                 FORMICA: {
                     labelSingle: 'מספר פורמייקה:',
@@ -336,26 +297,22 @@
                 }
             };
 
-            // 3. Единая машина состояний UI
             function syncOrderFormUI() {
                 const frontId = $frontSelect.val();
                 const $selectedOption = $frontSelect.find('option:selected');
 
-                // Ищем тип отделки: сначала в кэше, потом в data-finish-type опции
                 let finishType = frontsCache[frontId] || $selectedOption.attr('data-finish-type') || 'PAINT';
                 const cfg = FINISH_CONFIG[finishType] || FINISH_CONFIG.PAINT;
 
                 const isDiffSides = $toggleSides.is(':checked');
                 const isPaintFrames = $toggleFrames.is(':checked');
 
-                // А. Покраска коробок
                 if (isPaintFrames) {
                     $frameWrapper.slideDown(150);
                 } else {
                     $frameWrapper.slideUp(150);
                 }
 
-                // Б. Отделка полотна
                 if (!cfg.canEdit) {
                     $labelOutside.text(cfg.labelSingle);
                     $inputOutside.val('').prop('disabled', true).attr('placeholder', cfg.placeholderOut);
@@ -380,7 +337,6 @@
                 }
             }
 
-            // 4. Подгрузка фасадов при смене серии
             $seriesSelect.on('change', function () {
                 const seriesId = $(this).val();
                 $frontSelect.empty().append('<option value="">---------</option>');
@@ -411,7 +367,6 @@
                     });
             });
 
-            // 5. Обработчики изменений
             $frontSelect.on('change', syncOrderFormUI);
             $toggleSides.on('change', syncOrderFormUI);
             $toggleFrames.on('change', syncOrderFormUI);
@@ -423,7 +378,6 @@
                 });
             }
 
-            // 6. Инициализация при открытии формы
             syncOrderFormUI();
         });
     </script>

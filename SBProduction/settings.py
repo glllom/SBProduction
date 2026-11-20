@@ -124,18 +124,20 @@ LOCALE_PATHS = [
 
 UNFOLD = {
     'SITE_TITLE': 'SBProduction',
-    'SITE_HEADER': 'ניהול SBProduction',
+    'SITE_HEADER': 'SB Production',
     'SITE_SUBHEADER': 'ניהול ייצור ומוצרים',
-    'SITE_SYMBOL': 'precision_manufacturing',
+    'SITE_ICON': {
+        'light': '/static/logo_large.jpg',
+        'dark': '/static/logo_large.jpg',
+    },
     'SITE_URL': '/',
     'SHOW_HISTORY': True,
     'SHOW_VIEW_ON_SITE': False,
     'SHOW_BACK_BUTTON': True,
-    'ENVIRONMENT': 'SBProduction',
     'THEME': 'light',
     'BORDER_RADIUS': '0.75rem',
     'STYLES': [
-        'https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap',
+        'https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap',
         '/static/css/admin_unfold.css',
     ],
     'SITE_DROPDOWN': [

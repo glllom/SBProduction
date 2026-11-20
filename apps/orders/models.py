@@ -11,11 +11,11 @@ from apps.catalog.models import ProductModel, Front
 class OrderStatus(models.TextChoices):
     NEW = 'NEW', 'חדש'
     IN_PRODUCTION = 'IN_PRODUCTION', 'בייצור'
-    PHASE1_PRODUCTION = 'PHASE1_PRODUCTION', 'ייצור שלב א (משקופים)'
-    PHASE1_READY = 'PHASE1_READY', 'שלב א מוכן (ממתין להמשך)'
+    PHASE1_PRODUCTION = 'PHASE1_PRODUCTION', 'ייצור שלב א'
+    PHASE1_READY = 'PHASE1_READY', 'שלב א מוכן'
     PHASE2_PRODUCTION = 'PHASE2_PRODUCTION', 'ייצור שלב ב'
     COMPLETION_PRODUCTION = 'COMPLETION_PRODUCTION', 'ייצור השלמות'
-    PARTIALLY_READY = 'PARTIALLY_READY', 'מוכן חלקית (ממתין להשלמות)'
+    PARTIALLY_READY = 'PARTIALLY_READY', 'מוכן חלקית'
     COMPLETED = 'COMPLETED', 'ההזמנה מוכנה'
     CANCELED = 'CANCELED', 'בוטל'
 
