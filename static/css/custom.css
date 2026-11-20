@@ -113,13 +113,6 @@
     cursor: help !important;
 }
 
-/* Select2 Descriptions */
-.select2-option-desc {
-    font-size: 0.75rem;
-    color: var(--sb-muted);
-    margin-top: 2px;
-}
-
 .select2-results__option--highlighted .select2-option-desc {
     color: color-mix(in srgb, var(--sb-surface) 85%, transparent) !important;
 }

@@ -390,6 +390,24 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: none;
 }
 
+.btn-outline-accent {
+    --bs-btn-color: var(--sb-accent-text);
+    --bs-btn-border-color: color-mix(in srgb, var(--sb-accent) 32%, #fff);
+    --bs-btn-bg: var(--sb-surface);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-hover-bg: var(--sb-accent);
+    --bs-btn-hover-border-color: var(--sb-accent);
+    --bs-btn-active-color: #ffffff;
+    --bs-btn-active-bg: color-mix(in srgb, var(--sb-accent) 85%, #000);
+    --bs-btn-active-border-color: color-mix(in srgb, var(--sb-accent) 85%, #000);
+    box-shadow: var(--sb-shadow-sm);
+}
+
+.btn-outline-accent:hover {
+    background-image: var(--sb-btn-relief);
+    box-shadow: var(--sb-btn-shadow-hover);
+}
+
 /* ---------- Forms ---------- */
 .form-control,
 .form-select {
@@ -976,25 +994,30 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ---------- Modals ---------- */
 .modal-content {
-    border: 0;
+    border: 1px solid var(--sb-border);
     border-radius: var(--sb-radius);
     box-shadow: var(--sb-shadow-modal);
 }
 
 .modal-header {
-    border-bottom: 1px solid var(--sb-border);
-    padding: 0.9rem 1.2rem;
+    background-color: var(--sb-surface-muted);
+    border-bottom: 1px solid var(--sb-border-strong);
+    padding: 0.85rem 1.25rem;
+    border-top-left-radius: var(--sb-radius);
+    border-top-right-radius: var(--sb-radius);
 }
 
 .modal-footer {
+    background-color: var(--sb-bg);
     border-top: 1px solid var(--sb-border);
-    background: var(--sb-surface-muted);
+    padding: 0.75rem 1.25rem;
     border-bottom-left-radius: var(--sb-radius);
     border-bottom-right-radius: var(--sb-radius);
 }
 
 .modal-title {
     font-weight: 700;
+    color: var(--sb-text-strong);
 }
 
 /* ---------- Dropdowns ---------- */
@@ -1029,6 +1052,23 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--sb-text);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+
+/* Подсветка пункта при наведении и выбранного элемента */
+.select2-container--bootstrap-5 .select2-dropdown .select2-results__options .select2-results__option.select2-results__option--highlighted,
+.select2-container--bootstrap-5 .select2-results__option--highlighted,
+.select2-container--bootstrap-5 .select2-results__option--highlighted.select2-results__option--selectable {
+    background-color: var(--sb-primary-soft) !important;
+    color: var(--sb-primary-text) !important;
+}
+
+.select2-container--bootstrap-5 .select2-dropdown .select2-results__options .select2-results__option.select2-results__option--selected,
+.select2-container--bootstrap-5 .select2-dropdown .select2-results__options .select2-results__option[aria-selected="true"],
+.select2-container--bootstrap-5 .select2-results__option--selected,
+.select2-container--bootstrap-5 .select2-results__option[aria-selected="true"] {
+    background-color: var(--sb-primary) !important;
+    color: #ffffff !important;
+}
+
 
 /* Фирменный тиловый фокус вместо стандартного синего Bootstrap */
 .select2-container--bootstrap-5.select2-container--focus .select2-selection,
@@ -1094,6 +1134,22 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--sb-muted) !important;
 }
 
+/* Подпись (артикул / описание) внутри выпадающего списка Select2 */
+.select2-option-desc {
+    font-size: 0.75rem;
+    color: var(--sb-muted);
+    margin-top: 2px;
+}
+
+.select2-results__option--highlighted .select2-option-desc {
+    color: var(--sb-text-soft) !important;
+}
+
+.select2-results__option--selected .select2-option-desc,
+.select2-results__option[aria-selected="true"] .select2-option-desc {
+    color: color-mix(in srgb, var(--sb-surface) 88%, transparent) !important;
+}
+
 /* ---------- Utilities ---------- */
 .sb-divider {
     height: 1px;
@@ -1146,6 +1202,32 @@ h1, h2, h3, h4, h5, h6 {
 .sb-clickable-row:hover .sb-row-chevron {
     color: var(--sb-primary);
     transform: translateX(-3px);
+}
+
+/* Found product readout box in group modal */
+.sb-product-display {
+    min-height: 38px;
+    padding: 0.4rem 0.75rem;
+    display: flex;
+    align-items: center;
+    background-color: var(--sb-surface-muted);
+    border: 1px solid var(--sb-border-strong);
+    border-radius: var(--sb-radius-sm);
+    color: var(--sb-muted);
+    font-size: 0.9rem;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.sb-product-display:has(.sb-product-found) {
+    background-color: var(--sb-accent-soft);
+    border-color: color-mix(in srgb, var(--sb-accent) 32%, #fff);
+    color: var(--sb-accent-text);
+}
+
+.sb-product-display:has(.text-danger) {
+    background-color: var(--sb-danger-soft);
+    border-color: var(--sb-danger-border);
+    color: var(--sb-danger-text);
 }
 
 /* Filter pills */
