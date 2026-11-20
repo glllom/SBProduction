@@ -9,14 +9,38 @@
         </div>
     </div>
     <div class="row g-4">
-        <!-- מעקב תחנות ייצור -->
+        <!-- הזמנות (активный модуль) -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <a href="{% url 'order-list' %}"
+               class="text-decoration-none d-block h-100">
+                <div class="card h-100 sb-module-card border-primary-subtle">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <span class="sb-stat-icon"><i class="bi bi-cart3"></i></span>
+                            <div>
+                                <div class="text-muted small fw-semibold">ניהול מכירות</div>
+                                <h5 class="mb-0 text-dark">הזמנות</h5>
+                            </div>
+                        </div>
+                        <p class="text-muted small mb-4">
+                            יצירה ועריכה של הזמנות, ניהול מפרטים, אצוות והפקת דוחות
+                            ייצור.
+                        </p>
+                        <div class="mt-auto d-flex justify-content-between align-items-center">
+                            <span class="text-primary small fw-semibold">כניסה לממשק <i class="bi bi-arrow-left"></i></span>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <!-- מעקב תחנות ייצור (активный модуль) -->
         <div class="col-12 col-sm-6 col-xl-3">
             <a href="{% url 'production:station_tracking_dashboard' %}"
                class="text-decoration-none d-block h-100">
                 <div class="card h-100 sb-module-card border-primary-subtle">
                     <div class="card-body p-4 d-flex flex-column">
                         <div class="d-flex align-items-center gap-3 mb-3">
-                            <span class="sb-stat-icon"><i class="bi bi-kanban"></i></span>
+                            <span class="sb-stat-icon sb-accent"><i class="bi bi-kanban"></i></span>
                             <div>
                                 <div class="text-muted small fw-semibold">רצפת ייצור</div>
                                 <h5 class="mb-0 text-dark">מעקב תחנות</h5>
@@ -24,100 +48,111 @@
                         </div>
                         <p class="text-muted small mb-4">סגירת פקודות עבודה יומיות לפי תחנות וסטטוס ייצור בזמן אמת.</p>
                         <div class="mt-auto d-flex justify-content-between align-items-center">
-                            <span class="badge text-bg-primary rounded-pill px-3">פעיל</span>
                             <span class="text-primary small fw-semibold">כניסה לממשק <i class="bi bi-arrow-left"></i></span>
                         </div>
                     </div>
                 </div>
             </a>
         </div>
-        <!-- סטטיסטיקה -->
-        <div class="col-12 col-sm-6 col-xl-3">
-            <div class="card h-100 sb-module-card">
-                <div class="card-body p-4 d-flex flex-column">
-                    <div class="d-flex align-items-center gap-3 mb-3">
-                        <span class="sb-stat-icon sb-accent"><i class="bi bi-graph-up"></i></span>
-                        <div>
-                            <div class="text-muted small fw-semibold">סקירה כללית</div>
-                            <h5 class="mb-0"
-                                data-bs-toggle="tooltip"
-                                title="צפייה בסטטיסטיקות וביצועי ייצור">סטטיסטיקה</h5>
+        {% if user.is_staff %}
+            <!-- הגדרות -> переход в админку -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <a href="/admin/" class="text-decoration-none d-block h-100">
+                    <div class="card h-100 sb-module-card border-primary-subtle">
+                        <div class="card-body p-4 d-flex flex-column">
+                            <div class="d-flex align-items-center gap-3 mb-3">
+                                <span class="sb-stat-icon sb-neutral"><i class="bi bi-gear"></i></span>
+                                <div>
+                                    <div class="text-muted small fw-semibold">תצורת מערכת</div>
+                                    <h5 class="mb-0 text-dark">הגדרות וקטלוג</h5>
+                                </div>
+                            </div>
+                            <p class="text-muted small mb-4">
+                                ניהול קטלוג מוצרים, קסטומייזרים, עצי מוצר (BOM), משתמשים
+                                והרשאות.
+                            </p>
+                            <div class="mt-auto d-flex justify-content-between align-items-center">
+                                <span class="text-primary small fw-semibold">פאנל ניהול <i class="bi bi-arrow-left"></i></span>
+                            </div>
                         </div>
                     </div>
-                    <p class="text-muted small mb-4">כאן תוכלו לראות את נתוני הייצור, המכירות והביצועים של המפעל בזמן אמת.</p>
-                    <div class="mt-auto">
-                        <span class="badge text-bg-light border rounded-pill px-3"
-                              data-bs-toggle="tooltip"
-                              title="מודול בפיתוח - יהיה זמין בגרסה הבאה">בקרוב</span>
+                </a>
+            </div>
+            <!-- סטטיסטיקה -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card h-100 sb-module-card opacity-75">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <span class="sb-stat-icon sb-accent"><i class="bi bi-graph-up"></i></span>
+                            <div>
+                                <div class="text-muted small fw-semibold">סקירה כללית</div>
+                                <h5 class="mb-0"
+                                    data-bs-toggle="tooltip"
+                                    title="צפייה בסטטיסטיקות וביצועי ייצור">סטטיסטיקה</h5>
+                            </div>
+                        </div>
+                        <p class="text-muted small mb-4">
+                            כאן תוכלו לראות את נתוני הייצור, המכירות והביצועים של המפעל
+                            בזמן אמת.
+                        </p>
+                        <div class="mt-auto">
+                            <span class="badge text-bg-light border rounded-pill px-3"
+                                  data-bs-toggle="tooltip"
+                                  title="מודול בפיתוח - יהיה זמין בגרסה הבאה">בקרוב</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <!-- הזמנות מעוכבות -->
-        <div class="col-12 col-sm-6 col-xl-3">
-            <div class="card h-100 sb-module-card">
-                <div class="card-body p-4 d-flex flex-column">
-                    <div class="d-flex align-items-center gap-3 mb-3">
-                        <span class="sb-stat-icon sb-danger"><i class="bi bi-exclamation-triangle"></i></span>
-                        <div>
-                            <div class="text-muted small fw-semibold">טיפול דחוף</div>
-                            <h5 class="mb-0"
-                                data-bs-toggle="tooltip"
-                                title="מעקב אחר הזמנות שחרגו מתאריכי היעד">הזמנות מעוכבות</h5>
+            <!-- הזמנות מעוכבות -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card h-100 sb-module-card opacity-75">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <span class="sb-stat-icon sb-danger"><i class="bi bi-exclamation-triangle"></i></span>
+                            <div>
+                                <div class="text-muted small fw-semibold">טיפול דחוף</div>
+                                <h5 class="mb-0"
+                                    data-bs-toggle="tooltip"
+                                    title="מעקב אחר הזמנות שחרגו מתאריכי היעד">הזמנות מעוכבות</h5>
+                            </div>
                         </div>
-                    </div>
-                    <p class="text-muted small mb-4">מעקב אחר הזמנות שחרגו מלוח הזמנים ודורשות התייחסות מיידית למניעת עיכובים.</p>
-                    <div class="mt-auto">
-                        <span class="badge text-bg-light border rounded-pill px-3"
-                              data-bs-toggle="tooltip"
-                              title="מודול בפיתוח - יהיה זמין בגרסה הבאה">בקרוב</span>
+                        <p class="text-muted small mb-4">
+                            מעקב אחר הזמנות שחרגו מלוח הזמנים ודורשות התייחסות מיידית
+                            למניעת עיכובים.
+                        </p>
+                        <div class="mt-auto">
+                            <span class="badge text-bg-light border rounded-pill px-3"
+                                  data-bs-toggle="tooltip"
+                                  title="מודול בפיתוח - יהיה זמין בגרסה הבאה">בקרוב</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <!-- מחסן -->
-        <div class="col-12 col-sm-6 col-xl-3">
-            <div class="card h-100 sb-module-card">
-                <div class="card-body p-4 d-flex flex-column">
-                    <div class="d-flex align-items-center gap-3 mb-3">
-                        <span class="sb-stat-icon sb-success"><i class="bi bi-box-seam"></i></span>
-                        <div>
-                            <div class="text-muted small fw-semibold">ניהול מלאי</div>
-                            <h5 class="mb-0"
-                                data-bs-toggle="tooltip"
-                                title="ניהול מלאי חומרי גלם ומוצרים">מחסן</h5>
+            <!-- מחסן -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card h-100 sb-module-card opacity-75">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <span class="sb-stat-icon sb-success"><i class="bi bi-box-seam"></i></span>
+                            <div>
+                                <div class="text-muted small fw-semibold">ניהול מלאי</div>
+                                <h5 class="mb-0"
+                                    data-bs-toggle="tooltip"
+                                    title="ניהול מלאי חומרי גלם ומוצרים">מחסן</h5>
+                            </div>
                         </div>
-                    </div>
-                    <p class="text-muted small mb-4">ניהול מלאי חומרי גלם, מוצרים מוכנים ובקרת כניסות ויציאות מהמחסן.</p>
-                    <div class="mt-auto">
-                        <span class="badge text-bg-light border rounded-pill px-3"
-                              data-bs-toggle="tooltip"
-                              title="מודול בפיתוח - יהיה זמין בגרסה הבאה">בקרוב</span>
+                        <p class="text-muted small mb-4">
+                            ניהול מלאי חומרי גלם, מוצרים מוכנים ובקרת כניסות ויציאות
+                            מהמחסן.
+                        </p>
+                        <div class="mt-auto">
+                            <span class="badge text-bg-light border rounded-pill px-3"
+                                  data-bs-toggle="tooltip"
+                                  title="מודול בפיתוח - יהיה זמין בגרסה הבאה">בקרוב</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <!-- הגדרות -->
-        <div class="col-12 col-sm-6 col-xl-3">
-            <div class="card h-100 sb-module-card">
-                <div class="card-body p-4 d-flex flex-column">
-                    <div class="d-flex align-items-center gap-3 mb-3">
-                        <span class="sb-stat-icon sb-neutral"><i class="bi bi-gear"></i></span>
-                        <div>
-                            <div class="text-muted small fw-semibold">תצורת מערכת</div>
-                            <h5 class="mb-0"
-                                data-bs-toggle="tooltip"
-                                title="הגדרות מערכת, משתמשים והרשאות">הגדרות</h5>
-                        </div>
-                    </div>
-                    <p class="text-muted small mb-4">ניהול משתמשים, הרשאות, פרמטרים של המערכת והתאמה אישית של ממשק העבודה.</p>
-                    <div class="mt-auto">
-                        <span class="badge text-bg-light border rounded-pill px-3"
-                              data-bs-toggle="tooltip"
-                              title="מודול בפיתוח - יהיה זמין בגרסה הבאה">בקרוב</span>
-                    </div>
-                </div>
-            </div>
-        </div>
+        {% endif %}
     </div>
 {% endblock %}

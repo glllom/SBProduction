@@ -1,0 +1,16 @@
+/* Django admin overrides (django-unfold). Colours are defined in settings.UNFOLD['COLORS']. */
+
+html {
+    scrollbar-gutter: stable;
+}
+
+body {
+    font-family: 'Heebo', 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Фикс обрезки английского placeholder в поиске сайдбара при RTL */
+#nav-sidebar input[type="search"],
+#nav-sidebar input[type="text"] {
+    text-overflow: ellipsis;
+    padding-inline-end: 3.2rem;
+}

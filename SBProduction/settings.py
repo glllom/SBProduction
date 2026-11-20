@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 
+from django.urls import reverse_lazy
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -125,14 +127,150 @@ UNFOLD = {
     'SITE_HEADER': 'ניהול SBProduction',
     'SITE_SUBHEADER': 'ניהול ייצור ומוצרים',
     'SITE_SYMBOL': 'precision_manufacturing',
+    'SITE_URL': '/',
     'SHOW_HISTORY': True,
     'SHOW_VIEW_ON_SITE': False,
     'SHOW_BACK_BUTTON': True,
     'ENVIRONMENT': 'SBProduction',
+    'THEME': 'light',
+    'BORDER_RADIUS': '0.75rem',
+    'STYLES': [
+        'https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap',
+        '/static/css/admin_unfold.css',
+    ],
+    'SITE_DROPDOWN': [
+        {
+            'icon': 'speed',
+            'title': 'לוח בקרה',
+            'link': '/',
+        },
+        {
+            'icon': 'shopping_cart',
+            'title': 'הזמנות',
+            'link': reverse_lazy('order-list'),
+        },
+        {
+            'icon': 'view_kanban',
+            'title': 'מעקב תחנות',
+            'link': reverse_lazy('production:station_tracking_dashboard'),
+        },
+    ],
+    'COLORS': {
+        'primary': {
+            '50': '#f0f9fa',
+            '100': '#d8eff2',
+            '200': '#b5dfe6',
+            '300': '#82c7d4',
+            '400': '#48a6b9',
+            '500': '#2b8a9e',
+            '600': '#157485',
+            '700': '#145d6c',
+            '800': '#164e5a',
+            '900': '#17424d',
+            '950': '#0b2a32',
+        },
+        'base': {
+            '50': '#f8faf9',
+            '100': '#f3f6f5',
+            '200': '#e0e8e6',
+            '300': '#cbd8d5',
+            '400': '#9bb0ac',
+            '500': '#69807b',
+            '600': '#4d625e',
+            '700': '#3d4f4b',
+            '800': '#2a3a37',
+            '900': '#1c2b28',
+            '950': '#111b19',
+        },
+    },
+    'SIDEBAR': {
+        'show_search': True,
+        'show_all_applications': True,
+        'navigation': [
+            {
+                'title': 'חזרה למערכת',
+                'separator': True,
+                'collapsible': False,
+                'items': [
+                    {
+                        'title': 'לוח בקרה',
+                        'icon': 'speed',
+                        'link': '/',
+                    },
+                    {
+                        'title': 'הזמנות',
+                        'icon': 'shopping_cart',
+                        'link': reverse_lazy('order-list'),
+                    },
+                    {
+                        'title': 'מעקב תחנות',
+                        'icon': 'view_kanban',
+                        'link': reverse_lazy('production:station_tracking_dashboard'),
+                    },
+                ],
+            },
+            {
+                'title': 'קטלוג והנדסה',
+                'separator': True,
+                'collapsible': True,
+                'items': [
+                    {
+                        'title': 'מוצרים (דגמים ו-BOM)',
+                        'icon': 'door_front',
+                        'link': reverse_lazy('admin:catalog_productmodel_changelist'),
+                    },
+                    {
+                        'title': 'משפחות מוצרים',
+                        'icon': 'category',
+                        'link': reverse_lazy('admin:catalog_productfamily_changelist'),
+                    },
+                    {
+                        'title': 'סדרות',
+                        'icon': 'layers',
+                        'link': reverse_lazy('admin:catalog_series_changelist'),
+                    },
+                    {
+                        'title': 'חזיתות',
+                        'icon': 'texture',
+                        'link': reverse_lazy('admin:catalog_front_changelist'),
+                    },
+                    {
+                        'title': 'קסטומייזרים / אפשרויות',
+                        'icon': 'tune',
+                        'link': reverse_lazy('admin:catalog_customizer_changelist'),
+                    },
+                ],
+            },
+            {
+                'title': 'חומרים ופרזול',
+                'separator': True,
+                'collapsible': True,
+                'items': [
+                    {
+                        'title': 'חומרים',
+                        'icon': 'inventory_2',
+                        'link': reverse_lazy('admin:catalog_material_changelist'),
+                    },
+                    {
+                        'title': 'פרזול',
+                        'icon': 'hardware',
+                        'link': reverse_lazy('admin:catalog_hardware_changelist'),
+                    },
+                    {
+                        'title': 'צבעי משקופים',
+                        'icon': 'palette',
+                        'link': reverse_lazy('admin:catalog_color_changelist'),
+                    },
+                    {
+                        'title': 'סוגי מוצרים',
+                        'icon': 'label',
+                        'link': reverse_lazy('admin:catalog_producttype_changelist'),
+                    },
+                ],
+            },
+        ],
+    },
 }
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
