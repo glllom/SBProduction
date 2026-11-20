@@ -292,6 +292,7 @@ class TechnicalSpecService:
             )
             .prefetch_related(
                 'group__customizers__customizer__hardware__components',
+                'group__customizers__customizer__outward_replacement__hardware__components',
                 'group__product__bom__additional',
             ).order_by('id')
         )
@@ -785,20 +786,44 @@ class ProductionDataService:
                     'hardware_map': {},
                 }
 
-            # Кастомизаторы коробки
+            # Кастомизаторы коробки (структурированно, с флагом нестандартного параметра)
             raw_cmz = _get(item, 'frames_report_customizers', []) or []
-            cmz_labels = []
+            parsed_cmz = []
+            cmz_sig_parts = []
             for c in raw_cmz:
                 c_name = str(_get(c, 'name', '')).strip()
+                if not c_name:
+                    continue
                 c_params = _get(c, 'params', []) or []
-                p_strs = [
-                    f"{_get(p, 'label', '')}: {_get(p, 'value', '')}".strip(': ')
-                    for p in c_params
-                    if _get(p, 'value', '') not in (None, '')
-                ]
-                if c_name:
-                    cmz_labels.append(f"{c_name} ({', '.join(p_strs)})" if p_strs else c_name)
-            cmz_text = " + ".join(dict.fromkeys(cmz_labels))
+                clean_params = []
+                p_sig = []
+                for p in c_params:
+                    p_val = _get(p, 'value', '')
+                    if p_val in (None, ''):
+                        continue
+                    p_label = str(_get(p, 'label', '')).strip()
+                    p_val_str = str(p_val).strip()
+                    is_custom = bool(
+                        _get(p, 'is_custom', False)
+                        or _get(p, 'is_modified', False)
+                        or (_get(p, 'is_default', None) is False)
+                    )
+                    clean_params.append({
+                        'label': p_label,
+                        'value': p_val_str,
+                        'is_custom': is_custom,
+                    })
+                    p_sig.append((p_label, p_val_str, is_custom))
+
+                sig = (c_name, tuple(p_sig))
+                if sig not in cmz_sig_parts:
+                    cmz_sig_parts.append(sig)
+                    parsed_cmz.append({
+                        'name': c_name,
+                        'params': clean_params,
+                    })
+
+            cmz_sig = tuple(cmz_sig_parts)
 
             raw_hinges = _get(item, 'hinge_heights', []) or []
             hinges_tuple = tuple(h for h in raw_hinges if h is not None)
@@ -824,7 +849,7 @@ class ProductionDataService:
                     'items': [],
                 }
 
-            hardware_map[hw_key]['items'].append((item, cmz_text))
+            hardware_map[hw_key]['items'].append((item, parsed_cmz, cmz_sig))
 
         # Сборка финальной структуры с сортировками уровней 3 и 4
         pages = []
@@ -842,31 +867,23 @@ class ProductionDataService:
                 hardware_groups = []
                 for hw_grp in sorted_hw_items:
                     row_groups = {}
-                    for it, cmz_text in hw_grp['items']:
+                    for it, parsed_cmz, cmz_sig in hw_grp['items']:
                         w = _get(it, 'width', None)
                         h = _get(it, 'height', None)
                         wall = _get(it, 'wall', None)
                         direction = '' if hw_grp['is_double_door'] else (_get(it, 'direction', '') or '')
-                        opening = _get(it, 'opening', '') or ''
                         comment = (_get(it, 'comment', '') or '').strip()
 
-                        row_key = (w, h, wall, direction, opening, comment, cmz_text)
+                        row_key = (w, h, wall, direction, comment, cmz_sig)
                         if row_key not in row_groups:
-                            notes = []
-                            if cmz_text:
-                                notes.append(cmz_text)
-                            if opening in ('OUT', 'החוצה'):
-                                notes.append('החוצה')
-                            if comment:
-                                notes.append(comment)
-
                             row_groups[row_key] = {
                                 'width': w,
                                 'height': h,
                                 'wall': wall,
                                 'direction': direction,
                                 'qty': 0,
-                                'addons_text': " | ".join(notes),
+                                'customizers': parsed_cmz,
+                                'comment': comment,
                             }
                         row_groups[row_key]['qty'] += 1
 

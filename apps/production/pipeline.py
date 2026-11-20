@@ -47,6 +47,29 @@ def _find_hardware_variant(
     return qs.order_by('id').first() or base_hw
 
 
+def _resolve_item_customizers(item: OrderItem, raw_customizers: List) -> List:
+    """
+    Для дверей с открыванием наружу (OUT) подменяет кастомизатор на outward_replacement
+    на копии OrderItemsGroupCustomizer, не мутируя общий объект группы.
+    """
+    op = str(getattr(item, 'opening', '') or '').strip().upper()
+    if op not in ('OUT', 'OUTWARD', 'החוצה'):
+        return list(raw_customizers)
+
+    resolved = []
+    for gc in raw_customizers:
+        replacement = getattr(gc.customizer, 'outward_replacement', None)
+        if replacement and replacement.active:
+            gc_copy = copy.copy(gc)
+            gc_copy._original_customizer_id = gc.customizer_id
+            gc_copy.customizer = replacement
+            gc_copy.customizer_id = replacement.id
+            resolved.append(gc_copy)
+        else:
+            resolved.append(gc)
+    return resolved
+
+
 class PipelineError(Exception):
     """Base class for pipeline errors that should be collected and shown to the user."""
     pass
@@ -74,17 +97,26 @@ class SpecContext:
         self._bom = None
 
         if customizers is not None:
-            self.customizers = list(customizers)
+            self.customizers = _resolve_item_customizers(item, customizers)
         else:
             if self.group:
-                self.customizers = list(
-                    self.group.customizers.select_related('customizer', 'customizer__puzzle_mapping__preset')
-                    .prefetch_related('customizer__hardware__components')
+                raw_customizers = list(
+                    self.group.customizers.select_related(
+                        'customizer',
+                        'customizer__puzzle_mapping__preset',
+                        'customizer__outward_replacement',
+                        'customizer__outward_replacement__puzzle_mapping__preset',
+                    )
+                    .prefetch_related(
+                        'customizer__hardware__components',
+                        'customizer__outward_replacement__hardware__components',
+                    )
                     .order_by('customizer__tag', 'customizer__code')
                 )
+                self.customizers = _resolve_item_customizers(item, raw_customizers)
             else:
                 self.customizers = []
-
+                
     @property
     def bom(self):
         if self._bom is not None:
@@ -233,9 +265,14 @@ class ProductDataStep(SpecStep):
                 spec.series = product.series.name
 
         # Проверка обязательных кастомизаторов модели
-        group_customizers_map = {gc.customizer_id: gc for gc in context.customizers}
+        group_customizer_ids = {gc.customizer_id for gc in context.customizers}
+        group_customizer_ids.update(
+            getattr(gc, '_original_customizer_id')
+            for gc in context.customizers
+            if getattr(gc, '_original_customizer_id', None)
+        )
         for req_cust in product.get_required_customizers():
-            if req_cust.id not in group_customizers_map:
+            if req_cust.id not in group_customizer_ids:
                 context.add_error(f"חסר קסטומייזר חובה '{req_cust.name}'")
 
         # Проверка обязательных параметров у прикрепленных кастомизаторов
@@ -1899,8 +1936,14 @@ class OrderItemsStep(OrderStep):
         group_ids = {item.group_id for item in context.items if item.group_id}
         all_group_customizers = OrderItemsGroupCustomizer.objects.filter(
             group_id__in=group_ids
-        ).select_related('customizer', 'customizer__puzzle_mapping__preset').prefetch_related(
+        ).select_related(
+            'customizer',
+            'customizer__puzzle_mapping__preset',
+            'customizer__outward_replacement',
+            'customizer__outward_replacement__puzzle_mapping__preset',
+        ).prefetch_related(
             'customizer__hardware__components',
+            'customizer__outward_replacement__hardware__components',
         ).order_by('customizer__tag', 'customizer__code')
 
         customizers_by_group = collections.defaultdict(list)

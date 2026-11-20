@@ -3,19 +3,8 @@
         /* Газетные колонки (сверху вниз, справа налево в RTL) */
         .wood-dimensions-columns {
             column-count: 2;
-            column-gap: 36px;
+            column-gap: 10px;
             column-rule: 1.5px dashed #b0b0b0;
-        }
-
-        .dim-row-item {
-            display: flex;
-            align-items: baseline;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 3px 0;
-            border-bottom: 1px solid #f0f0f0;
-            break-inside: avoid;
-            page-break-inside: avoid;
         }
 
         @media print {
@@ -25,14 +14,15 @@
             }
         }
 
-
         .dim-row-item {
             display: flex;
             align-items: baseline;
             justify-content: space-between;
-            gap: 10px;
-            padding: 3px 0;
+            gap: 5px;
+            padding: 4px 4px;
             border-bottom: 1px solid #f0f0f0;
+            break-inside: avoid;
+            page-break-inside: avoid;
         }
 
         .dim-main-specs {
@@ -46,7 +36,6 @@
         .dim-addons-text {
             font-size: 0.9rem;
             font-weight: 600;
-            color: #0d6efd;
             text-align: end;
             line-height: 1.25;
             word-break: break-word;
@@ -54,7 +43,7 @@
     </style>
     {% for page in groups_data|default:frame_groups %}
         <div class="wood-frame-page mb-4">
-            <!-- 1. Главная шапка (печатается сверху каждой страницы) -->
+            <!-- 1. Главная шапка -->
             <div class="report-header mb-3 border-bottom pb-2">
                 <div class="d-flex justify-content-between align-items-baseline">
                     <h4 class="mb-0">
@@ -68,101 +57,96 @@
                         <span class="text-secondary mx-2">|</span>
                         <span class="text-primary">{{ report_label|default:"משקופי עץ" }}</span>
                     </h4>
-                    <!-- Номер батча и страницы по центру -->
                     <div class="fs-6 text-dark">
                         <span>עמוד {{ page.page_num }} מתוך {{ page.total_pages }}</span>
                     </div>
                     <span class="fs-5 text-muted">תאריך: {{ now|date:"d/m/y" }}</span>
                 </div>
             </div>
-            <!-- Комментарий участка и общий комментарий заказа (показываются только если заполнены) -->
-            {% if station_comment or order.comments %}
-                <div class="mt-2 px-2 py-1 rounded bg-light border d-flex flex-column gap-1">
-                    {% if station_comment %}
-                        <div class="d-flex align-items-baseline gap-2">
-                            <span class="fw-bold text-secondary small">הערות למשקופים:</span>
-                            <span class="fw-semibold text-dark">{{ station_comment }}</span>
-                        </div>
-                    {% endif %}
-                    {% if order.comments %}
-                        <div class="d-flex align-items-baseline gap-2">
-                            <span class="fw-bold text-secondary small">הערות להזמנה:</span>
-                            <span class="fw-semibold text-dark">{{ order.comments }}</span>
-                        </div>
-                    {% endif %}
+            <!-- Комментарий участка -->
+            {% if station_comment %}
+                <div class="mb-2 px-3 py-1 rounded bg-light border border-danger d-flex align-items-baseline gap-2">
+                    <span class="fw-bold text-danger small">הערות למשקופים:</span>
+                    <span class="fw-semibold text-dark">{{ station_comment }}</span>
                 </div>
             {% endif %}
-            <!-- 2. Заголовок: Модель двери и модификация כפולה (один раз на страницу) -->
+            <!-- 2. Заголовок модели -->
             <div class="mb-3">
                 <h3 class="fw-bold mb-0 text-decoration-underline">{{ page.product_name }}</h3>
             </div>
-            <!-- 3. Подзаголовок: Материал коробки (צבע / цвет из BOM) и הלבשה (без разрыва страницы) -->
+            <!-- 3. Подзаголовок: Материал коробки и הלבשה -->
             {% for mat in page.material_groups %}
-                <div class="wood-material-section mb-4">
-                    <div class="bg-body-tertiary px-3 py-2 rounded-3 row align-items-center mb-2">
-                        <div class="col-7">
-                            <span class="fs-4 fw-bold">{{ mat.frames_caption }}</span>
-                        </div>
-                        <div class="col-5 text-end">
-                            <span class="fs-5">{{ mat.door_casing }}</span>
-                        </div>
+                <div class="wood-material-section mb-2">
+                    <div class="bg-success p-2 text-dark bg-opacity-25 px-3 py-1 mb-1 d-flex justify-content-between align-items-center">
+                        <span class="fs-4 fw-bold">{{ mat.frames_caption }}</span>
+                        <span class="fs-5">{{ mat.door_casing }}</span>
                     </div>
-                    <!-- 4. Подзаголовок фурнитуры: Замок и петли (отсортировано по высоте замка по убыванию) -->
+                    <!-- 4. Подзаголовок фурнитуры -->
                     {% for hw in mat.hardware_groups %}
                         <div class="wood-hardware-block mb-3">
-                            <div class="row border-bottom pb-1 mb-2 px-1">
+                            <div class="bg-secondary-subtle px-3 py-1 mb-0 d-flex justify-content-between align-items-center">
                                 {% if not hw.is_double_door %}
-                                    <div class="col-5">
-                                        <span>
-                                            מנעול: <strong class="fs-4 text-danger">{{ hw.lock_name|default:"ללא" }}</strong>
-                                            {% if hw.lock_height %}
-                                                <span class="fs-5 fw-bold ms-2 text-danger">{{ hw.lock_height|floatformat }}</span>
-                                            {% endif %}
-                                        </span>
+                                    <div>
+                                        מנעול: <strong class="fs-4 text-danger">{{ hw.lock_name|default:"ללא" }}</strong>
+                                        {% if hw.lock_height %}
+                                            <span class="fs-5 fw-bold ms-2 text-danger">{{ hw.lock_height|floatformat }}</span>
+                                        {% endif %}
                                     </div>
                                 {% endif %}
-                                <div class="col-{% if hw.is_double_door %}12{% else %}6 text-end{% endif %}">
-                                    <span>
-                                        צירים: <strong class="fs-4 text-danger">{{ hw.hinge_name|default:"ללא" }}</strong>
-                                        {% if hw.hinge_heights_display %}
-                                            <span class="fs-5 fw-bold ms-2 text-danger" dir="ltr">{{ hw.hinge_heights_display }}</span>
-                                        {% endif %}
-                                    </span>
+                                <div class="{% if hw.is_double_door %}w-100{% endif %}">
+                                    צירים: <strong class="fs-4 text-danger">{{ hw.hinge_name|default:"ללא" }}</strong>
+                                    {% if hw.hinge_heights_display %}
+                                        <span class="fs-5 fw-bold ms-2 text-danger" dir="ltr">{{ hw.hinge_heights_display }}</span>
+                                    {% endif %}
                                 </div>
                             </div>
-                            <!-- 5. Строки с размерами: при 4+ позициях включаются газетные колонки -->
-                            <div class="border-bottom border-4 border-dark pb-2 mb-2">
+                            <!-- 5. Строки с размерами -->
+                            <div class="border border-2 border-bottom-0">
                                 <div class="{% if hw.grouped_rows|length >= 4 %}wood-dimensions-columns{% endif %}">
                                     {% for row in hw.grouped_rows %}
                                         <div class="dim-row-item">
                                             <div class="dim-main-specs font-monospace">
-                                                <!-- Направление + толщина стены -->
                                                 <span class="fs-5 fw-bold text-muted" dir="ltr" style="min-width: 48px">
                                                     {{ row.wall|floatformat }}{{ row.direction }}
                                                 </span>
-                                                <!-- Ширина / Высота с тонким слэшем -->
                                                 <span class="fs-4 fw-bold text-dark" dir="ltr">
                                                     {{ row.width|floatformat }}<span class="fs-6 fw-light mx-1">/</span>{{ row.height|floatformat }}
                                                 </span>
-                                                <!-- Количество (если > 1) -->
                                                 {% if row.qty > 1 %}
                                                     <span class="text-success fw-bold fs-5">{{ row.qty }}x</span>
                                                 {% endif %}
                                             </div>
-                                            <!-- Кастомизаторы коробки (מזוזה, מחזיר שמן и т.д.) -->
-                                            {% if row.addons_text %}
-                                                <div class="dim-addons-text">{{ row.addons_text }}</div>
-                                            {% endif %}
+                                            {% if row.customizers or row.comment %}
+                                                <div class="dim-addons-text">
+                                                    {% for cmz in row.customizers %}
+                                                        <span class="fw-bold text-primary">{{ cmz.name }}</span>
+                                                        {% if cmz.params %}
+                                                            <span class="fw-normal text-dark"> (
+                                                                {% for p in cmz.params %}
+                                                                    {{ p.label }}:
+                                                                    <span class="{% if p.is_custom %}text-danger fw-bold{% endif %}">{{ p.value }}</span>
+                                                                    {% if not forloop.last %},
+                                                                    {% endif %}{% endfor %})</span>{% endif %}
+                                                                    {% if not forloop.last %}+{% endif %}
+                                                                {% endfor %}
+                                                                {% if row.comment %}
+                                                                    {% if row.customizers %}<span class="text-muted mx-1">|</span>
+                                                                {% endif %}
+                                                                <span class="fst-italic text-secondary fw-normal">{{ row.comment }}</span>
+                                                        {% endif %}
+                                                        </div>
+                                                    {% endif %}
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                        </div>
+                                        <div class="border-bottom border-4 border-dark"></div>
                                         </div>
                                     {% endfor %}
                                 </div>
-                            </div>
-                        </div>
                     {% endfor %}
                 </div>
+            {% empty %}
+                <div class="alert alert-warning text-center mt-4">לא נמצאו משקופי עץ עבור הזמנה זו.</div>
             {% endfor %}
         </div>
-    {% empty %}
-        <div class="alert alert-warning text-center mt-4">לא נמצאו משקופי עץ עבור הזמנה זו.</div>
-    {% endfor %}
-</div>
