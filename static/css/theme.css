@@ -480,6 +480,12 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: 0 0 0 0.2rem var(--sb-primary-ring);
 }
 
+.form-check-input:checked,
+.form-check-input[type="checkbox"]:indeterminate {
+    background-color: var(--sb-primary);
+    border-color: var(--sb-primary);
+}
+
 /* ---------- Badges, tooltips & alerts ---------- */
 .badge {
     font-weight: 600;

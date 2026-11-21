@@ -3,7 +3,7 @@
 {% block page_title %}מעקב תחנות ייצור{% endblock %}
 {% block content %}
     <div dir="rtl">
-        <!-- Шапка: заголовок и печать -->
+        <!-- Page header & print actions -->
         <div class="sb-page-header mb-3 d-print-none">
             <div class="d-flex align-items-center gap-3">
                 <div class="sb-stat-icon sb-accent">
@@ -29,148 +29,265 @@
                 </a>
             </div>
         </div>
-        <!-- Лента станций -->
-        <div class="d-flex align-items-center gap-2 mb-3 pb-3 border-bottom d-print-none">
-            <button type="button"
-                    class="btn btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                    id="stationScrollPrev"
-                    style="width: 36px;
-                           height: 36px;
-                           padding: 0"
-                    title="הקודם">
-                <i class="bi bi-chevron-right"></i>
-            </button>
-            <div class="stations-carousel flex-grow-1 overflow-x-auto"
-                 id="stationsContainer">
-                <ul class="nav flex-nowrap gap-2 py-1 px-1" id="stationsNav">
-                    {% for item in stations_data %}
-                        <li class="nav-item flex-shrink-0">
-                            <a class="nav-link sb-station-pill text-nowrap {% if item.station.code == selected_station.code %}active{% endif %}"
-                               href="?station={{ item.station.code }}"
-                               data-station-code="{{ item.station.code }}"
-                               data-pending="{{ item.pending_orders_count|default:0 }}">
-                                <span>{{ item.station.name }}</span>
-                                {% if item.pending_orders_count > 0 %}
-                                    <span class="sb-pill-count">{{ item.pending_orders_count }}</span>
-                                {% endif %}
-                            </a>
-                        </li>
-                    {% endfor %}
-                </ul>
-            </div>
-            <button type="button"
-                    class="btn btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                    id="stationScrollNext"
-                    style="width: 36px;
-                           height: 36px;
-                           padding: 0"
-                    title="הבא">
-                <i class="bi bi-chevron-left"></i>
-            </button>
-        </div>
-        <!-- Шапка для печатного листа A4 -->
+        <!-- Print-only A4 header -->
         <div class="d-none d-print-block mb-4 border-bottom pb-2">
             <div class="d-flex justify-content-between align-items-center">
                 <h3>תחנת ייצור: <strong>{{ selected_station.name }} ({{ selected_station.code }})</strong></h3>
                 <div>תאריך הדפסה: {% now "d/m/Y H:i" %}</div>
             </div>
         </div>
-        <!-- Таблица заказов на станции -->
-        <form method="post" id="trackingForm">
-            {% csrf_token %}
-            <input type="hidden" name="station_code" value="{{ selected_station.code }}">
-            <input type="hidden" name="next_station" id="nextStationInput" value="">
-            <div class="card overflow-hidden mb-3">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0" id="trackingTable">
-                        <thead>
-                            <tr>
-                                <th style="width: 64px;" class="text-center d-print-none">
-                                    <input class="form-check-input"
-                                           type="checkbox"
-                                           id="selectAllCheckbox"
-                                           title="בחר הכל"
-                                           style="cursor: pointer">
-                                </th>
-                                <th class="d-none d-print-table-cell text-center" style="width: 50px;">V</th>
-                                <th>הזמנה [מנה]</th>
-                                <th>שם לקוח</th>
-                                <th class="text-center">דלתות בתחנה זו</th>
-                                <th>תאריך יעד</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in backlog %}
-                                <tr id="row-{{ row.order_number }}-{{ row.batch_number }}">
-                                    <td class="text-center d-print-none">
-                                        <input class="form-check-input item-checkbox"
-                                               type="checkbox"
-                                               name="completed_batches"
-                                               value="{{ row.order_number }}:{{ row.batch_number }}"
-                                               style="width: 1.25rem;
-                                                      height: 1.25rem;
-                                                      cursor: pointer">
-                                    </td>
-                                    <td class="d-none d-print-table-cell text-center">
-                                        <div style="width: 18px;
-                                                    height: 18px;
-                                                    border: 1px solid #000;
-                                                    margin: auto"></div>
-                                    </td>
-                                    <td>
-                                        <strong class="text-primary">{{ row.display_order_batch }}</strong>
-                                    </td>
-                                    <td>{{ row.customer|default:"-" }}</td>
-                                    <td class="text-center">
-                                        <span class="sb-badge-soft">{{ row.doors_count }} יח'</span>
-                                    </td>
-                                    <td>
-                                        {% if row.completion_date %}
-                                            <span>{{ row.completion_date|date:"d/m/Y" }}</span>
-                                        {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            {% empty %}
-                                <tr>
-                                    <td colspan="6" class="sb-empty">
-                                        <i class="bi bi-check-circle text-success d-block mb-2"></i>
-                                        אין הזמנות פתוחות בתחנה זו כרגע.
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <!-- Нижняя панель действий -->
-            {% if backlog %}
-                <div class="card d-print-none">
-                    <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
-                        <div>
-                            <span class="text-muted">נבחרו לסימון:</span>
-                            <strong id="selectedCounter" class="text-primary fs-6">0</strong> הזמנות
+        <!-- Master-Detail Layout: Stations list on the right (RTL), Orders table on the left -->
+        <div class="row g-3 align-items-start">
+            <!-- Right Column: Vertical Stations Master List -->
+            <div class="col-12 col-lg-3 d-print-none">
+                <div class="card overflow-hidden sb-stations-panel">
+                    <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center">
+                        <span class="fw-bold small">תחנות ייצור</span>
+                        <div class="form-check form-switch m-0 d-flex align-items-center gap-2">
+                            <input class="form-check-input m-0"
+                                   type="checkbox"
+                                   id="filterActiveStations"
+                                   style="cursor: pointer">
+                            <label class="form-check-label small text-muted mb-0"
+                                   for="filterActiveStations"
+                                   style="cursor: pointer">פעילות בלבד</label>
                         </div>
-                        <button type="submit"
-                                class="btn btn-primary px-4 fw-semibold"
-                                id="submitBtn"
-                                disabled>
-                            <i class="bi bi-check2-circle me-1"></i>שמור דיווח תחנה
-                        </button>
+                    </div>
+                    <div class="list-group list-group-flush sb-station-list" id="stationsNav">
+                        {% for item in stations_data %}
+                            <a class="list-group-item list-group-item-action sb-station-item d-flex justify-content-between align-items-center {% if item.station.code == selected_station.code %}active{% endif %}"
+                               href="?station={{ item.station.code }}"
+                               data-station-code="{{ item.station.code }}"
+                               data-pending="{{ item.pending_orders_count|default:0 }}">
+                                <span class="text-truncate pe-2">{{ item.station.name }}</span>
+                                {% if item.pending_orders_count > 0 %}
+                                    <span class="sb-station-badge">{{ item.pending_orders_count }}</span>
+                                {% else %}
+                                    <span class="sb-station-badge is-empty">0</span>
+                                {% endif %}
+                            </a>
+                        {% endfor %}
                     </div>
                 </div>
-            {% endif %}
-        </form>
+            </div>
+            <!-- Left Column: Active Station Header + Orders Table Card -->
+            <div class="col-12 col-lg-9">
+                <!-- Standalone station header row (outside the table card) -->
+                <div class="d-flex justify-content-between align-items-center mb-2 px-1 d-print-none">
+                    <div class="d-flex align-items-baseline gap-2">
+                        <h5 class="mb-0 fw-bold">{{ selected_station.name }}</h5>
+                        <span class="text-muted small">({{ selected_station.code }})</span>
+                    </div>
+                    <span class="sb-badge-soft">{{ backlog|length }} הזמנות בתור</span>
+                </div>
+                <form method="post" id="trackingForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="station_code" value="{{ selected_station.code }}">
+                    <input type="hidden" name="next_station" id="nextStationInput" value="">
+                    <div class="card overflow-hidden mb-3 sb-tracking-card">
+                        <div class="table-responsive sb-tracking-table-wrap">
+                            <table class="table table-hover align-middle mb-0" id="trackingTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 56px;" class="text-center d-print-none">
+                                            <input class="form-check-input"
+                                                   type="checkbox"
+                                                   id="selectAllCheckbox"
+                                                   title="בחר הכל"
+                                                   style="cursor: pointer">
+                                        </th>
+                                        <th class="d-none d-print-table-cell text-center" style="width: 50px;">V</th>
+                                        <th>הזמנה [מנה]</th>
+                                        <th>שם לקוח</th>
+                                        <th class="text-center">דלתות בתחנה זו</th>
+                                        <th>תאריך יעד</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in backlog %}
+                                        <tr class="tracking-row"
+                                            id="row-{{ row.order_number }}-{{ row.batch_number }}"
+                                            style="cursor: pointer">
+                                            <td class="text-center d-print-none">
+                                                <input class="form-check-input item-checkbox"
+                                                       type="checkbox"
+                                                       name="completed_batches"
+                                                       value="{{ row.order_number }}:{{ row.batch_number }}"
+                                                       style="width: 1.25rem;
+                                                              height: 1.25rem;
+                                                              cursor: pointer">
+                                            </td>
+                                            <td class="d-none d-print-table-cell text-center">
+                                                <div style="width: 18px;
+                                                            height: 18px;
+                                                            border: 1px solid #000;
+                                                            margin: auto"></div>
+                                            </td>
+                                            <td>
+                                                <strong class="text-primary">{{ row.display_order_batch }}</strong>
+                                            </td>
+                                            <td>{{ row.customer|default:"-" }}</td>
+                                            <td class="text-center">
+                                                <span class="sb-badge-soft">{{ row.doors_count }} יח'</span>
+                                            </td>
+                                            <td>
+                                                {% if row.completion_date %}
+                                                    <span>{{ row.completion_date|date:"d/m/Y" }}</span>
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="6" class="sb-empty border-0 py-5">
+                                                <i class="bi bi-check-circle text-success d-block mb-2"></i>
+                                                אין הזמנות פתוחות בתחנה זו כרגע.
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- Bottom Action Bar -->
+                    <div class="card d-print-none">
+                        <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                            <div>
+                                {% if backlog %}
+                                    <span class="text-muted">נבחרו לסימון:</span>
+                                    <strong id="selectedCounter" class="text-primary fs-6">0</strong> הזמנות
+                                {% else %}
+                                    <span class="text-muted small">תחנה נקייה — ניתן לעבור לתחנה הפעילה הבאה</span>
+                                {% endif %}
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <button type="button"
+                                        class="btn btn-outline-secondary"
+                                        id="nextStationBtn"
+                                        title="דלג לתחנה הפעילה הבאה">
+                                    <span>תחנה הבאה</span>
+                                    <i class="bi bi-arrow-left ms-1"></i>
+                                </button>
+                                {% if backlog %}
+                                    <button type="submit"
+                                            class="btn btn-primary px-4 fw-semibold"
+                                            id="submitBtn"
+                                            disabled>
+                                        <i class="bi bi-check2-circle me-1"></i>שמור דיווח תחנה
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
     <style>
+        .sb-stations-panel {
+            position: sticky;
+            top: calc(var(--topbar-height, 65px) + 1rem);
+        }
+
+        .sb-station-list {
+            max-height: calc(100vh - 210px);
+            overflow-y: auto;
+        }
+
+        .sb-station-item {
+            position: relative;
+            padding: 0.6rem 0.95rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--sb-text-soft);
+            background-color: var(--sb-surface);
+            border-color: var(--sb-border);
+            transition: background-color 0.15s ease, color 0.15s ease;
+        }
+
+        .sb-station-item:hover {
+            background-color: var(--sb-sidebar-hover);
+            color: var(--sb-text-strong);
+        }
+
+        .sb-station-item.active {
+            background-color: var(--sb-primary-soft);
+            color: var(--sb-primary-text);
+            border-color: var(--sb-border);
+            font-weight: 700;
+        }
+
+        .sb-station-item.active::before {
+            content: '';
+            position: absolute;
+            inset-block: 0;
+            inset-inline-start: 0;
+            width: 3px;
+            background-color: var(--sb-primary);
+        }
+
+        .sb-station-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 24px;
+            height: 20px;
+            padding: 0 0.45rem;
+            border-radius: var(--bs-border-radius-pill);
+            font-size: 0.75rem;
+            font-weight: 700;
+            background-color: var(--sb-primary-soft);
+            color: var(--sb-primary-text);
+            flex-shrink: 0;
+        }
+
+        .sb-station-item.active .sb-station-badge {
+            background-color: var(--sb-primary);
+            color: #ffffff;
+        }
+
+        .sb-station-badge.is-empty {
+            background-color: var(--sb-bg);
+            color: var(--sb-muted);
+            font-weight: 500;
+        }
+
+        /* Фиксированная минимальная высота карточки таблицы, чтобы кнопки снизу не прыгали */
+        .sb-tracking-table-wrap {
+            min-height: 460px;
+            border-radius: 0 !important;
+        }
+
+        #trackingTable tbody tr.tracking-row:last-child td {
+            border-bottom: 1px solid var(--sb-border);
+        }
+
         .selected-row > td {
             background-color: var(--sb-primary-soft) !important;
+        }
+
+        @media (max-width: 991.98px) {
+            .sb-stations-panel {
+                position: static;
+            }
+
+            .sb-station-list {
+                max-height: 240px;
+            }
+
+            .sb-tracking-table-wrap {
+                min-height: 260px;
+            }
         }
 
         @media print {
             body {
                 font-size: 13pt;
+            }
+
+            .sb-tracking-table-wrap {
+                min-height: auto;
             }
 
             .table {
@@ -183,16 +300,6 @@
                 padding: 8px !important;
             }
         }
-
-        .stations-carousel {
-            scroll-behavior: smooth;
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-
-        .stations-carousel::-webkit-scrollbar {
-            display: none;
-        }
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -200,8 +307,10 @@
             const checkboxes = document.querySelectorAll('.item-checkbox');
             const submitBtn = document.getElementById('submitBtn');
             const counter = document.getElementById('selectedCounter');
+            const filterToggle = document.getElementById('filterActiveStations');
+            const stationItems = Array.from(document.querySelectorAll('#stationsNav .sb-station-item'));
 
-            function updateState() {
+            function updateSelectionState() {
                 let count = 0;
                 checkboxes.forEach(cb => {
                     const tr = cb.closest('tr');
@@ -213,6 +322,11 @@
                     }
                 });
 
+                if (selectAll && checkboxes.length > 0) {
+                    selectAll.checked = count === checkboxes.length;
+                    selectAll.indeterminate = count > 0 && count < checkboxes.length;
+                }
+
                 if (counter) counter.innerText = count;
                 if (submitBtn) submitBtn.disabled = (count === 0);
             }
@@ -222,72 +336,99 @@
                     checkboxes.forEach(cb => {
                         cb.checked = this.checked;
                     });
-                    updateState();
+                    updateSelectionState();
                 });
             }
 
             checkboxes.forEach(cb => {
-                cb.addEventListener('change', updateState);
+                cb.addEventListener('change', updateSelectionState);
             });
+
+            // Toggle row checkbox when clicking anywhere on the row
+            document.querySelectorAll('#trackingTable tbody .tracking-row').forEach(row => {
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('input, a, button, label')) return;
+                    const cb = row.querySelector('.item-checkbox');
+                    if (cb) {
+                        cb.checked = !cb.checked;
+                        updateSelectionState();
+                    }
+                });
+            });
+
+            // Filter empty stations toggle with sessionStorage persistence
+            function applyStationsFilter(onlyActive) {
+                stationItems.forEach(item => {
+                    const pending = parseInt(item.dataset.pending || '0', 10);
+                    const isActive = item.classList.contains('active');
+                    if (onlyActive && pending === 0 && !isActive) {
+                        item.classList.add('d-none');
+                    } else {
+                        item.classList.remove('d-none');
+                    }
+                });
+            }
+
+            if (filterToggle) {
+                const savedFilter = sessionStorage.getItem('sb_tracking_only_active') === '1';
+                filterToggle.checked = savedFilter;
+                applyStationsFilter(savedFilter);
+
+                filterToggle.addEventListener('change', function () {
+                    sessionStorage.setItem('sb_tracking_only_active', this.checked ? '1' : '0');
+                    applyStationsFilter(this.checked);
+                });
+            }
+
+            // Scroll active station into view inside the vertical list
+            const activeItem = document.querySelector('#stationsNav .sb-station-item.active');
+            if (activeItem) {
+                activeItem.scrollIntoView({block: 'nearest'});
+            }
+
+            // Resolve next station code (prioritize stations with pending > 0)
+            function resolveNextStationCode() {
+                if (!stationItems.length) return '';
+
+                const currentIndex = stationItems.findIndex(a => a.classList.contains('active'));
+                if (currentIndex === -1) return '';
+
+                const total = stationItems.length;
+
+                for (let i = 1; i < total; i++) {
+                    const idx = (currentIndex + i) % total;
+                    const pending = parseInt(stationItems[idx].dataset.pending || '0', 10);
+                    if (pending > 0) {
+                        return stationItems[idx].dataset.stationCode;
+                    }
+                }
+
+                const nextIndex = (currentIndex + 1) % total;
+                return stationItems[nextIndex].dataset.stationCode;
+            }
+
+            const nextStationBtn = document.getElementById('nextStationBtn');
+            if (nextStationBtn) {
+                nextStationBtn.addEventListener('click', () => {
+                    const nextCode = resolveNextStationCode();
+                    if (nextCode) {
+                        window.location.href = `?station=${encodeURIComponent(nextCode)}`;
+                    }
+                });
+            }
+
+            const trackingForm = document.getElementById('trackingForm');
+            const nextStationInput = document.getElementById('nextStationInput');
+
+            if (trackingForm) {
+                trackingForm.addEventListener('submit', () => {
+                    const nextCode = resolveNextStationCode();
+                    if (nextCode) {
+                        if (nextStationInput) nextStationInput.value = nextCode;
+                        trackingForm.action = `?station=${encodeURIComponent(nextCode)}`;
+                    }
+                });
+            }
         });
-
-        const stationsContainer = document.getElementById('stationsContainer');
-        const btnPrev = document.getElementById('stationScrollPrev');
-        const btnNext = document.getElementById('stationScrollNext');
-
-        if (stationsContainer) {
-            const getStep = () => Math.max(stationsContainer.clientWidth * 0.7, 200);
-
-            if (btnNext) {
-                btnNext.addEventListener('click', () => {
-                    stationsContainer.scrollBy({left: -getStep(), behavior: 'smooth'});
-                });
-            }
-
-            if (btnPrev) {
-                btnPrev.addEventListener('click', () => {
-                    stationsContainer.scrollBy({left: getStep(), behavior: 'smooth'});
-                });
-            }
-
-            const activeTab = stationsContainer.querySelector('.nav-link.active');
-            if (activeTab) {
-                activeTab.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
-            }
-        }
-
-        function resolveNextStationCode() {
-            const links = Array.from(document.querySelectorAll('#stationsNav .nav-link'));
-            if (!links.length) return '';
-
-            const currentIndex = links.findIndex(a => a.classList.contains('active'));
-            if (currentIndex === -1) return '';
-
-            const total = links.length;
-
-            for (let i = 1; i < total; i++) {
-                const idx = (currentIndex + i) % total;
-                const pending = parseInt(links[idx].dataset.pending || '0', 10);
-                if (pending > 0) {
-                    return links[idx].dataset.stationCode;
-                }
-            }
-
-            const nextIndex = (currentIndex + 1) % total;
-            return links[nextIndex].dataset.stationCode;
-        }
-
-        const trackingForm = document.getElementById('trackingForm');
-        const nextStationInput = document.getElementById('nextStationInput');
-
-        if (trackingForm) {
-            trackingForm.addEventListener('submit', () => {
-                const nextCode = resolveNextStationCode();
-                if (nextCode) {
-                    if (nextStationInput) nextStationInput.value = nextCode;
-                    trackingForm.action = `?station=${encodeURIComponent(nextCode)}`;
-                }
-            });
-        }
     </script>
 {% endblock %}
