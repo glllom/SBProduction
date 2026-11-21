@@ -118,6 +118,10 @@ USE_I18N = True
 
 USE_TZ = True
 
+LANGUAGES = [
+    ('he', 'עברית'),
+]
+
 LOCALE_PATHS = [
     BASE_DIR / 'locale',
 ]

@@ -7,9 +7,12 @@
 
     --sb-bg: #f3f6f5;
     --sb-surface: #ffffff;
-    --sb-surface-muted: #f8faf9;
-    --sb-surface-subtle: #e8efed;
+    --sb-surface-muted: #e1e9ec;
+    --sb-surface-subtle: #dae4e8;
+    --sb-row-hover: color-mix(in srgb, var(--sb-primary) 6%, #ffffff);
     --sb-border: #e0e8e6;
+    --sb-border-strong: #cbd8d5;
+    --sb-text-soft: #3d4f4b;
 
     --sb-sidebar-hover: #f0f6f5;
     --sb-sidebar-text: #4b5e5a;
@@ -363,4 +366,36 @@ body.dashboard #content div.border.rounded-default > div,
 body.dashboard #content div.border.rounded-default tr:hover,
 #content table tbody tr:hover {
     background-color: var(--sb-sidebar-hover) !important;
+}
+
+/* RTL: прижимаем текст в заголовках и строках таблиц Unfold к правому краю */
+[dir="rtl"] table th:not(.text-center),
+[dir="rtl"] table td:not(.text-center),
+[dir="rtl"] table .text-left {
+    text-align: right !important;
+}
+
+html:not(.dark) table thead,
+html:not(.dark) table thead tr,
+html:not(.dark) table thead th {
+    background-color: var(--sb-surface-muted) !important;
+    color: var(--sb-text-soft) !important;
+    border-bottom: 1px solid var(--sb-border-strong) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Ссылки сортировки и иконки в заголовках колонок */
+html:not(.dark) table thead th a,
+html:not(.dark) table thead th .text-font-subtle-light {
+    color: var(--sb-text-soft) !important;
+}
+
+html:not(.dark) table thead th a:hover {
+    color: var(--sb-primary) !important;
+}
+
+/* Единая подсветка строк при наведении (hover) в списках админки */
+html:not(.dark) #result_list tbody tr:hover td {
+    background-color: var(--sb-row-hover, color-mix(in srgb, #157485 6%, #ffffff)) !important;
 }

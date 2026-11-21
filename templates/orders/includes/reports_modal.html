@@ -2,9 +2,9 @@
 <div class="modal fade" id="reportsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header border-bottom">
+            <div class="modal-header">
                 <h5 class="modal-title fw-bold">
-                    <i class="bi bi-printer me-2 text-dark"></i>הדפסת דוחות וייצור קבצים
+                    <i class="bi bi-printer me-2 text-primary"></i>הדפסת דוחות וייצור קבצים
                 </h5>
                 <button type="button"
                         class="btn-close"
@@ -12,13 +12,13 @@
                         aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <!-- Шаг 1: Выбор батчей (таблица с чекбоксами как в Django Admin) -->
-                <div class="mb-4 p-3 bg-body-tertiary rounded-3 border">
+                <!-- Шаг 1: Выбор партий (Batches) -->
+                <div class="mb-4 p-3 rounded-3 border"
+                     style="background-color: var(--sb-bg)">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="fw-bold text-secondary mb-0">1. בחירת אצוות (Batches) לביצוע</h6>
+                        <h6 class="fw-bold text-muted mb-0">1. בחירת אצוות לביצוע</h6>
                         {% if order_batches %}
-                            <span class="badge bg-secondary-subtle text-secondary-emphasis border"
-                                  id="selectedBatchesCounter">
+                            <span class="sb-badge-soft" id="selectedBatchesCounter">
                                 נבחרו {{ order_batches|length }} מתוך {{ order_batches|length }}
                             </span>
                         {% endif %}
@@ -26,7 +26,7 @@
                     {% if order_batches %}
                         <div class="table-responsive rounded-2 border bg-body">
                             <table class="table table-sm table-hover align-middle mb-0">
-                                <thead class="table-light text-secondary small">
+                                <thead>
                                     <tr>
                                         <th style="width: 38px;" class="text-center">
                                             <input class="form-check-input"
@@ -58,7 +58,7 @@
                                                 style="max-width: 280px"
                                                 title="{{ b.models_summary }}">{{ b.models_summary|default:"-" }}</td>
                                             <td class="text-center">
-                                                <span class="badge rounded-pill bg-body-secondary text-body-secondary border">{{ b.items_count }} יח'</span>
+                                                <span class="sb-badge-soft sb-neutral">{{ b.items_count }} יח'</span>
                                             </td>
                                         </tr>
                                     {% endfor %}
@@ -69,19 +69,19 @@
                         <div class="text-muted small py-2">אין עדיין אצוות בייצור</div>
                     {% endif %}
                 </div>
-                <!-- Шаг 2: Выбор отчета / Действия -->
-                <h6 class="fw-bold text-secondary mb-3">2. בחירת דוח או פעולה</h6>
+                <!-- Шаг 2: Выбор отчёта / Действия -->
+                <h6 class="fw-bold text-muted mb-3">2. בחירת דוח או פעולה</h6>
                 <div class="row g-3">
-                    <!-- Отчеты -->
+                    <!-- Отчёты -->
                     <div class="col-md-4">
                         <div class="card h-100">
-                            <div class="card-header bg-body-tertiary border-bottom-0 pt-3 pb-2">
-                                <h6 class="fw-bold text-primary mb-0">
+                            <div class="card-header py-2 px-3">
+                                <h6 class="fw-bold text-primary mb-0 fs-6">
                                     <i class="bi bi-file-earmark-text me-1"></i>דוחות ייצור
                                 </h6>
                             </div>
-                            <div class="card-body d-flex flex-column gap-2">
-                                <!-- Мастер отчет -->
+                            <div class="card-body d-flex flex-column gap-2 p-3">
+                                <!-- Мастер-отчёт -->
                                 {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' %}
                                     <button type="button"
                                             class="btn btn-primary btn-sm text-start btn-generate-action disabled opacity-50"
@@ -97,7 +97,7 @@
                                         <i class="bi bi-printer-fill me-1"></i><strong>הדפסת הכל (Master)</strong>
                                     </button>
                                 {% endif %}
-                                <!-- Участки (ТОЛЬКО станции с типом REPORT = 10) -->
+                                <!-- Участки (станции с типом REPORT) -->
                                 {% for station in order.get_production_stations %}
                                     {% if station.is_report %}
                                         <div class="d-flex align-items-stretch gap-1">
@@ -126,23 +126,16 @@
                                                     title="{% if station.note_text %}הערה קיימת:
 
 
-
-
-
-
-
-
-
 												        {{ station.note_text }}{% else %}הוסף הערה לדו&quot;ח {{ station.label|default:station.name }}{% endif %}">
                                                 <i class="bi bi-pencil"></i>
                                             </button>
                                         </div>
                                     {% endif %}
                                 {% endfor %}
-                                <!-- Скетчи -->
+                                <!-- Эскизы -->
                                 {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' %}
                                     <button type="button"
-                                            class="btn btn-outline-dark btn-sm text-start btn-generate-action disabled opacity-50"
+                                            class="btn btn-outline-primary btn-sm text-start btn-generate-action disabled opacity-50"
                                             disabled
                                             title="לא זמין בשלב א'"
                                             data-url="{% url 'production:order-sketches-report' order.id %}">
@@ -150,16 +143,16 @@
                                     </button>
                                 {% else %}
                                     <button type="button"
-                                            class="btn btn-outline-dark btn-sm text-start btn-generate-action"
+                                            class="btn btn-outline-primary btn-sm text-start btn-generate-action"
                                             data-url="{% url 'production:order-sketches-report' order.id %}">
                                         <i class="bi bi-file-earmark-image me-1"></i>סקיצות
                                     </button>
                                 {% endif %}
-                                <!-- דו''ח מדידה -->
+                                <!-- Замеры для раздельной установки -->
                                 {% if order.has_split_installation %}
                                     {% if order.status == 'COMPLETED' or order.status == 'NEW' %}
                                         <button type="button"
-                                                class="btn btn-outline-warning btn-sm text-start btn-generate-action disabled opacity-50"
+                                                class="btn btn-outline-accent btn-sm text-start btn-generate-action disabled opacity-50"
                                                 disabled
                                                 title="לא זמין בהזמנת קומפלט"
                                                 data-url="{% url 'production:split-measurer-report' order.pk %}">
@@ -167,7 +160,7 @@
                                         </button>
                                     {% else %}
                                         <button type="button"
-                                                class="btn btn-outline-warning btn-sm text-start btn-generate-action"
+                                                class="btn btn-outline-accent btn-sm text-start btn-generate-action"
                                                 data-url="{% url 'production:split-measurer-report' order.pk %}">
                                             <i class="bi bi-pencil-square me-1"></i>דו''ח מדידה
                                         </button>
@@ -176,22 +169,22 @@
                             </div>
                         </div>
                     </div>
-                    <!-- ЧПУ -->
+                    <!-- ЧПУ (фирменный индиго-акцент) -->
                     <div class="col-md-4">
                         <div class="card h-100">
-                            <div class="card-header bg-body-tertiary border-bottom-0 pt-3 pb-2">
-                                <h6 class="fw-bold text-success mb-0">
+                            <div class="card-header py-2 px-3">
+                                <h6 class="fw-bold text-accent mb-0 fs-6">
                                     <i class="bi bi-cpu me-1"></i>קבצי מכונות (CNC)
                                 </h6>
                             </div>
-                            <div class="card-body d-flex flex-column gap-2">
+                            <div class="card-body d-flex flex-column gap-2 p-3">
                                 <button type="button"
-                                        class="btn btn-success btn-sm text-start btn-generate-action"
+                                        class="btn btn-accent btn-sm text-start btn-generate-action"
                                         data-url="{% url 'production:order-production-data' order.pk %}">
                                     <i class="bi bi-file-earmark-zip-fill me-1"></i><strong>הורדת ארכיון (ZIP)</strong>
                                 </button>
                                 <button type="button"
-                                        class="btn btn-outline-success btn-sm text-start btn-generate-action"
+                                        class="btn btn-outline-accent btn-sm text-start btn-generate-action"
                                         data-url="{% url 'production:sync_usb' %}?order_id={{ order.pk }}">
                                     <i class="bi bi-usb-drive me-1"></i>סנכרון ל-USB
                                 </button>
@@ -201,13 +194,15 @@
                     <!-- Наклейки и склад -->
                     <div class="col-md-4">
                         <div class="card h-100">
-                            <div class="card-header bg-body-tertiary border-bottom-0 pt-3 pb-2">
-                                <h6 class="fw-bold mb-0"><i class="bi bi-tags me-1"></i>מדבקות ומחסן</h6>
+                            <div class="card-header py-2 px-3">
+                                <h6 class="fw-bold mb-0 fs-6">
+                                    <i class="bi bi-tags me-1 text-primary"></i>מדבקות ומחסן
+                                </h6>
                             </div>
-                            <div class="card-body d-flex flex-column gap-2">
+                            <div class="card-body d-flex flex-column gap-2 p-3">
                                 {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' %}
                                     <button type="button"
-                                            class="btn btn-dark btn-sm text-start btn-generate-action disabled opacity-50"
+                                            class="btn btn-primary btn-sm text-start btn-generate-action disabled opacity-50"
                                             disabled
                                             title="לא זמין בשלב א'"
                                             data-url="{% url 'production:station-report' order.pk %}?station=ALL">
@@ -215,7 +210,7 @@
                                     </button>
                                 {% else %}
                                     <button type="button"
-                                            class="btn btn-dark btn-sm text-start btn-generate-action"
+                                            class="btn btn-primary btn-sm text-start btn-generate-action"
                                             data-url="{% url 'production:station-report' order.pk %}?station=ALL">
                                         <i class="bi bi-tag-fill me-1"></i><strong>כל המדבקות</strong>
                                     </button>
@@ -236,7 +231,7 @@
                                     </button>
                                 {% endif %}
                                 <button type="button"
-                                        class="btn btn-outline-dark btn-sm text-start btn-generate-action"
+                                        class="btn btn-outline-primary btn-sm text-start btn-generate-action"
                                         data-url="{% url 'production:order-warehouse-setup' order.id %}"
                                         data-target="_self">
                                     <i class="bi bi-box-seam me-1"></i>הגדרות מחסן וליקוט
@@ -256,8 +251,8 @@
      aria-hidden="true"
      style="z-index: 1065">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content shadow-lg border-2">
-            <div class="modal-header py-2 bg-body-tertiary">
+        <div class="modal-content shadow-lg">
+            <div class="modal-header py-2">
                 <h6 class="modal-title fw-bold mb-0">
                     <i class="bi bi-pencil-square me-1 text-primary"></i>
                     הערה לדו"ח: <span id="stationNoteModalTitle"></span>

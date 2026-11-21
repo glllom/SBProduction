@@ -26,12 +26,12 @@
                         data-bs-toggle="modal"
                         data-bs-target="#groupModal"
                         title="הוספת קבוצת דלתות חדשה להזמנה">
-                    <i class="bi bi-plus-lg ms-1"></i>הוספת דלתות
+                    <i class="bi bi-plus-lg me-1"></i>הוספת דלתות
                 </button>
                 <button class="btn btn-sm btn-outline-accent btn-open-load-spec"
                         data-group-id=""
                         title="הוספת קבוצה ממפרט שמור">
-                    <i class="bi bi-box-arrow-in-down ms-1"></i>טעינת מפרט שמור
+                    <i class="bi bi-box-arrow-in-down me-1"></i>טעינת מפרט שמור
                 </button>
             {% endif %}
         </div>
@@ -41,7 +41,7 @@
                 <button class="btn btn-outline-warning btn-sm dropdown-toggle"
                         type="button"
                         data-bs-toggle="dropdown">
-                    <i class="bi bi-tools ms-1"></i>Dev Tools
+                    <i class="bi bi-tools me-1"></i>Dev Tools
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
                     <li>
@@ -142,41 +142,42 @@
     </div>
     <!-- Панель производственных действий (показывается только при наличии групп или активного статуса) -->
     {% if groups or order.status != 'NEW' and order.status != 'CANCELED' %}
-        <div class="d-flex flex-wrap align-items-center justify-content-start gap-2 py-2 px-3 mb-3 rounded-3 border bg-body-tertiary">
+        <div class="d-flex flex-wrap align-items-center justify-content-start gap-2 py-2 px-3 mb-3 rounded-3 border"
+             style="background-color: var(--sb-surface)">
             {% if order.can_start_production %}
                 {% if order.status == 'PHASE1_READY' %}
                     <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-                       class="btn btn-warning fw-semibold">
-                        <i class="bi bi-arrow-right-circle ms-1"></i> העבר לשלב ב' (הזנת מידות)
+                       class="btn btn-primary fw-semibold">
+                        <i class="bi bi-arrow-right-circle me-1"></i>העבר לשלב ב' (הזנת מידות)
                     </a>
                 {% else %}
                     <button type="button"
                             class="btn btn-primary fw-semibold"
                             onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
-                        <i class="bi bi-play-circle ms-1"></i> העבר לייצור (אצווה חדשה)
+                        <i class="bi bi-play-circle me-1"></i>העבר לייצור (אצווה חדשה)
                     </button>
                 {% endif %}
                 <a href="{% url 'production:order-check-validation' order.pk %}"
-                   class="btn btn-outline-info"
+                   class="btn btn-outline-secondary"
                    data-bs-toggle="tooltip"
                    title="בדיקת תקינות הנתונים של ההזמנה">
-                    <i class="bi bi-list-task ms-1"></i> בדיקת תקינות
+                    <i class="bi bi-list-task me-1"></i>בדיקת תקינות
                 </a>
             {% endif %}
             {% if not order.can_start_production %}
                 {% if order.status == 'PHASE1_PRODUCTION' %}
                     <a href="{% url 'production:order-complete-phase1' order.pk %}"
-                       class="btn btn-success fw-semibold"
+                       class="btn btn-primary fw-semibold"
                        data-bs-toggle="tooltip"
                        title="סיום שלב א' של ההזמנה">
-                        <i class="bi bi-check-circle ms-1"></i> סיום שלב א'
+                        <i class="bi bi-check-circle me-1"></i>סיום שלב א'
                     </a>
                 {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' or order.status == 'PARTIALLY_READY' %}
                     <a href="{% url 'production:order-complete-production' order.pk %}"
-                       class="btn btn-success fw-semibold"
+                       class="btn btn-primary fw-semibold"
                        data-bs-toggle="tooltip"
                        title="סיום תהליך הייצור והעברה למוכן למשלוח">
-                        <i class="bi bi-check-all ms-1"></i> סיום ייצור
+                        <i class="bi bi-check-all me-1"></i>סיום ייצור
                     </a>
                 {% endif %}
             {% endif %}
@@ -185,86 +186,47 @@
                    class="btn btn-outline-primary"
                    data-bs-toggle="tooltip"
                    title="צפייה ועריכת מידות הפריטים">
-                    <i class="bi bi-rulers ms-1"></i> טופס מידות
+                    <i class="bi bi-rulers me-1"></i>טופס מידות
                 </a>
             {% endif %}
             {% if order.status != 'NEW' and order.status != 'CANCELED' %}
                 <button type="button"
-                        class="btn btn-dark fw-semibold"
+                        class="btn btn-accent fw-semibold"
                         data-bs-toggle="modal"
                         data-bs-target="#reportsModal"
                         title="הדפסת דוחות, מדבקות והורדת קבצי מכונה">
-                    <i class="bi bi-printer ms-1"></i> דוחות וייצור קבצים
+                    <i class="bi bi-printer me-1"></i>דוחות וייצור קבצים
                 </button>
             {% endif %}
         </div>
     {% endif %}
     <!-- Группы дверей или компактная заглушка без скроллбара -->
     {% if groups %}
-        <div class="row">
-            <div class="col-12 col-xl-11 mb-4">
-                <div class="d-flex justify-content-between align-items-center mb-3 px-1">
-                    <span class="text-muted small fw-semibold">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
-                    <div class="btn-group btn-group-sm" role="group">
-                        <button type="button"
-                                class="btn btn-outline-secondary"
-                                id="btnExpandAllGroups"
-                                data-bs-toggle="tooltip"
-                                title="פתח את כל הקבוצות">
-                            <i class="bi bi-plus-lg ms-1"></i>פתח הכל
-                        </button>
-                        <button type="button"
-                                class="btn btn-outline-secondary"
-                                id="btnCollapseAllGroups"
-                                data-bs-toggle="tooltip"
-                                title="סגור את כל הקבוצות">
-                            <i class="bi bi-dash-lg ms-1"></i>סגור הכל
-                        </button>
-                    </div>
+        <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                <span class="text-muted small fw-semibold">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
+                <div class="d-inline-flex align-items-center gap-1">
+                    <button type="button"
+                            class="sb-view-toggle-btn"
+                            id="btnExpandAllGroups"
+                            data-bs-toggle="tooltip"
+                            title="פתח את כל הקבוצות">
+                        <i class="bi bi-arrows-expand me-1"></i>פתח הכל
+                    </button>
+                    <span class="text-muted opacity-25">|</span>
+                    <button type="button"
+                            class="sb-view-toggle-btn"
+                            id="btnCollapseAllGroups"
+                            data-bs-toggle="tooltip"
+                            title="סגור את כל הקבוצות">
+                        <i class="bi bi-arrows-collapse me-1"></i>סגור הכל
+                    </button>
                 </div>
-                <div class="accordion d-flex flex-column gap-3" id="groupsAccordion">
-                    {% for group in groups %}
-                        {% with items=group.items.all %}
-                            <div class="card overflow-hidden group-accordion-item"
-                                 data-group-id="{{ group.id }}">
-                                <div class="card-header bg-body border-0 py-3 px-3 d-flex justify-content-between align-items-center cursor-pointer"
-                                     role="button"
-                                     data-bs-toggle="collapse"
-                                     data-bs-target="#groupCollapse-{{ group.id }}"
-                                     aria-expanded="true"
-                                     aria-controls="groupCollapse-{{ group.id }}">
-                                    <div class="d-flex align-items-center gap-3">
-                                        <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle fs-6 px-3">
-                                            <i class="bi bi-door-closed ms-1"></i>
-                                            {% if items|length > 1 %}
-                                                דלתות {{ items.0.mark }}-{{ items.last.mark }}
-                                            {% elif items|length == 1 %}
-                                                דלת {{ items.0.mark }}
-                                            {% else %}
-                                                ללא דלתות
-                                            {% endif %}
-                                        </span>
-                                        <h5 class="mb-0 fw-bold text-dark">
-                                            {{ group.product.name|default:"דגם לא נבחר" }}
-                                            {% if group.product.code %}
-                                                <small class="text-muted fw-normal fs-6">({{ group.product.code }})</small>
-                                            {% endif %}
-                                        </h5>
-                                    </div>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="badge rounded-pill bg-body-secondary text-body-secondary border">{{ group.quantity }} יח'</span>
-                                        <i class="bi bi-chevron-down fs-5 text-secondary collapse-arrow"></i>
-                                    </div>
-                                </div>
-                                <div id="groupCollapse-{{ group.id }}"
-                                     class="collapse show group-collapse-body"
-                                     data-bs-parent="">
-                                    <div class="card-body p-0 border-top">{% include "orders/includes/group_card.html" %}</div>
-                                </div>
-                            </div>
-                        {% endwith %}
-                    {% endfor %}
-                </div>
+            </div>
+            <div class="accordion d-flex flex-column gap-3" id="groupsAccordion">
+                {% for group in groups %}
+                    {% include "orders/includes/group_card.html" %}
+                {% endfor %}
             </div>
         </div>
     {% else %}
@@ -278,10 +240,10 @@
                         <button class="btn btn-primary"
                                 data-bs-toggle="modal"
                                 data-bs-target="#groupModal">
-                            <i class="bi bi-plus-lg ms-1"></i>הוסף קבוצה ראשונה
+                            <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
                         </button>
                         <button class="btn btn-outline-accent btn-open-load-spec" data-group-id="">
-                            <i class="bi bi-box-arrow-in-down ms-1"></i>טען ממפרט שמור
+                            <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
                         </button>
                     </div>
                 {% endif %}
@@ -512,7 +474,7 @@
                         }
                         $productSelect.val(productId);
                         $groupModal.find('.product-info-display').html(
-                            '<span class="sb-product-found fw-semibold"><i class="bi bi-check-circle-fill ms-1"></i>' +
+                            '<span class="sb-product-found fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>' +
                             productName + ' (' + productCode + ')</span>'
                         );
                     }
@@ -786,7 +748,7 @@
                             if ($display.length) {
                                 $display.html(
                                     '<span class="sb-product-found fw-semibold" data-bs-toggle="tooltip" title="' + (desc || model['name']) + '">' +
-                                    '<i class="bi bi-check-circle-fill ms-1"></i>' + model['name'] + ' (' + model['code'] + ')</span>'
+                                    '<i class="bi bi-check-circle-fill me-1"></i>' + model['name'] + ' (' + model['code'] + ')</span>'
                                 );
                                 if (window['initTooltips']) window['initTooltips']($display[0]);
                             }
@@ -1042,7 +1004,7 @@
                                 }
                             }
 
-                            const reqBadge = (cust['customizer_is_required'] || cust['is_required']) ? '<span class="badge bg-danger-subtle text-danger ms-1">חובה</span>' : '';
+                            const reqBadge = (cust['customizer_is_required'] || cust['is_required']) ? '<span class="badge bg-danger-subtle text-danger me-1">חובה</span>' : '';
                             html +=
                                 '<div class="col">' +
                                 '<div class="p-3 border rounded-3 bg-body h-100" data-bs-toggle="tooltip" title="' + (cust['customizer_description'] || cust['customizer_name']) + '">' +
@@ -1127,7 +1089,7 @@
                 if (!hasParams) paramsHtml += '<div class="col-12 text-muted extra-small">אין פרמטרים להגדרה</div>';
                 paramsHtml += '</div>';
 
-                const reqBadge = custIsRequired ? '<span class="badge bg-danger-subtle text-danger ms-1">חובה</span>' : '';
+                const reqBadge = custIsRequired ? '<span class="badge bg-danger-subtle text-danger me-1">חובה</span>' : '';
                 return '<tr data-item-id="' + item['id'] + '">' +
                     '<td><div class="fw-bold text-primary" data-bs-toggle="tooltip" title="' + (item['customizer_description'] || item['customizer_name']) + '">' +
                     item['customizer_name'] + reqBadge + '</div>' +

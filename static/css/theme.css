@@ -21,6 +21,9 @@
 
     --sb-accent-soft: color-mix(in srgb, var(--sb-accent) 14%, #fff);
     --sb-accent-text: color-mix(in srgb, var(--sb-accent) 70%, #000);
+    --sb-accent-hover: color-mix(in srgb, var(--sb-accent) 85%, #000);
+    --sb-accent-border: color-mix(in srgb, var(--sb-accent) 32%, #fff);
+    --bs-accent-rgb: 107, 100, 158;
 
     /* Status colours: soft matte tones */
     --sb-success: #2f9e6a;
@@ -390,6 +393,36 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: none;
 }
 
+.btn-accent {
+    --bs-btn-color: #ffffff;
+    --bs-btn-bg: var(--sb-accent);
+    --bs-btn-border-color: var(--sb-accent);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-hover-bg: var(--sb-accent-hover);
+    --bs-btn-hover-border-color: var(--sb-accent-hover);
+    --bs-btn-active-color: #ffffff;
+    --bs-btn-active-bg: var(--sb-accent-hover);
+    --bs-btn-active-border-color: var(--sb-accent-hover);
+    --bs-btn-disabled-color: #ffffff;
+    --bs-btn-disabled-bg: var(--sb-accent);
+    --bs-btn-disabled-border-color: var(--sb-accent);
+    --bs-btn-focus-shadow-rgb: var(--bs-accent-rgb);
+    background-image: var(--sb-btn-relief);
+    box-shadow: var(--sb-btn-shadow);
+}
+
+.btn-accent:hover {
+    box-shadow: var(--sb-btn-shadow-hover);
+}
+
+.btn-accent:active {
+    box-shadow: var(--sb-btn-shadow-active);
+}
+
+.text-accent {
+    color: var(--sb-accent-text) !important;
+}
+
 .btn-outline-accent {
     --bs-btn-color: var(--sb-accent-text);
     --bs-btn-border-color: color-mix(in srgb, var(--sb-accent) 32%, #fff);
@@ -407,6 +440,7 @@ h1, h2, h3, h4, h5, h6 {
     background-image: var(--sb-btn-relief);
     box-shadow: var(--sb-btn-shadow-hover);
 }
+
 
 /* ---------- Forms ---------- */
 .form-control,
@@ -556,6 +590,63 @@ h1, h2, h3, h4, h5, h6 {
     font-weight: 600;
     background-color: var(--sb-surface);
     border-bottom: 2px solid var(--sb-primary) !important;
+}
+
+.nav-pills {
+    --bs-nav-pills-border-radius: var(--sb-radius-sm);
+    --bs-nav-pills-link-active-color: #ffffff;
+    --bs-nav-pills-link-active-bg: var(--sb-primary);
+}
+
+/* Вкладки станций в трекере производства */
+.sb-station-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.42rem 0.85rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--sb-text-soft);
+    background-color: var(--sb-surface);
+    border: 1px solid var(--sb-border-strong);
+    border-radius: var(--sb-radius-sm);
+    box-shadow: var(--sb-shadow-sm);
+    text-decoration: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sb-station-pill:hover {
+    background-color: var(--sb-sidebar-hover);
+    color: var(--sb-text-strong);
+    border-color: var(--sb-primary-border);
+}
+
+.sb-station-pill.active {
+    background-color: var(--sb-primary);
+    background-image: var(--sb-btn-relief);
+    border-color: var(--sb-primary);
+    color: #ffffff;
+    font-weight: 600;
+    box-shadow: var(--sb-btn-shadow);
+}
+
+.sb-station-pill .sb-pill-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 0.4rem;
+    border-radius: var(--bs-border-radius-pill);
+    font-size: 0.75rem;
+    font-weight: 700;
+    background-color: var(--sb-primary-soft);
+    color: var(--sb-primary-text);
+}
+
+.sb-station-pill.active .sb-pill-count {
+    background-color: rgba(255, 255, 255, 0.22);
+    color: #ffffff;
 }
 
 /* ---------- Tables (dense, for ERP work) ---------- */
@@ -861,6 +952,18 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* ---------- Topbar & layout ---------- */
+
+.sb-page-container {
+    width: 100%;
+    max-width: 1380px;
+    margin-inline: auto;
+}
+
+.sb-group-header-toggle:hover {
+    background-color: var(--sb-sidebar-hover);
+
+}
+
 .top-navbar {
     background: color-mix(in srgb, var(--sb-surface) 92%, transparent);
     backdrop-filter: saturate(160%) blur(8px);
@@ -1305,6 +1408,39 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--sb-muted);
     opacity: 0.7;
     user-select: none;
+}
+
+/* Убираем скругление верхних углов у таблиц внутри вкладок карточки */
+.group-card .table-responsive,
+.tab-content .table-responsive {
+    border-radius: 0;
+}
+
+/* Лёгкие контролы отображения без рамки (פתח הכל / סגור הכל) */
+.sb-view-toggle-btn {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--sb-muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--sb-radius-xs);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sb-view-toggle-btn:hover {
+    color: var(--sb-primary);
+    background-color: var(--sb-primary-soft);
+}
+
+/* Базовая минимальная высота содержимого карточки группы, чтобы меню ⋮ не обрезалось снизу */
+.group-card .tab-content {
+    min-height: 234px;
+}
+
+/* Скрываем кнопку меню группы, когда карточка свернута */
+.group-card .card-header:has([aria-expanded="false"]) .dropdown {
+    display: none !important;
 }
 
 /* ---------- Print: lists, cards and detail pages (not the shop-floor reports) ---------- */

@@ -55,7 +55,8 @@
                                  viewBox="0 0 24 24"
                                  fill="currentColor"
                                  aria-hidden="true">
-                                <path d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.42 1.41L12 21l4.59-4.59L15.17 15 12 18.17z" />
+                                <path d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.42 1.41L12 21l4.59-4.59L15.17 15 12 18.17z">
+                                </path>
                             </svg>
                         </button>
                         <ul class="dropdown-menu sb-brand-menu text-start"
@@ -119,7 +120,8 @@
                                  viewBox="0 0 24 24"
                                  fill="currentColor"
                                  aria-hidden="true">
-                                <path d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.42 1.41L12 21l4.59-4.59L15.17 15 12 18.17z" />
+                                <path d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.42 1.41L12 21l4.59-4.59L15.17 15 12 18.17z">
+                                </path>
                             </svg>
                         </button>
                         <ul class="dropdown-menu sb-user-menu text-start"
@@ -184,7 +186,23 @@
                             </div>
                         {% endfor %}
                     {% endif %}
-                    {% block content %}{% endblock %}
+                    <div class="main-content">
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-{{ message.tags }} alert-dismissible fade show"
+                                     role="alert">
+                                    {{ message }}
+                                    <button type="button"
+                                            class="btn-close"
+                                            data-bs-dismiss="alert"
+                                            aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                        <div class="{% if request.path != '/' and request.resolver_match.url_name != 'dashboard' %}sb-page-container{% endif %}">
+                            {% block content %}{% endblock %}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
