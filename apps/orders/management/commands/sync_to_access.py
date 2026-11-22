@@ -97,7 +97,7 @@ class Command(BaseCommand):
                         num_of_doors,
                         datetime.combine(order_date, datetime.min.time()),
                         datetime.combine(completion_date, datetime.min.time()) if completion_date else None,
-                        "Заказ заведен через новую программу",
+                        "הזמנה נמצאת בתוכנה חדשה",
                     )
 
                     for idx, _item in enumerate(items, start=1):
