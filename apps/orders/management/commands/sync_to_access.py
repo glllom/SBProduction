@@ -3,16 +3,17 @@ from datetime import datetime, timedelta
 
 import pyodbc
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from django.utils import timezone
 
-from apps.orders.models import Order, OrderItem
+from apps.orders.models import Order, OrderItem, OrderItemsGroup, OrderStatus
 
 DEFAULT_ACCESS_PATH = r"\\172.16.40.254\Public\MagicDoors\MagicDoors_3.1_Tables.accdb"
 PLACEHOLDER_DOOR_TYPE_ID = 38
 
 
 class Command(BaseCommand):
-    help = "Copies new orders from PostgreSQL to MS Access (skips existing ones)"
+    help = "Copies launched orders from PostgreSQL to MS Access (skips NEW, CANCELED and existing ones)"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -23,8 +24,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--days",
             type=int,
-            default=7,
-            help="Number of past days to check for new orders (default: 7)",
+            default=14,
+            help="Number of past days to check for launched orders (default: 14)",
         )
 
     def handle(self, *args, **options):
@@ -39,7 +40,12 @@ class Command(BaseCommand):
             qs = qs.filter(order_number=options["order"].strip())
         else:
             since = timezone.now() - timedelta(days=options["days"])
-            qs = qs.filter(created_at__gte=since)
+            # Берём только заказы, уже запущенные в работу (исключаем NEW и CANCELED)
+            qs = qs.exclude(
+                status__in=[OrderStatus.NEW, OrderStatus.CANCELED]
+            ).filter(
+                Q(production_start_date__gte=since.date()) | Q(created_at__gte=since)
+            )
 
         orders = list(qs)
         if not orders:
@@ -77,11 +83,15 @@ class Command(BaseCommand):
                     continue
 
                 items = list(
-                    OrderItem.objects.filter(group__order=order).order_by("group__batch_number", "id")
+                    OrderItem.objects.filter(group__order=order)
+                    .exclude(state=OrderItem.ItemState.CANCELED)
+                    .exclude(group__production_state=OrderItemsGroup.ProductionState.CANCELED)
+                    .order_by("group__id", "id")
                 )
                 num_of_doors = len(items)
 
-                order_date = order.production_start_date or order.created_at.date()
+                raw_start = order.production_start_date or order.created_at
+                order_date = raw_start.date() if isinstance(raw_start, datetime) else raw_start
                 completion_date = order.completion_date
 
                 try:
