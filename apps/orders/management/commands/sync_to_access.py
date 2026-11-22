@@ -12,19 +12,19 @@ PLACEHOLDER_DOOR_TYPE_ID = 38
 
 
 class Command(BaseCommand):
-    help = "Копирует новые заказы из PostgreSQL в MS Access (пропускает уже существующие)"
+    help = "Copies new orders from PostgreSQL to MS Access (skips existing ones)"
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--order",
             type=str,
-            help="Синхронизировать только один конкретный номер заказа (для теста)",
+            help="Sync only a specific order number (for testing)",
         )
         parser.add_argument(
             "--days",
             type=int,
             default=7,
-            help="За сколько последних дней проверять заказы (по умолчанию 7)",
+            help="Number of past days to check for new orders (default: 7)",
         )
 
     def handle(self, *args, **options):
@@ -43,13 +43,13 @@ class Command(BaseCommand):
 
         orders = list(qs)
         if not orders:
-            self.stdout.write("Нет заказов для проверки.")
+            self.stdout.write("No orders to check.")
             return
 
         try:
             conn = pyodbc.connect(conn_str, autocommit=False)
         except pyodbc.Error as exc:
-            self.stderr.write(f"Не удалось подключиться к Access (возможно, файл заблокирован): {exc}")
+            self.stderr.write(f"Failed to connect to Access (file may be locked): {exc}")
             return
 
         created_count = 0
@@ -61,13 +61,12 @@ class Command(BaseCommand):
             for order in orders:
                 raw_num = (order.order_number or "").strip()
                 if not raw_num.isdigit():
-                    self.stdout.write(f"Пропуск заказа id={order.id}: нечисловой номер '{raw_num}'")
+                    self.stdout.write(f"Skipping order id={order.id}: non-numeric order_number '{raw_num}'")
                     skipped_count += 1
                     continue
 
                 access_order_id = int(raw_num)
 
-                # Проверяем, есть ли уже такой заказ в Access
                 exists = cur.execute(
                     "SELECT 1 FROM [Orders] WHERE [ID] = ?",
                     access_order_id,
@@ -83,7 +82,7 @@ class Command(BaseCommand):
                 num_of_doors = len(items)
 
                 order_date = order.production_start_date or order.created_at.date()
-                completion_date = order.completion_date  # может быть None
+                completion_date = order.completion_date
 
                 try:
                     cur.execute(
@@ -116,14 +115,14 @@ class Command(BaseCommand):
                     created_count += 1
                     self.stdout.write(
                         self.style.SUCCESS(
-                            f"Заказ {access_order_id} ({order.customer}) перенесён в Access ({num_of_doors} дв.)."
+                            f"Order {access_order_id} ({order.customer}) synced to Access ({num_of_doors} doors)."
                         )
                     )
                 except pyodbc.Error as exc:
                     conn.rollback()
-                    self.stderr.write(f"Ошибка при записи заказа {access_order_id}: {exc}")
+                    self.stderr.write(f"Error writing order {access_order_id}: {exc}")
 
         finally:
             conn.close()
 
-        self.stdout.write(f"Готово. Добавлено: {created_count}, пропущено (уже есть): {skipped_count}.")
+        self.stdout.write(f"Done. Added: {created_count}, skipped (already exists): {skipped_count}.")
