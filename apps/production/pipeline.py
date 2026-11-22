@@ -116,7 +116,7 @@ class SpecContext:
                 self.customizers = _resolve_item_customizers(item, raw_customizers)
             else:
                 self.customizers = []
-                
+
     @property
     def bom(self):
         if self._bom is not None:
@@ -1358,6 +1358,35 @@ class FrameResolutionStep(SpecStep):
         }
 
 
+class CasingResolutionStep(SpecStep):
+    """
+    Priority 390: Replaces BOM casing material with its `outward_substitute`
+    when an active customizer with the 'CASING' tag is attached to the group.
+    Runs in both Phase 1 and Phase 2 so frame reports always reflect the substituted casing.
+    """
+    priority = 390
+
+    def process(self, context: SpecContext):
+        base_bom = context.bom
+        if not base_bom:
+            return
+
+        current_casing = getattr(base_bom, 'casing', None)
+        if not current_casing:
+            return
+
+        if not context.find_customizers('CASING'):
+            return
+
+        substitute = getattr(current_casing, 'outward_substitute', None)
+        if not substitute:
+            return
+
+        patched_bom = copy.copy(base_bom)
+        patched_bom.casing = substitute
+        context.bom = patched_bom
+
+
 class BOMOverrideStep(SpecStep):
     """
     Priority 380: Patches base product BOM with overrides declared
@@ -1867,6 +1896,7 @@ class SpecPipeline:
             AppearanceStep(),
             FrameResolutionStep(),
             BOMOverrideStep(),
+            CasingResolutionStep(),
             BOMStep(),
             MaterialSelectionStep(),
             LockSelectionStep(),
