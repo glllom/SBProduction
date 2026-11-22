@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+{% block title %}מעקב הזמנה {{ order.order_number }} - SB Production{% endblock %}
+{% block page_title %}
+    <span>מעקב ייצור — הזמנה {{ order.order_number }}</span>
+    <span class="sb-badge-soft ms-3">{{ order_progress_pct }}% הושלם</span>
+{% endblock %}
+{% block content %}
+    <div dir="rtl">
+        <!-- Верхняя шапка заказа + быстрый поиск другого заказа + переходы -->
+        <div class="sb-page-header mb-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="sb-stat-icon sb-accent">
+                    <i class="bi bi-diagram-3"></i>
+                </div>
+                <div>
+                    <h4 class="sb-page-title mb-0">הזמנה {{ order.order_number }} — {{ order.customer|default:"ללא לקוח" }}</h4>
+                    <div class="sb-page-subtitle">
+                        סטטוס: <strong>{{ order.get_status_display }}</strong>
+                        · התקדמות כוללת: <strong>{{ done_order_steps }}/{{ total_order_steps }}</strong> שלבים
+                        ({{ order_progress_pct }}%)
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <!-- Быстрый переход на другой заказ -->
+                <div class="position-relative" style="width: 250px;">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white text-muted"><i class="bi bi-search"></i></span>
+                        <input type="text"
+                               id="quickOrderSearchInput"
+                               class="form-control"
+                               placeholder="מעבר מהיר להזמנה אחרת..."
+                               autocomplete="off">
+                    </div>
+                    <div id="quickOrderSearchDropdown"
+                         class="dropdown-menu w-100 shadow-sm mt-1 p-1"
+                         style="display: none;
+                                max-height: 280px;
+                                overflow-y: auto;
+                                z-index: 1050"></div>
+                </div>
+                <a href="{% url 'order-detail' order.pk %}"
+                   class="btn btn-sm btn-outline-primary fw-semibold">
+                    <i class="bi bi-file-earmark-text me-1"></i>לפרטי ההזמנה
+                </a>
+                <a href="{% url 'production:station_tracking_dashboard' %}"
+                   class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-kanban me-1"></i>לדיווח תחנות
+                </a>
+            </div>
+        </div>
+        {% if batches_summary %}
+            <!-- Переключатель батчей + общий прогресс-бар -->
+            <div class="card mb-3">
+                <div class="card-body py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="small fw-bold text-muted me-1">מנות בהזמנה:</span>
+                        <div class="sb-filter-pills">
+                            {% for b in batches_summary %}
+                                <a href="?batch={{ b.batch_number }}"
+                                   class="sb-filter-pill gap-2 {% if b.batch_number == selected_batch %}active{% endif %}">
+                                    <span>מנה [{{ b.batch_number }}]</span>
+                                    <span class="small opacity-75">({{ b.doors_count }} דלתות)</span>
+                                    <span class="badge rounded-pill {% if b.is_finished %}text-bg-success{% else %}bg-white text-dark border{% endif %}">
+                                        {{ b.progress_pct }}%
+                                    </span>
+                                    {% if b.bypassed_count > 0 %}
+                                        <span class="badge rounded-pill"
+                                              style="background-color: var(--sb-warning);
+                                                     color: #fff"
+                                              data-bs-toggle="tooltip"
+                                              title="{{ b.bypassed_count }} תחנות שדולגו במנה זו">!</span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2" style="min-width: 220px;">
+                        <div class="progress flex-grow-1"
+                             style="height: 8px;
+                                    background-color: var(--sb-surface-muted)">
+                            <div class="progress-bar"
+                                 style="width: {{ order_progress_pct }}%;
+                                        background-color: var(--sb-primary)"></div>
+                        </div>
+                        <span class="small fw-bold text-primary">{{ order_progress_pct }}%</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Предупреждение о пропущенных станциях с быстрым исправлением -->
+            {% if bypassed_rows %}
+                <div class="card mb-3"
+                     style="border-color: var(--sb-warning-border);
+                            background-color: var(--sb-warning-soft)">
+                    <div class="card-body py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2"
+                             style="color: var(--sb-warning-text)">
+                            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                            <div class="small">
+                                <strong>זוהו תחנות שדולגו במנה [{{ selected_batch }}]:</strong>
+                                {% for br in bypassed_rows %}
+                                    <span class="fw-semibold">{{ br.station.name }}</span>{% if not forloop.last %},
+                                {% endif %}
+            {% endfor %}
+            —
+            המנה
+            התקדמה
+            לתחנות
+            הבאות
+            לפני
+            שתחנות
+            אלו
+            דווחו.
+            </div>
+            </div>
+            <form method="post"
+                  action="{% url 'production:order-tracking-action' order.pk %}"
+                  class="m-0">
+                {% csrf_token %}
+                <input type="hidden" name="batch_number" value="{{ selected_batch }}">
+                <input type="hidden" name="action" value="complete_all_bypassed">
+                <button type="submit"
+                        class="btn btn-sm btn-warning fw-semibold"
+                        data-confirm-title="סגירת תחנות שדולגו"
+                        data-confirm="האם לסמן את כל התחנות שדולגו במנה [{{ selected_batch }}] כהושלמו בדיעבד?"
+                        data-confirm-variant="warning"
+                        data-confirm-ok="סגור את כולן">
+                    <i class="bi bi-check2-all me-1"></i>סגור את כל התחנות שדולגו
+                </button>
+            </form>
+            </div>
+            </div>
+        {% endif %}
+        <!-- Заголовок таблицы маршрута -->
+        <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+            <h5 class="mb-0 fw-bold">מסלול תחנות — מנה [{{ selected_batch }}]</h5>
+            <span class="small text-muted">לחץ על שורת תחנה כדי לראות ולנהל דלתות בודדות</span>
+        </div>
+        <!-- Маршрутная таблица станций -->
+        <div class="card overflow-hidden mb-4">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="orderRouteTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 44px;" class="text-center">#</th>
+                            <th style="width: 24%;">תחנה</th>
+                            <th style="width: 15%;">סטטוס</th>
+                            <th style="width: 14%;" class="text-center">דלתות</th>
+                            <th style="width: 23%;">דיווח אחרון</th>
+                            <th class="text-start">פעולות מתאם</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in station_rows %}
+                            <tr class="route-station-row {% if row.is_bypassed %}is-bypassed{% elif row.row_state == 'CURRENT' %}is-current{% endif %}"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#doors-collapse-{{ row.station.id }}"
+                                style="cursor: pointer">
+                                <td class="text-center fw-bold text-muted">{{ row.step_index }}</td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="bi bi-chevron-down small text-muted route-chevron"></i>
+                                        <span class="fw-bold">{{ row.station.name }}</span>
+                                    </div>
+                                    {% if row.is_bypassed %}
+                                        <div class="small mt-1" style="color: var(--sb-warning-text);">דלתות שדולגו: #{{ row.bypassed_marks|join:", #" }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="sb-badge-soft {{ row.badge_class }}">
+                                        {% if row.row_state == 'COMPLETED' %}
+                                            <i class="bi bi-check-circle-fill"></i>
+                                        {% elif row.row_state == 'BYPASSED' %}
+                                            <i class="bi bi-exclamation-triangle-fill"></i>
+                                        {% elif row.row_state == 'CURRENT' %}
+                                            <i class="bi bi-play-circle-fill"></i>
+                                        {% endif %}
+                                        {{ row.state_label }}
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <span class="fw-semibold">{{ row.completed_cnt }}/{{ row.total_cnt }}</span>
+                                    <span class="text-muted small">יח'</span>
+                                </td>
+                                <td class="small">
+                                    {% if row.last_completed_at %}
+                                        <div class="fw-semibold">{{ row.last_completed_at|date:"d/m/Y H:i" }}</div>
+                                        <div class="text-muted">
+                                            {% if row.last_completed_by %}
+                                                {{ row.last_completed_by.get_full_name|default:row.last_completed_by.username }}
+                                                ·
+                                            {% endif %}
+                                            {{ row.last_source_display }}
+                                        </div>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td onclick="event.stopPropagation();">
+                                    <div class="d-flex flex-wrap align-items-center gap-1">
+                                        {% if row.has_pending %}
+                                            <form method="post"
+                                                  action="{% url 'production:order-tracking-action' order.pk %}"
+                                                  class="m-0">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="batch_number" value="{{ selected_batch }}">
+                                                <input type="hidden" name="station_code" value="{{ row.station.code }}">
+                                                <input type="hidden" name="action" value="complete_station">
+                                                <button type="submit"
+                                                        class="btn btn-sm {% if row.is_bypassed %}btn-warning{% else %}btn-outline-primary{% endif %}"
+                                                        data-confirm-title="סימון תחנה כהושלמה"
+                                                        data-confirm="האם לסמן את תחנת '{{ row.station.name }}' במנה [{{ selected_batch }}] כהושלמה עבור כל הפריטים הממתינים?"
+                                                        data-confirm-variant="primary"
+                                                        data-confirm-ok="סמן כהושלם">
+                                                    <i class="bi bi-check2-circle me-1"></i>סמן בוצע
+                                                </button>
+                                            </form>
+                                            <form method="post"
+                                                  action="{% url 'production:order-tracking-action' order.pk %}"
+                                                  class="m-0">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="batch_number" value="{{ selected_batch }}">
+                                                <input type="hidden" name="station_code" value="{{ row.station.code }}">
+                                                <input type="hidden" name="action" value="skip_station">
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-outline-secondary"
+                                                        data-confirm-title="דילוג יזום על תחנה"
+                                                        data-confirm="האם לסמן שתחנת '{{ row.station.name }}' אינה נדרשת (דולג ידנית) עבור מנה [{{ selected_batch }}]?"
+                                                        data-confirm-variant="warning"
+                                                        data-confirm-ok="סמן כדולג">
+                                                    <i class="bi bi-skip-forward me-1"></i>דלג
+                                                </button>
+                                            </form>
+                                        {% endif %}
+                                        {% if row.has_done %}
+                                            <form method="post"
+                                                  action="{% url 'production:order-tracking-action' order.pk %}"
+                                                  class="m-0">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="batch_number" value="{{ selected_batch }}">
+                                                <input type="hidden" name="station_code" value="{{ row.station.code }}">
+                                                <input type="hidden" name="action" value="reset_station">
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-outline-danger"
+                                                        data-confirm-title="ביטול דיווח תחנה"
+                                                        data-confirm="פעולה זו תאפס את תחנת '{{ row.station.name }}' במנה [{{ selected_batch }}] ותחזיר את הפריטים לתור העבודה. להמשיך?"
+                                                        data-confirm-variant="danger"
+                                                        data-confirm-ok="בטל דיווח">
+                                                    <i class="bi bi-arrow-counterclockwise me-1"></i>בטל דיווח
+                                                </button>
+                                            </form>
+                                        {% endif %}
+                                        <a href="{% url 'production:station_tracking_dashboard' %}?station={{ row.station.code|urlencode }}"
+                                           class="btn btn-sm btn-light border sb-icon-btn"
+                                           data-bs-toggle="tooltip"
+                                           title="פתח את תור התחנה">
+                                            <i class="bi bi-box-arrow-up-left"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            <!-- Раскрывающийся список дверей на этой станции -->
+                            <tr class="collapse bg-light" id="doors-collapse-{{ row.station.id }}">
+                                <td colspan="6" class="p-0">
+                                    <div class="px-4 py-2"
+                                         style="background-color: var(--sb-bg);
+                                                border-bottom: 1px solid var(--sb-border-strong)">
+                                        <table class="table table-sm mb-0 align-middle">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width: 90px;">דלת</th>
+                                                    <th>דגם / מיקום</th>
+                                                    <th style="width: 140px;">סטטוס</th>
+                                                    <th style="width: 190px;">זמן / מפעיל</th>
+                                                    <th style="width: 160px;">פעולה לדלת</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for d in row.doors_detail %}
+                                                    <tr>
+                                                        <td class="fw-bold">#{{ d.mark }}</td>
+                                                        <td class="small">
+                                                            <span class="fw-semibold">{{ d.product_name }}</span>
+                                                            {% if d.place %}
+                                                                <span class="text-muted">· {{ d.place }}</span>{% endif %}
+                                                        </td>
+                                                        <td>
+                                                            {% if d.progress.status == 'COMPLETED' %}
+                                                                <span class="sb-badge-soft sb-success">הושלם</span>
+                                                            {% elif d.progress.status == 'SKIPPED' %}
+                                                                <span class="sb-badge-soft sb-neutral">דולג ידנית</span>
+                                                            {% elif d.is_bypassed %}
+                                                                <span class="sb-badge-soft sb-warning">דולג / חריג</span>
+                                                            {% else %}
+                                                                <span class="sb-badge-soft sb-neutral">ממתין</span>
+                                                            {% endif %}
+                                                        </td>
+                                                        <td class="small text-muted">
+                                                            {% if d.progress.completed_at %}
+                                                                {{ d.progress.completed_at|date:"d/m H:i" }}
+                                                                {% if d.progress.completed_by %}
+                                                                    ·
+                                                                    {{ d.progress.completed_by.get_full_name|default:d.progress.completed_by.username }}
+                                                                {% endif %}
+                                                            {% else %}
+                                                                -
+                                                            {% endif %}
+                                                        </td>
+                                                        <td>
+                                                            <div class="d-flex gap-1">
+                                                                {% if d.progress.status != 'COMPLETED' %}
+                                                                    <form method="post"
+                                                                          action="{% url 'production:order-tracking-action' order.pk %}"
+                                                                          class="m-0">
+                                                                        {% csrf_token %}
+                                                                        <input type="hidden" name="batch_number" value="{{ selected_batch }}">
+                                                                        <input type="hidden" name="progress_id" value="{{ d.progress.id }}">
+                                                                        <input type="hidden" name="action" value="complete_item">
+                                                                        <button type="submit"
+                                                                                class="btn btn-sm btn-outline-primary py-0 px-2"
+                                                                                title="סמן דלת זו כהושלמה">
+                                                                            <i class="bi bi-check-lg"></i>
+                                                                        </button>
+                                                                    </form>
+                                                                {% endif %}
+                                                                {% if d.progress.status != 'PENDING' %}
+                                                                    <form method="post"
+                                                                          action="{% url 'production:order-tracking-action' order.pk %}"
+                                                                          class="m-0">
+                                                                        {% csrf_token %}
+                                                                        <input type="hidden" name="batch_number" value="{{ selected_batch }}">
+                                                                        <input type="hidden" name="progress_id" value="{{ d.progress.id }}">
+                                                                        <input type="hidden" name="action" value="reset_item">
+                                                                        <button type="submit"
+                                                                                class="btn btn-sm btn-outline-danger py-0 px-2"
+                                                                                data-confirm-title="איפוס דלת #{{ d.mark }}"
+                                                                                data-confirm="להחזיר את דלת #{{ d.mark }} לתור בתחנת {{ row.station.name }}?"
+                                                                                data-confirm-variant="danger"
+                                                                                data-confirm-ok="אפס">
+                                                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                                                        </button>
+                                                                    </form>
+                                                                {% endif %}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <!-- Журнал событий и ручных правок по батчу -->
+        {% if audit_logs %}
+            <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                <h6 class="mb-0 fw-bold text-muted">יומן סריקות ועדכונים אחרונים (מנה {{ selected_batch }})</h6>
+            </div>
+            <div class="card overflow-hidden">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 145px;">זמן</th>
+                                <th style="width: 130px;">תחנה</th>
+                                <th style="width: 130px;">מקור</th>
+                                <th>פרטים</th>
+                                <th style="width: 140px;">משתמש</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in audit_logs %}
+                                <tr class="small">
+                                    <td class="text-muted">{{ log.created_at|date:"d/m/Y H:i" }}</td>
+                                    <td class="font-monospace">{{ log.station_code|default:"-" }}</td>
+                                    <td><span class="sb-badge-soft sb-neutral">{{ log.get_source_display }}</span></td>
+                                    <td>{{ log.message|default:log.raw_payload }}</td>
+                                    <td class="text-muted">
+                                        {% if log.created_by %}
+                                            {{ log.created_by.get_full_name|default:log.created_by.username }}
+                            {% else %}-{% endif %}
+                                </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endif %}
+{% else %}
+    <div class="card">
+        <div class="card-body sb-empty py-5">
+            <i class="bi bi-diagram-3"></i>
+            <div class="fw-semibold mb-1">טרם נוצר מעקב תחנות עבור הזמנה זו</div>
+            <div class="small text-muted mb-3">מעקב התחנות מאותחל אוטומטית בעת העברת ההזמנה לייצור.</div>
+            <a href="{% url 'order-detail' order.pk %}"
+               class="btn btn-primary btn-sm">חזרה לפרטי ההזמנה</a>
+        </div>
+    </div>
+{% endif %}
+</div>
+<style>
+        #orderRouteTable tr.route-station-row.is-bypassed > td {
+            background-color: color-mix(in srgb, var(--sb-warning-soft) 55%, var(--sb-surface));
+        }
+
+        #orderRouteTable tr.route-station-row.is-current > td:first-child {
+            box-shadow: inset -3px 0 0 0 var(--sb-primary);
+        }
+
+        #orderRouteTable tr.route-station-row.is-bypassed > td:first-child {
+            box-shadow: inset -3px 0 0 0 var(--sb-warning);
+        }
+</style>
+<script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('quickOrderSearchInput');
+            const menu = document.getElementById('quickOrderSearchDropdown');
+            if (!input || !menu) return;
+
+            let timer = null;
+            const apiUrl = "{% url 'production:order-tracking-search-api' %}";
+            const listUrl = "{% url 'production:order-tracking-list' %}";
+
+            input.addEventListener('input', () => {
+                clearTimeout(timer);
+                const q = input.value.trim();
+                if (!q) {
+                    menu.style.display = 'none';
+                    menu.innerHTML = '';
+                    return;
+                }
+                timer = setTimeout(async () => {
+                    try {
+                        const res = await fetch(`${apiUrl}?q=${encodeURIComponent(q)}`);
+                        const data = await res.json();
+                        if (!data.results || !data.results.length) {
+                            menu.innerHTML = '<div class="px-3 py-2 small text-muted">לא נמצאו הזמנות במעקב</div>';
+                        } else {
+                            menu.innerHTML = data.results.map(item => `
+                                <a href="${item.url}" class="dropdown-item d-flex justify-content-between align-items-center py-2">
+                                    <div>
+                                        <div class="fw-bold small">${item.order_number}</div>
+                                        <div class="text-muted" style="font-size: 0.75rem;">${item.customer || '-'}</div>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        ${item.has_anomaly ? '<span class="badge text-bg-warning">!</span>' : ''}
+                                        <span class="sb-badge-soft">${item.progress_pct}%</span>
+                                    </div>
+                                </a>
+                            `).join('');
+                        }
+                        menu.style.display = 'block';
+                    } catch (e) {
+                        menu.style.display = 'none';
+                    }
+                }, 220);
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const firstLink = menu.querySelector('a.dropdown-item');
+                    if (firstLink) {
+                        window.location.href = firstLink.href;
+                    } else if (input.value.trim()) {
+                        window.location.href = `${listUrl}?q=${encodeURIComponent(input.value.trim())}`;
+                    }
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#quickOrderSearchInput, #quickOrderSearchDropdown')) {
+                    menu.style.display = 'none';
+                }
+            });
+        });
+</script>
+{% endblock %}

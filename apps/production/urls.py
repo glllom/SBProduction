@@ -39,4 +39,10 @@ urlpatterns = [
     path('tracking/', views.StationTrackingDashboardView.as_view(), name='station_tracking_dashboard'),
     path('tracking/toggle-batch/', views.ToggleBatchStationAjaxView.as_view(), name='toggle_batch_station_ajax'),
     path('tracking/print-all/', views.StationsBatchDailyPrintView.as_view(), name='tracking_print_all'),
+
+    path('tracking/orders/', views.order_tracking_list, name='order-tracking-list'),
+    path('tracking/orders/search-api/', views.order_tracking_search_ajax, name='order-tracking-search-api'),
+    path('tracking/orders/<int:pk>/', views.order_tracking_detail, name='order-tracking-detail'),
+    path('tracking/orders/<int:pk>/action/', views.order_tracking_station_action, name='order-tracking-action'),
+
 ]

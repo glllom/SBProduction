@@ -92,9 +92,14 @@
                         <li class="{% if 'order' in request.path and 'catalog' not in request.path %}active{% endif %}">
                             <a href="{% url 'order-list' %}"><i class="bi bi-cart3"></i><span>הזמנות</span></a>
                         </li>
-                        <li class="{% if 'tracking' in request.path %}active{% endif %}">
+                        <li class="{% if 'tracking' in request.path and 'tracking/orders' not in request.path %}active{% endif %}">
                             <a href="{% url 'production:station_tracking_dashboard' %}">
                                 <i class="bi bi-kanban"></i><span>מעקב תחנות</span>
+                            </a>
+                        </li>
+                        <li class="{% if 'tracking/orders' in request.path %}active{% endif %}">
+                            <a href="{% url 'production:order-tracking-list' %}">
+                                <i class="bi bi-search"></i><span>מעקב לפי הזמנה</span>
                             </a>
                         </li>
                         {% if user.is_staff %}
@@ -161,46 +166,175 @@
                  {% if not user.is_authenticated %}style="margin-right: 0; width: 100%;"{% endif %}>
                 <!-- Topbar -->
                 <nav class="top-navbar">
-                    <div class="d-flex align-items-center">
+                    <div class="d-flex align-items-center justify-content-between w-100">
+                        <div class="d-flex align-items-center">
+                            {% if user.is_authenticated %}
+                                <button type="button"
+                                        id="sidebarCollapse"
+                                        class="btn btn-link text-dark p-0 ms-3 d-md-none">
+                                    <i class="bi bi-list fs-4"></i>
+                                </button>
+                                <h5 class="mb-0">{% block page_title %}ראשי{% endblock %}</h5>
+                                {% block navbar_extra %}{% endblock %}
+                            {% endif %}
+                        </div>
                         {% if user.is_authenticated %}
                             <button type="button"
-                                    id="sidebarCollapse"
-                                    class="btn btn-link text-dark p-0 ms-3 d-md-none">
-                                <i class="bi bi-list fs-4"></i>
+                                    id="sbErrorsTriggerBtn"
+                                    class="btn btn-sm d-none align-items-center gap-2"
+                                    style="background-color: var(--sb-danger-soft);
+                                           color: var(--sb-danger-text);
+                                           border: 1px solid var(--sb-danger-border)"
+                                    data-bs-toggle="offcanvas"
+                                    data-bs-target="#sbErrorsOffcanvas"
+                                    aria-controls="sbErrorsOffcanvas">
+                                <i class="bi bi-exclamation-circle-fill"></i>
+                                <span class="fw-semibold">שגיאות תקינות</span>
+                                <span class="badge rounded-pill"
+                                      id="sbErrorsTriggerCount"
+                                      style="background-color: var(--sb-danger);
+                                             color: #ffffff">0</span>
                             </button>
-                            <h5 class="mb-0">{% block page_title %}ראשי{% endblock %}</h5>
-                            {% block navbar_extra %}{% endblock %}
                         {% endif %}
                     </div>
                 </nav>
+                <!-- Main Page Content (без сдвига при появлении уведомлений и ошибок) -->
                 <div class="main-content">
+                    <div class="{% if request.path != '/' and request.resolver_match.url_name != 'dashboard' %}sb-page-container{% endif %}">
+                        {% block content %}{% endblock %}
+                    </div>
+                </div>
+                <!-- Плавающие Toast-уведомления (в левом верхнем углу экрана в RTL) -->
+                <div class="toast-container position-fixed p-3"
+                     id="sbToastContainer"
+                     style="left: 0;
+                            right: auto;
+                            top: calc(var(--topbar-height, 65px) + 0.5rem);
+                            z-index: 1060">
                     {% if messages %}
                         {% for message in messages %}
-                            <div class="alert alert-{{ message.tags }} alert-dismissible fade show"
-                                 role="alert">
-                                {{ message }}
-                                <button type="button"
-                                        class="btn-close"
-                                        data-bs-dismiss="alert"
-                                        aria-label="Close"></button>
-                            </div>
+                            {% if 'error' not in message.tags and 'danger' not in message.tags %}
+                                <div class="toast align-items-center border-0 shadow-sm mb-2 sb-toast"
+                                     role="alert"
+                                     aria-live="assertive"
+                                     aria-atomic="true"
+                                     data-bs-delay="4500"
+                                     style="background-color: var(--sb-surface);
+                                            border: 1px solid var(--sb-border-strong) !important;
+                                            border-inline-start: 4px solid {% if 'success' in message.tags %}var(--sb-primary){% elif 'warning' in message.tags %}var(--sb-warning){% else %}var(--sb-accent){% endif %} !important">
+                                    <div class="d-flex align-items-center">
+                                        <div class="toast-body d-flex align-items-center gap-2 py-2 px-3 small fw-semibold"
+                                             style="color: var(--sb-text)">
+                                            {% if 'success' in message.tags %}
+                                                <i class="bi bi-check-circle-fill fs-6" style="color: var(--sb-primary)"></i>
+                                            {% elif 'warning' in message.tags %}
+                                                <i class="bi bi-exclamation-triangle-fill fs-6"
+                                                   style="color: var(--sb-warning)"></i>
+                                            {% else %}
+                                                <i class="bi bi-info-circle-fill fs-6" style="color: var(--sb-accent);"></i>
+                                            {% endif %}
+                                            <span>{{ message }}</span>
+                                        </div>
+                                        <button type="button"
+                                                class="btn-close ms-2 me-auto"
+                                                data-bs-dismiss="toast"
+                                                aria-label="Close"></button>
+                                    </div>
+                                </div>
+                            {% endif %}
                         {% endfor %}
                     {% endif %}
-                    <div class="main-content">
-                        {% if messages %}
-                            {% for message in messages %}
-                                <div class="alert alert-{{ message.tags }} alert-dismissible fade show"
-                                     role="alert">
-                                    {{ message }}
-                                    <button type="button"
-                                            class="btn-close"
-                                            data-bs-dismiss="alert"
-                                            aria-label="Close"></button>
+                </div>
+                <!-- Скрытый буфер ошибок валидации для группировки в Offcanvas -->
+                <div id="sbRawErrorMessages" class="d-none">
+                    {% if messages %}
+                        {% for message in messages %}
+                            {% if 'error' in message.tags or 'danger' in message.tags %}
+                                <div data-msg="{{ message }}"></div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                <!-- Боковая выезжающая панель ошибок валидации (слева в RTL, не сдвигает основной макет) -->
+                <div class="offcanvas offcanvas-end d-print-none"
+                     tabindex="-1"
+                     id="sbErrorsOffcanvas"
+                     data-bs-scroll="true"
+                     data-bs-backdrop="false"
+                     aria-labelledby="sbErrorsOffcanvasLabel"
+                     style="width: 400px;
+                            max-width: 92vw;
+                            border-inline-start: 1px solid var(--sb-border-strong);
+                            box-shadow: 10px 0 30px rgba(20, 50, 45, 0.14);
+                            background-color: var(--sb-bg)">
+                    <div class="offcanvas-header justify-content-between py-3 px-3"
+                         style="background-color: var(--sb-surface);
+                                border-bottom: 1px solid var(--sb-border-strong)">
+                        <button type="button"
+                                class="btn-close m-0"
+                                data-bs-dismiss="offcanvas"
+                                aria-label="Close"></button>
+                        <div class="d-flex align-items-center gap-2">
+                            <div>
+                                <h6 class="offcanvas-title fw-bold mb-0" id="sbErrorsOffcanvasLabel">בדיקת תקינות הזמנה</h6>
+                                <div class="small text-muted" id="sbErrorsSummaryText">נמצאו פריטים להשלמה</div>
+                            </div>
+                            <span class="d-inline-flex align-items-center justify-content-center rounded-2 flex-shrink-0"
+                                  style="width: 34px;
+                                         height: 34px;
+                                         background-color: var(--sb-danger-soft);
+                                         color: var(--sb-danger)">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="offcanvas-body p-3" id="sbErrorsOffcanvasBody"></div>
+                    <div class="p-3 d-none"
+                         id="sbErrorsOffcanvasFooter"
+                         style="background-color: var(--sb-surface);
+                                border-top: 1px solid var(--sb-border-strong)">
+                        <a href="#"
+                           id="sbErrorsMeasurementsLink"
+                           class="btn btn-primary w-100 fw-semibold">
+                            <i class="bi bi-rulers me-1"></i>מעבר לטופס מידות להשלמה
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <!-- Глобальное модальное окно подтверждения и уведомления -->
+            <div class="modal fade"
+                 id="sbConfirmModal"
+                 tabindex="-1"
+                 aria-labelledby="sbConfirmTitle"
+                 aria-hidden="true"
+                 style="z-index: 1080">
+                <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
+                    <div class="modal-content overflow-hidden">
+                        <div class="modal-body p-4">
+                            <div class="d-flex align-items-start gap-3">
+                                <div id="sbConfirmIconWrap"
+                                     class="d-inline-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
+                                     style="width: 44px;
+                                            height: 44px;
+                                            font-size: 1.35rem">
+                                    <i id="sbConfirmIcon" class="bi bi-exclamation-triangle-fill"></i>
                                 </div>
-                            {% endfor %}
-                        {% endif %}
-                        <div class="{% if request.path != '/' and request.resolver_match.url_name != 'dashboard' %}sb-page-container{% endif %}">
-                            {% block content %}{% endblock %}
+                                <div class="flex-grow-1">
+                                    <h5 class="fw-bold mb-1" id="sbConfirmTitle">אישור פעולה</h5>
+                                    <p class="text-muted mb-0 small lh-base"
+                                       id="sbConfirmMessage"
+                                       style="white-space: pre-line"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer py-2 px-3 d-flex justify-content-start gap-2">
+                            <button type="button"
+                                    class="btn btn-primary fw-semibold px-3"
+                                    id="sbConfirmOkBtn">אישור</button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary px-3"
+                                    id="sbConfirmCancelBtn"
+                                    data-bs-dismiss="modal">ביטול</button>
                         </div>
                     </div>
                 </div>
@@ -222,6 +356,126 @@
                 document.getElementById('sidebar').classList.toggle('active');
                 document.getElementById('content').classList.toggle('active');
             });
+        }
+
+        // 1. Показ плавающих Toast-уведомлений (без сдвига основного контента)
+        document.querySelectorAll('#sbToastContainer .sb-toast').forEach(function (toastEl) {
+            new bootstrap.Toast(toastEl).show();
+        });
+
+        // 2. Группировка ошибок валидации и автоматический показ боковой панели Offcanvas
+        const rawErrorEls = Array.from(document.querySelectorAll('#sbRawErrorMessages [data-msg]'));
+        if (rawErrorEls.length > 0) {
+            const grouped = new Map();
+            const doorPattern = /^(דלת\s+מס['׳]?\s*\d+)\s*:\s*(.+)$/;
+            const groupPattern = /^(קבוצ[הת]\s*(?:דלתות\s*)?(?:מס['׳]?\s*)?\d+|קבוצה\s+[^:]+)\s*:\s*(.+)$/;
+
+            rawErrorEls.forEach(function (el) {
+                const text = (el.getAttribute('data-msg') || '').trim();
+                if (!text) return;
+
+                let sectionTitle = 'הערות כלליות';
+                let iconClass = 'bi-exclamation-circle text-danger';
+                let itemText = text;
+
+                const doorMatch = text.match(doorPattern);
+                const groupMatch = text.match(groupPattern);
+
+                if (doorMatch) {
+                    sectionTitle = doorMatch[1];
+                    iconClass = 'bi-door-open text-primary';
+                    itemText = doorMatch[2].replace(/\s*\(דלת\s+מס['׳]?\s*\d+\)\s*$/, '').trim();
+                } else if (groupMatch) {
+                    sectionTitle = groupMatch[1];
+                    iconClass = 'bi-collection text-primary';
+                    itemText = groupMatch[2].trim();
+                }
+
+                if (!grouped.has(sectionTitle)) {
+                    grouped.set(sectionTitle, {iconClass: iconClass, items: []});
+                }
+                grouped.get(sectionTitle).items.push(itemText);
+            });
+
+            const bodyEl = document.getElementById('sbErrorsOffcanvasBody');
+            const summaryEl = document.getElementById('sbErrorsSummaryText');
+            const triggerBtn = document.getElementById('sbErrorsTriggerBtn');
+            const triggerCount = document.getElementById('sbErrorsTriggerCount');
+            const footerEl = document.getElementById('sbErrorsOffcanvasFooter');
+            const measurementsLink = document.getElementById('sbErrorsMeasurementsLink');
+
+            if (summaryEl) {
+                summaryEl.textContent = `נמצאו ${rawErrorEls.length} הערות ב-${grouped.size} קבוצות`;
+            }
+
+            if (bodyEl) {
+                bodyEl.innerHTML = '';
+                grouped.forEach(function (groupData, title) {
+                    const card = document.createElement('div');
+                    card.className = 'card mb-2 overflow-hidden';
+                    card.style.borderColor = 'var(--sb-border-strong)';
+
+                    const header = document.createElement('div');
+                    header.className = 'px-3 py-2 d-flex justify-content-between align-items-center fw-bold small';
+                    header.style.backgroundColor = 'var(--sb-surface-muted)';
+                    header.style.borderBottom = '1px solid var(--sb-border)';
+
+                    const titleWrap = document.createElement('span');
+                    const titleIcon = document.createElement('i');
+                    titleIcon.className = `bi ${groupData.iconClass} me-1`;
+                    titleWrap.appendChild(titleIcon);
+                    titleWrap.appendChild(document.createTextNode(title));
+
+                    const countBadge = document.createElement('span');
+                    countBadge.className = 'badge rounded-pill';
+                    countBadge.style.backgroundColor = 'var(--sb-danger-soft)';
+                    countBadge.style.color = 'var(--sb-danger-text)';
+                    countBadge.textContent = String(groupData.items.length);
+
+                    header.appendChild(titleWrap);
+                    header.appendChild(countBadge);
+
+                    const list = document.createElement('ul');
+                    list.className = 'list-unstyled mb-0 px-3 py-2 small';
+                    groupData.items.forEach(function (errText) {
+                        const li = document.createElement('li');
+                        li.className = 'py-1 d-flex align-items-start gap-2';
+
+                        const dot = document.createElement('i');
+                        dot.className = 'bi bi-dot fs-5 lh-1 flex-shrink-0';
+                        dot.style.color = 'var(--sb-danger)';
+
+                        const span = document.createElement('span');
+                        span.textContent = errText;
+
+                        li.appendChild(dot);
+                        li.appendChild(span);
+                        list.appendChild(li);
+                    });
+
+                    card.appendChild(header);
+                    card.appendChild(list);
+                    bodyEl.appendChild(card);
+                });
+            }
+
+            // Если на странице есть кнопка перехода к форме замеров, дублируем её внизу панели
+            const pageMeasurementsBtn = document.querySelector('a[href*="measurements"]');
+            if (pageMeasurementsBtn && footerEl && measurementsLink) {
+                measurementsLink.href = pageMeasurementsBtn.getAttribute('href');
+                footerEl.classList.remove('d-none');
+            }
+
+            if (triggerBtn && triggerCount) {
+                triggerCount.textContent = String(rawErrorEls.length);
+                triggerBtn.classList.remove('d-none');
+                triggerBtn.classList.add('d-inline-flex');
+            }
+
+            const offcanvasEl = document.getElementById('sbErrorsOffcanvas');
+            if (offcanvasEl) {
+                new bootstrap.Offcanvas(offcanvasEl).show();
+            }
         }
     });
 
@@ -316,6 +570,138 @@
             }
         });
     });
+    // 3. Глобальная система подтверждений sbConfirm / sbAlert и перехват [data-confirm]
+    const confirmModalEl = document.getElementById('sbConfirmModal');
+    if (confirmModalEl) {
+        const confirmModal = new bootstrap.Modal(confirmModalEl, {backdrop: 'static'});
+        const titleEl = document.getElementById('sbConfirmTitle');
+        const msgEl = document.getElementById('sbConfirmMessage');
+        const iconWrap = document.getElementById('sbConfirmIconWrap');
+        const iconEl = document.getElementById('sbConfirmIcon');
+        const okBtn = document.getElementById('sbConfirmOkBtn');
+        const cancelBtn = document.getElementById('sbConfirmCancelBtn');
+
+        const VARIANTS = {
+            danger: {
+                bg: 'var(--sb-danger-soft)',
+                color: 'var(--sb-danger)',
+                icon: 'bi-exclamation-octagon-fill',
+                btnClass: 'btn-danger',
+                defaultTitle: 'אישור מחיקה / ביטול',
+                defaultOk: 'כן, בצע'
+            },
+            warning: {
+                bg: 'var(--sb-warning-soft)',
+                color: 'var(--sb-warning)',
+                icon: 'bi-exclamation-triangle-fill',
+                btnClass: 'btn-warning',
+                defaultTitle: 'נדרש אישור פעולה',
+                defaultOk: 'המשך'
+            },
+            primary: {
+                bg: 'var(--sb-primary-soft)',
+                color: 'var(--sb-primary)',
+                icon: 'bi-shield-check',
+                btnClass: 'btn-primary',
+                defaultTitle: 'אישור פעולה',
+                defaultOk: 'אישור'
+            }
+        };
+
+        let activeResolver = null;
+        let resolvedValue = false;
+
+        window.sbConfirm = function (options = {}) {
+            const cfg = typeof options === 'string' ? {message: options} : options;
+            const variantKey = VARIANTS[cfg.variant] ? cfg.variant : 'warning';
+            const style = VARIANTS[variantKey];
+
+            titleEl.textContent = cfg.title || style.defaultTitle;
+            msgEl.textContent = cfg.message || '';
+
+            iconWrap.style.backgroundColor = style.bg;
+            iconWrap.style.color = style.color;
+            iconEl.className = `bi ${cfg.icon || style.icon}`;
+
+            okBtn.className = `btn fw-semibold px-3 ${style.btnClass}`;
+            okBtn.textContent = cfg.okText || style.defaultOk;
+
+            if (cfg.alertOnly) {
+                cancelBtn.classList.add('d-none');
+            } else {
+                cancelBtn.classList.remove('d-none');
+                cancelBtn.textContent = cfg.cancelText || 'ביטול';
+            }
+
+            resolvedValue = false;
+            confirmModal.show();
+
+            // Для опасных действий фокус ставим на "Отмена" для защиты от случайного Enter
+            confirmModalEl.addEventListener('shown.bs.modal', function onShown() {
+                confirmModalEl.removeEventListener('shown.bs.modal', onShown);
+                if (variantKey === 'danger' || variantKey === 'warning') {
+                    cancelBtn.focus();
+                } else {
+                    okBtn.focus();
+                }
+            });
+
+            return new Promise(resolve => {
+                activeResolver = resolve;
+            });
+        };
+
+        window.sbAlert = function (message, title = 'שים לב', variant = 'danger') {
+            return window.sbConfirm({
+                title: title,
+                message: message,
+                variant: variant,
+                okText: 'הבנתי',
+                alertOnly: true
+            });
+        };
+
+        okBtn.addEventListener('click', function () {
+            resolvedValue = true;
+            confirmModal.hide();
+        });
+
+        confirmModalEl.addEventListener('hidden.bs.modal', function () {
+            if (activeResolver) {
+                const fn = activeResolver;
+                activeResolver = null;
+                fn(resolvedValue);
+            }
+        });
+
+        // Автоматический перехват любых кнопок и ссылок с атрибутом data-confirm
+        document.addEventListener('click', async function (e) {
+            const trigger = e.target.closest('[data-confirm]');
+            if (!trigger) return;
+
+            // Если клик уже прошёл подтверждение — пропускаем его дальше
+            if (trigger.dataset.confirmedBypass === '1') {
+                delete trigger.dataset.confirmedBypass;
+                return;
+            }
+
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            const confirmed = await window.sbConfirm({
+                title: trigger.dataset.confirmTitle,
+                message: trigger.dataset.confirm,
+                variant: trigger.dataset.confirmVariant || 'warning',
+                okText: trigger.dataset.confirmOk,
+                cancelText: trigger.dataset.confirmCancel
+            });
+
+            if (confirmed) {
+                trigger.dataset.confirmedBypass = '1';
+                trigger.click();
+            }
+        }, true);
+    }
         </script>
         {% block extra_js %}{% endblock %}
     </body>

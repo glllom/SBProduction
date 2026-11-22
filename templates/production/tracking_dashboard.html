@@ -10,7 +10,7 @@
                     <i class="bi bi-diagram-3"></i>
                 </div>
                 <div>
-                    <h4 class="sb-page-title">רצפת ייצור - דיווח יומי לפי תחנות</h4>
+                    <h4 class="sb-page-title">דיווח יומי לפי תחנות</h4>
                     <div class="sb-page-subtitle">סימון הזמנות שבוצעו בתחנה והדפסת דפי עבודה</div>
                 </div>
             </div>
@@ -27,30 +27,54 @@
                    class="btn btn-primary fw-semibold">
                     <i class="bi bi-printer-fill me-1"></i>הדפס דוחות לכל התחנות
                 </a>
+                <a href="{% url 'production:order-tracking-list' %}"
+                   class="btn btn-outline-accent">
+                    <i class="bi bi-search me-1"></i>מעקב לפי הזמנה
+                </a>
+            </div>
+            <!-- Быстрый поиск заказа прямо с экрана станций -->
+            <div class="position-relative" style="width: 240px;">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted"><i class="bi bi-search"></i></span>
+                    <input type="text"
+                           id="dashboardOrderSearch"
+                           class="form-control"
+                           placeholder="איתור הזמנה (מספר / לקוח)..."
+                           autocomplete="off">
+                </div>
+                <div id="dashboardOrderSearchMenu"
+                     class="dropdown-menu w-100 shadow-sm mt-1 p-1"
+                     style="display: none;
+                            max-height: 280px;
+                            overflow-y: auto;
+                            z-index: 1050"></div>
             </div>
         </div>
         <!-- Print-only A4 header -->
         <div class="d-none d-print-block mb-4 border-bottom pb-2">
             <div class="d-flex justify-content-between align-items-center">
-                <h3>תחנת ייצור: <strong>{{ selected_station.name }} ({{ selected_station.code }})</strong></h3>
+                <h3>תחנת ייצור: <strong>{{ selected_station.name }}</strong></h3>
                 <div>תאריך הדפסה: {% now "d/m/Y H:i" %}</div>
             </div>
         </div>
         <!-- Master-Detail Layout: Stations list on the right (RTL), Orders table on the left -->
         <div class="row g-3 align-items-start">
-            <!-- Right Column: Vertical Stations Master List -->
+            <!-- Right Column: Stations Header + Vertical Master List -->
             <div class="col-12 col-lg-3 d-print-none">
+                <div class="d-flex justify-content-between align-items-center mb-2 px-1 sb-panel-top-row">
+                    <h5 class="mb-0 fw-bold">תחנות ייצור</h5>
+                </div>
                 <div class="card overflow-hidden sb-stations-panel">
-                    <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center">
-                        <span class="fw-bold small">תחנות ייצור</span>
+                    <div class="sb-stations-filter-bar d-flex align-items-center justify-content-between px-3">
                         <div class="form-check form-switch m-0 d-flex align-items-center gap-2">
                             <input class="form-check-input m-0"
                                    type="checkbox"
                                    id="filterActiveStations"
                                    style="cursor: pointer">
-                            <label class="form-check-label small text-muted mb-0"
+                            <label class="form-check-label small fw-semibold mb-0"
                                    for="filterActiveStations"
-                                   style="cursor: pointer">פעילות בלבד</label>
+                                   style="cursor: pointer;
+                                          color: var(--sb-text-soft)">פעילות בלבד</label>
                         </div>
                     </div>
                     <div class="list-group list-group-flush sb-station-list" id="stationsNav">
@@ -72,12 +96,8 @@
             </div>
             <!-- Left Column: Active Station Header + Orders Table Card -->
             <div class="col-12 col-lg-9">
-                <!-- Standalone station header row (outside the table card) -->
-                <div class="d-flex justify-content-between align-items-center mb-2 px-1 d-print-none">
-                    <div class="d-flex align-items-baseline gap-2">
-                        <h5 class="mb-0 fw-bold">{{ selected_station.name }}</h5>
-                        <span class="text-muted small">({{ selected_station.code }})</span>
-                    </div>
+                <div class="d-flex justify-content-between align-items-center mb-2 px-1 sb-panel-top-row d-print-none">
+                    <h5 class="mb-0 fw-bold">{{ selected_station.name }}</h5>
                     <span class="sb-badge-soft">{{ backlog|length }} הזמנות בתור</span>
                 </div>
                 <form method="post" id="trackingForm">
@@ -94,10 +114,14 @@
                                                    type="checkbox"
                                                    id="selectAllCheckbox"
                                                    title="בחר הכל"
-                                                   style="cursor: pointer">
+                                                   style="width: 1.25rem;
+                                                          height: 1.25rem;
+                                                          margin-top: 0;
+                                                          vertical-align: middle;
+                                                          cursor: pointer">
                                         </th>
                                         <th class="d-none d-print-table-cell text-center" style="width: 50px;">V</th>
-                                        <th>הזמנה [מנה]</th>
+                                        <th>הזמנה</th>
                                         <th>שם לקוח</th>
                                         <th class="text-center">דלתות בתחנה זו</th>
                                         <th>תאריך יעד</th>
@@ -124,7 +148,20 @@
                                                             margin: auto"></div>
                                             </td>
                                             <td>
-                                                <strong class="text-primary">{{ row.display_order_batch }}</strong>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <a href="{% url 'production:order-tracking-detail' row.order_id %}?batch={{ row.batch_number }}"
+                                                       class="fw-bold text-decoration-none sb-order-link"
+                                                       data-bs-toggle="tooltip"
+                                                       title="פתיחת מעקב הזמנה (מנה {{ row.batch_number }})">
+                                                        {{ row.display_order_batch }}
+                                                    </a>
+                                                    <a href="{% url 'order-detail' row.order_id %}"
+                                                       class="text-muted opacity-50"
+                                                       data-bs-toggle="tooltip"
+                                                       title="לפרטי ההזמנה">
+                                                        <i class="bi bi-box-arrow-up-left small"></i>
+                                                    </a>
+                                                </div>
                                             </td>
                                             <td>{{ row.customer|default:"-" }}</td>
                                             <td class="text-center">
@@ -132,7 +169,7 @@
                                             </td>
                                             <td>
                                                 {% if row.completion_date %}
-                                                    <span>{{ row.completion_date|date:"d/m/Y" }}</span>
+                                                    <span>{{ row.completion_date|date:"d/m/y" }}</span>
                                                 {% else %}
                                                     <span class="text-muted">-</span>
                                                 {% endif %}
@@ -185,13 +222,29 @@
         </div>
     </div>
     <style>
+        /* Единая высота верхних заголовков над обеими панелями */
+        .sb-panel-top-row {
+            min-height: 28px;
+        }
+
+        /* Синхронная высота и цвет верхней полосы обеих карточек */
+        .sb-stations-filter-bar,
+        #trackingTable thead tr {
+            height: 38px;
+        }
+
+        .sb-stations-filter-bar {
+            background-color: var(--sb-surface-muted);
+            border-bottom: 1px solid var(--sb-border-strong);
+        }
+
         .sb-stations-panel {
             position: sticky;
             top: calc(var(--topbar-height, 65px) + 1rem);
         }
 
         .sb-station-list {
-            max-height: calc(100vh - 210px);
+            max-height: calc(100vh - 230px);
             overflow-y: auto;
         }
 
@@ -430,5 +483,65 @@
                 });
             }
         });
+        const searchInput = document.getElementById('dashboardOrderSearch');
+        const searchMenu = document.getElementById('dashboardOrderSearchMenu');
+        if (searchInput && searchMenu) {
+            let searchTimer = null;
+            const apiUrl = "{% url 'production:order-tracking-search-api' %}";
+            const listUrl = "{% url 'production:order-tracking-list' %}";
+
+            searchInput.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                const q = searchInput.value.trim();
+                if (!q) {
+                    searchMenu.style.display = 'none';
+                    searchMenu.innerHTML = '';
+                    return;
+                }
+                searchTimer = setTimeout(async () => {
+                    try {
+                        const res = await fetch(`${apiUrl}?q=${encodeURIComponent(q)}`);
+                        const data = await res.json();
+                        if (!data.results || !data.results.length) {
+                            searchMenu.innerHTML = '<div class="px-3 py-2 small text-muted">לא נמצאו הזמנות במעקב</div>';
+                        } else {
+                            searchMenu.innerHTML = data.results.map(item => `
+                                    <a href="${item.url}" class="dropdown-item d-flex justify-content-between align-items-center py-2">
+                                        <div>
+                                            <div class="fw-bold small">${item.order_number}</div>
+                                            <div class="text-muted" style="font-size: 0.75rem;">${item.customer || '-'}</div>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            ${item.has_anomaly ? '<span class="badge text-bg-warning">!</span>' : ''}
+                                            <span class="sb-badge-soft">${item.progress_pct}%</span>
+                                        </div>
+                                    </a>
+                                `).join('');
+                        }
+                        searchMenu.style.display = 'block';
+                    } catch (e) {
+                        searchMenu.style.display = 'none';
+                    }
+                }, 220);
+            });
+
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const firstLink = searchMenu.querySelector('a.dropdown-item');
+                    if (firstLink) {
+                        window.location.href = firstLink.href;
+                    } else if (searchInput.value.trim()) {
+                        window.location.href = `${listUrl}?q=${encodeURIComponent(searchInput.value.trim())}`;
+                    }
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#dashboardOrderSearch, #dashboardOrderSearchMenu')) {
+                    searchMenu.style.display = 'none';
+                }
+            });
+        }
     </script>
 {% endblock %}

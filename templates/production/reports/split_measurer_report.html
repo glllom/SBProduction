@@ -1,236 +1,200 @@
-<!DOCTYPE html>
-<html lang="he" dir="rtl">
-    <head>
-        <meta charset="UTF-8">
-        <title>דו''ח למדידה - הזמנה {{ order.order_number }}</title>
-        <!-- Bootstrap 5 RTL CSS -->
-        <link rel="stylesheet"
-              href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
-        <!-- Bootstrap Icons -->
-        <link rel="stylesheet"
-              href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-        <!-- Google Fonts -->
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-              rel="stylesheet">
-        <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f0f0f0;
+{% extends "production/reports/base_report.html" %}
+{% block title %}דו"ח למדידה - הזמנה {{ order.order_number }}{% endblock %}
+{% block body_class %}landscape{% endblock %}
+{% block extra_css %}
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 10mm;
         }
 
-        .page {
-            background: white;
-            width: 297mm;
-            min-height: 190mm;
-            padding: 20mm;
-            margin: 10mm auto;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-
-        table {
+        .meas-stage1-table {
             width: 100%;
-            margin-top: 20px;
+            margin-top: 0 !important;
+            border-collapse: collapse;
         }
 
-        th, td {
-            border: 1px solid #000;
-            padding: 8px;
+        .meas-stage1-table thead th {
+            background-color: var(--sb-surface-muted, #e1e9ec) !important;
+            color: #1c2b28 !important;
+            border: 1px solid #666 !important;
+            padding: 6px 8px !important;
+            font-weight: 700;
+            font-size: 0.9rem;
         }
 
-        th {
-            background-color: #f2f2f2;
-        }
-
-        .no-print {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            margin: 0 5px;
-        }
-
-        .btn-secondary {
-            background-color: #6c757d;
-        }
-
-        .check-box {
-            display: inline-block;
-            width: 15px;
-            height: 15px;
-            border: 1px solid #000;
-            margin-right: 5px;
+        .meas-stage1-table tbody td {
+            border: 1px solid #777 !important;
+            padding: 7px 8px !important;
             vertical-align: middle;
         }
 
+        .meas-stage1-table tbody tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .group-section {
+            margin-bottom: 18px;
+        }
+
+        .group-header {
+            break-after: avoid;
+            page-break-after: avoid;
+        }
+
         .measure-line {
-            border-bottom: 1px dotted #000;
+            border-bottom: 1.5px dotted #222;
             display: inline-block;
-            width: 40px;
-            height: 15px;
-            margin-right: 5px;
+            width: 44px;
+            height: 16px;
         }
 
         @media print {
             @page {
-                size: landscape;
+                size: A4 landscape !important;
                 margin: 10mm;
-
-            }
-
-            body {
-                background-color: white;
-                margin: 0;
-            }
-
-            .page {
-                margin: 0;
-                box-shadow: none;
-                width: 100%;
-                padding: 10mm;
-            }
-
-            .no-print {
-                display: none;
             }
         }
-        </style>
-    </head>
-    <body>
-        <div class="no-print">
-            <button onclick="window.print()" class="btn">הדפס דו''ח</button>
-            <button onclick="window.close()" class="btn btn-secondary">סגור</button>
-        </div>
-        <div class="page">
-            <div class="d-flex justify-content-between align-items-start border-bottom pb-2 mb-3">
-                <h4 class="my-1">דו''ח מדידה לאחר שלב א' (משקופים)</h4>
-                <div>
-                    <p class="fs-5">הזמנה:<span class="fw-bold">{{ order.order_number }}</span></p>
-                </div>
-                <div class="">
-                    <p>לקוח: {{ order.customer }}</p>
-                </div>
-                <div>
-                    <p><strong>תאריך:</strong> {{ now|date:"d/m/Y" }}</p>
+    </style>
+{% endblock %}
+{% block content %}
+    <div class="page landscape" dir="rtl">
+        <!-- Шапка отчёта в едином стиле печатных форм -->
+        <div class="d-flex justify-content-between align-items-center border-bottom border-2 border-dark pb-2 mb-3">
+            <div>
+                <h3 class="fw-bold m-0 mb-1">דו"ח מדידה לאחר שלב א' (משקופים)</h3>
+                <div class="d-flex flex-wrap align-items-center gap-3 fs-5">
+                    <span>לקוח: <strong>{{ order.customer }}</strong></span>
+                    <span class="text-muted">|</span>
+                    <span class="fs-6 text-muted">תאריך הפקה: <strong class="text-dark">{{ now|date:"d/m/Y" }}</strong></span>
                 </div>
             </div>
-            {% regroup spec_items by product_family as family_list %}
-            {% for family in family_list %}
-                {% regroup family.list by series as series_list %}
-                {% for series in series_list %}
-                    {% regroup series.list by frame as frame_list %}
-                    {% for frame_group in frame_list %}
-                        {% with first_item=frame_group.list.0 %}
-                            <div class="group-section">
-                                <div class="group-header bg-light px-2 py-2 border rounded-top">
-                                    <div class="row g-1">
-                                        <div class="col">
-                                            <h4 class="">
-                                                דגם: <span class="text-decoration-underline">{{ family.grouper }}</span>
-                                            </h4>
-                                        </div>
-                                        <div class="col">
-                                            <strong>פרופיל:</strong>
-                                            <span class="fs-5">{{ frame_group.grouper }}
-                                                {% if first_item.frame_paint_option != "NO_PAINT" %}
-                                                    <span class="badge rounded-pill text-bg-dark">לצבע</span>
-                                                {% endif %}
-                                            </span>
-                                        </div>
+            <div class="border border-2 border-dark px-3 py-1 bg-light text-center">
+                <div class="small text-muted">מספר הזמנה</div>
+                <div class="fs-2 fw-bold lh-1">{{ order.order_number }}</div>
+            </div>
+        </div>
+        {% regroup spec_items by product_family as family_list %}
+        {% for family in family_list %}
+            {% regroup family.list by series as series_list %}
+            {% for series in series_list %}
+                {% regroup series.list by frame as frame_list %}
+                {% for frame_group in frame_list %}
+                    {% with first_item=frame_group.list.0 %}
+                        <div class="group-section">
+                            <!-- Чистый заголовок группы над таблицей (без двойной серой полосы) -->
+                            <div class="group-header d-flex flex-wrap justify-content-between align-items-baseline gap-2 pb-1 mb-2 border-bottom border-dark">
+                                <div class="d-flex flex-wrap align-items-baseline gap-4">
+                                    <div class="fs-5">
+                                        <span class="text-muted small">דגם:</span>
+                                        <strong>{{ family.grouper }}</strong>
+                                    </div>
+                                    <div class="fs-5">
+                                        <span class="text-muted small">פרופיל:</span>
+                                        <strong>{{ frame_group.grouper }}</strong>
+                                        {% if first_item.frame_paint_option != "NO_PAINT" %}
+                                            <span class="badge rounded-pill text-bg-dark ms-1 align-middle"
+                                                  style="font-size: 0.75rem">לצבע</span>
+                                        {% endif %}
                                     </div>
                                 </div>
-                                <table class="table table-sm table-bordered align-middle mt-0">
-                                    <thead>
-                                        <tr class="table-secondary">
-                                            <th style="width: 13%;">מיקום</th>
-                                            <th style="width: 12%;">מידות פנים</th>
-                                            <th style="width: 7%;">פתיחה</th>
-                                            <th style="width: 17%;">מנעול</th>
-                                            <th style="width: 33%;">צירים</th>
-                                            <th>הערות</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for spec in frame_group.list %}
-                                            <tr>
-                                                <td class="fw-bolder fs-5" dir="rtl">
-                                                    # {{ spec.mark }}
-                                                    <br>
-                                                    <span class="fw-lighter fs-6">{{ spec.place }}</span>
-                                                </td>
-                                                <td class="fw-bolder fs-5">
-                                                    <div>{{ spec.inner_width|floatformat }}x{{ spec.inner_height|floatformat }}</div>
-                                                </td>
-                                                <td class="fs-5">
+                                <span class="small text-muted">{{ frame_group.list|length }} יח'</span>
+                            </div>
+                            <table class="table table-sm align-middle meas-stage1-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 13%;">מיקום</th>
+                                        <th style="width: 11%;" class="text-center">מידות פנים</th>
+                                        <th style="width: 9%;" class="text-center">פתיחה</th>
+                                        <th style="width: 16%;">מנעול</th>
+                                        <th style="width: 31%;">צירים</th>
+                                        <th>הערות</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for spec in frame_group.list %}
+                                        <tr>
+                                            <td>
+                                                <div class="fw-bold fs-5 lh-sm"># {{ spec.mark }}</div>
+                                                {% if spec.place %}
+                                                    <div class="small text-muted">{{ spec.place }}</div>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-center fw-bold fs-5">{{ spec.inner_width|floatformat }}x{{ spec.inner_height|floatformat }}</td>
+                                            <td class="text-center">
+                                                {% if spec.is_double_door %}
+                                                    <span class="badge bg-secondary text-white px-2 py-1">דלת כפולה</span>
+                                                {% else %}
+                                                    <div class="fw-bold fs-5 lh-sm">{{ spec.direction }}</div>
+                                                    <div class="small">{{ spec.opening }}</div>
+                                                {% endif %}
+                                            </td>
+                                            <td class="fs-5">
+                                                <div>
                                                     {% if spec.is_double_door %}
-                                                        <span class="badge bg-secondary text-white px-1 py-1">דלת כפולה</span>
+                                                        -
                                                     {% else %}
-                                                        {{ spec.direction }}
-                                                        <br>
-                                                        {{ spec.opening }}
+                                                        <span class="text-decoration-underline">{{ spec.lock_name }}</span>:
+                                                        <strong>{{ spec.lock_height_on_frame|floatformat }}</strong>
                                                     {% endif %}
-                                                </td>
-                                                <td class="fs-5">
-                                                    <div>
-                                                        {% if spec.is_double_door %}-{% else %}
-                                                            <span class="text-decoration-underline">{{ spec.lock_name }}</span>:
-                                                            {{ spec.lock_height_on_frame|floatformat }}
-                                                        {% endif %}
-                                                    </div>
-                                                    <div class="mt-1 small text-muted">
+                                                </div>
+                                                {% if not spec.is_double_door %}
+                                                    <div class="mt-2">
                                                         <span class="measure-line"></span>
                                                     </div>
-                                                </td>
-                                                <td class="fs-5">
-                                                    <div>
-                                                        <span class="text-decoration-underline" dir="rtl">{{ spec.hinge_name }}</span>:
-                                                        <span>
-                                                            {% if spec.hinge_heights_on_frame %}
-                                                                {% for h in spec.hinge_heights_on_frame %}
-                                                                    {{ h|floatformat }}{% if not forloop.last %}
-                                                                    <span class="fs-6">\ </span>{% endif %}
-                                                            {% endfor %}
-                                        {% else %}
-                                            {% for h in spec.hinge_heights %}{{ h|floatformat }}
-                                                {% if not forloop.last %}
-                                                    <span class="fw-lighter">\</span>
                                                 {% endif %}
-                                            {% endfor %}
-                                        {% endif %}
-                                    </span>
-                                </div>
-                                <div class="mt-1 small text-muted">
-                                    <span class="measure-line"></span>
-                                    <span class="measure-line"></span>
-                                    <span class="measure-line"></span>
-                                    <span class="measure-line"></span>
-                                </div>
-                            </td>
-                            <td class="py-1">
-                                <div class="fst-italic">{{ spec.comment }}</div>
-                            </td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                        </table>
-                        </div>
-                    {% endwith %}
+                                            </td>
+                                            <td class="fs-5">
+                                                <div>
+                                                    <span class="text-decoration-underline">{{ spec.hinge_name }}</span>:
+                                                    <strong>
+                                                        {% if spec.hinge_heights_on_frame %}
+                                                            {% for h in spec.hinge_heights_on_frame %}
+                                                                {{ h|floatformat }}{% if not forloop.last %}
+                                                                <span class="fw-normal fs-6">\ </span>{% endif %}
+                                                        {% endfor %}
+                                    {% else %}
+                                        {% for h in spec.hinge_heights %}
+                                            {{ h|floatformat }}{% if not forloop.last %}
+                                            <span class="fw-normal fs-6">\ </span>{% endif %}
+                                    {% endfor %}
+                    {% endif %}
+                    </strong>
+                    </div>
+                    <!-- Количество линий для замера совпадает с числом петель -->
+                    <div class="mt-2 d-flex flex-wrap gap-2">
+                        {% if spec.hinge_heights_on_frame %}
+                            {% for h in spec.hinge_heights_on_frame %}
+                                <span class="measure-line"></span>
+                            {% endfor %}
+                        {% elif spec.hinge_heights %}
+                            {% for h in spec.hinge_heights %}
+                                <span class="measure-line"></span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="measure-line"></span>
+                            <span class="measure-line"></span>
+                            <span class="measure-line"></span>
+                        {% endif %}
+                    </div>
+                    </td>
+                    <td class="small">
+                        <div class="fst-italic">{{ spec.comment }}</div>
+                    </td>
+                    </tr>
                 {% endfor %}
-            {% endfor %}
-        {% empty %}
-            <div class="alert alert-info text-center mt-5">
-                <h4>אין נתונים להצגה בדוח זה</h4>
-                <p>הדוח טрם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
-            </div>
+                </tbody>
+                </table>
+                </div>
+            {% endwith %}
         {% endfor %}
-    </div>
-</body>
-</html>
+{% endfor %}
+{% empty %}
+<div class="border border-dark p-4 text-center mt-4 bg-light">
+    <h5 class="fw-bold mb-1">אין נתונים להצגה בדוח זה</h5>
+    <p class="mb-0 text-muted">הדוח טרם נוצר או שאין פריטים תואמים להגדרות הדוח.</p>
+</div>
+{% endfor %}
+</div>
+{% endblock %}

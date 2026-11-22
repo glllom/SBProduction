@@ -110,7 +110,10 @@
                                                     </button>
                                                 </div>
                                                 <div id="group-panel-inside-wrap" style="display: none;">
-                                                    <label class="form-label small text-muted mb-1">גוון כנף צד פנים:</label>
+                                                    <label class="form-label small text-muted mb-1">
+                                                        גוון כנף צד
+                                                        פנים:
+                                                    </label>
                                                     <div class="input-group input-group-sm">
                                                         {{ group_form.color_panel_inside }}
                                                         <button class="btn btn-outline-secondary"
@@ -131,7 +134,10 @@
                                             <div id="group-frame-special-color-wrap"
                                                  class="mt-2"
                                                  style="display: none">
-                                                <label class="form-label small text-muted mb-1">גוון משקוף מותאם:</label>
+                                                <label class="form-label small text-muted mb-1">
+                                                    גוון משקוף
+                                                    מותאם:
+                                                </label>
                                                 <div class="input-group input-group-sm">
                                                     {{ group_form.color_frames }}
                                                     <button class="btn btn-outline-secondary"
@@ -149,7 +155,7 @@
                         </div>
                         <!-- Row 5: התקנה מפוצלת והערות -->
                         <div class="col-md-4 d-flex align-items-center">
-                            <div class="form-check form-switch m-0 pt-2 d-flex align-items-center gap-2"
+                            <div class="form-check form-switch m-0 pt-2 d-flex align-items-top gap-2"
                                  data-bs-toggle="tooltip"
                                  title="{{ group_form.is_split_installation.help_text|default:'התקנה מפוצלת: שלב א משקופים, שלב ב דלתות' }}">
                                 {{ group_form.is_split_installation }}

@@ -476,6 +476,12 @@ h1, h2, h3, h4, h5, h6 {
     border-color: var(--sb-primary);
 }
 
+/* Чёткая граница чекбокса в шапке таблицы на фоне #e1e9ec */
+.table thead .form-check-input:not(:checked):not(:indeterminate) {
+    border-color: var(--sb-muted);
+    border-width: 1px;
+}
+
 .form-check-input:focus {
     box-shadow: 0 0 0 0.2rem var(--sb-primary-ring);
 }

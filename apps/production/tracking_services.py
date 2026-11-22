@@ -411,7 +411,7 @@ class StationTrackingService:
         """
         Возвращает очередь для конкретного участка (станка),
         сгруппированную по заказам и батчам с точным количеством дверей,
-        маршрутизированных именно на этот станок.
+        исключая отменённые позиции и группы.
         """
         station = ProductionStation.objects.filter(code__iexact=station_code).first()
         if not station:
@@ -420,8 +420,10 @@ class StationTrackingService:
         qs = (
             ItemStationProgress.objects.filter(
                 station=station,
-                status=StationStatus.PENDING
+                status=StationStatus.PENDING,
             )
+            .exclude(item__state=OrderItem.ItemState.CANCELED)
+            .exclude(item__group__production_state=OrderItemsGroup.ProductionState.CANCELED)
             .values(
                 'item__group__order__id',
                 'item__group__order__order_number',
@@ -446,7 +448,7 @@ class StationTrackingService:
                 'order_id': row['item__group__order__id'],
                 'order_number': o_num,
                 'batch_number': b_num,
-                'display_order_batch': f"{o_num} [{b_num}]",  # <-- Готовый стандарт для шаблонов
+                'display_order_batch': f"{o_num} [{b_num}]",
                 'customer': row['item__group__order__customer'] or '',
                 'completion_date': row['item__group__order__completion_date'],
                 'doors_count': row['pending_count'],
@@ -460,12 +462,15 @@ class StationTrackingService:
             cls,
             items_to_complete: List[Dict[str, Any]],
             user=None,
-            source: str = 'DASHBOARD_BATCH_SUBMIT'
+            source: str = StationProgressSource.MANUAL
     ) -> int:
         """
-        Пакетно закрывает несколько заказов/батчей на конкретных станциях.
-        items_to_complete: [{'order_number': '...', 'station_code': '...', 'batch_number': 1}, ...]
+        Пакетно закрывает несколько заказов/батчей на конкретных станциях
+        с фиксацией в StationScanAuditLog.
         """
+        valid_sources = set(StationProgressSource.values)
+        safe_source = source if source in valid_sources else StationProgressSource.MANUAL
+
         total_doors_completed = 0
         for entry in items_to_complete:
             success, msg, payload = cls._complete_batch_station(
@@ -473,9 +478,22 @@ class StationTrackingService:
                 station_code=entry['station_code'],
                 batch_number=entry.get('batch_number'),
                 user=user,
-                source=source
+                source=safe_source
             )
             if success:
-                total_doors_completed += payload.get('completed_count', 0)
+                count = payload.get('completed_count', 0)
+                total_doors_completed += count
+                StationScanAuditLog.objects.create(
+                    raw_payload=f"DASHBOARD:{entry['order_number']}:{entry['station_code']}:B{entry.get('batch_number') or ''}",
+                    station_code=payload.get('station_code', entry['station_code']),
+                    order_number=str(entry['order_number']),
+                    batch_number=entry.get('batch_number'),
+                    source=safe_source,
+                    is_success=True,
+                    message=msg,
+                    created_by=user if (user and user.is_authenticated) else None,
+                )
 
         return total_doors_completed
+
+    

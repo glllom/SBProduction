@@ -148,13 +148,13 @@
                 {% if order.status == 'PHASE1_READY' %}
                     <a href="{% url 'production:order-transfer-to-production' order.pk %}"
                        class="btn btn-primary fw-semibold">
-                        <i class="bi bi-arrow-right-circle me-1"></i>העבר לשלב ב' (הזנת מידות)
+                        <i class="bi bi-arrow-right-circle me-1"></i>העבר לשלב ב'
                     </a>
                 {% else %}
                     <button type="button"
                             class="btn btn-primary fw-semibold"
                             onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
-                        <i class="bi bi-play-circle me-1"></i>העבר לייצור (אצווה חדשה)
+                        <i class="bi bi-play-circle me-1"></i>העבר לייצור
                     </button>
                 {% endif %}
                 <a href="{% url 'production:order-check-validation' order.pk %}"
@@ -163,6 +163,12 @@
                    title="בדיקת תקינות הנתונים של ההזמנה">
                     <i class="bi bi-list-task me-1"></i>בדיקת תקינות
                 </a>
+                {% if order.status != 'NEW' %}
+                    <a href="{% url 'production:order-tracking-detail' order.pk %}"
+                       class="btn btn-outline-accent">
+                        <i class="bi bi-diagram-3 me-1"></i>מעקב ייצור
+                    </a>
+                {% endif %}
             {% endif %}
             {% if not order.can_start_production %}
                 {% if order.status == 'PHASE1_PRODUCTION' %}
@@ -191,7 +197,7 @@
             {% endif %}
             {% if order.status != 'NEW' and order.status != 'CANCELED' %}
                 <button type="button"
-                        class="btn btn-accent fw-semibold"
+                        class="btn btn-outline-accent fw-semibold"
                         data-bs-toggle="modal"
                         data-bs-target="#reportsModal"
                         title="הדפסת דוחות, מדבקות והורדת קבצי מכונה">
