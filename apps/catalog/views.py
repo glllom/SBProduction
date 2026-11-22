@@ -3,11 +3,10 @@ from django.db import models
 from django.views.generic import ListView
 from rest_framework import viewsets, permissions
 
-from .models import ProductFamily, Series, ProductModel, Customizer, Front, Color, Material
+from .models import ProductFamily, Series, ProductModel, Customizer, Front, Material
 from .serializers import (
     SeriesSerializer,
     FrontSerializer,
-    FrameColorSerializer,
     MaterialSerializer,
     ProductFamilySerializer,
     ProductModelSerializer,
@@ -98,7 +97,7 @@ class ProductModelViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class CustomizerViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Customizer.objects.filter(active=True)
+    queryset = Customizer.objects.filter(active=True, hidden_in_sales=False)
     serializer_class = CustomizerSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -133,7 +132,7 @@ class CustomizerViewSet(viewsets.ReadOnlyModelViewSet):
                     pass
             elif product_type:
                 hierarchy_filter |= models.Q(product_types_id=product_type)
-            
+
             queryset = queryset.filter(hierarchy_filter).distinct()
 
         if search:

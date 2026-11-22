@@ -292,6 +292,7 @@ class TechnicalSpecService:
             )
             .prefetch_related(
                 'group__customizers__customizer__hardware__components',
+                'group__customizers__customizer__outward_replacement__hardware__components',
                 'group__product__bom__additional',
             ).order_by('id')
         )
@@ -693,217 +694,241 @@ class ProductionDataService:
 
     @classmethod
     def prepare_wood_frames_report_data(cls, spec_obj):
-        groups_map = {}
+        from apps.catalog.models import Material
 
-        for item in cls._extract_items(spec_obj):
-            # Проверяем, является ли item словарем
-            is_dict = isinstance(item, dict)
+        def _get(obj, key, default=None):
+            return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
 
-            has_frame = item.get('has_frame', True) if is_dict else getattr(item, 'has_frame', True)
+        raw_items = [it for it in cls._extract_items(spec_obj) if _get(it, 'has_frame', True)]
 
-            if not has_frame:
-                continue
+        # Собираем ID материалов коробок из BOM, чтобы одним запросом получить их цвета
+        frame_mat_ids = set()
+        for it in raw_items:
+            for b in (_get(it, 'bom_items', []) or []):
+                if _get(b, 'tag', '') == 'frame' or _get(b, 'section', '') == 'frame':
+                    mat_id = _get(b, 'item_id')
+                    if mat_id:
+                        frame_mat_ids.add(mat_id)
 
-            bom_items = getattr(item, 'bom_items', []) if hasattr(item, 'bom_items') else item.get('bom_items', [])
-            casing_names = [
-                (getattr(b, 'common_name', None) if hasattr(b, 'common_name') else b.get('common_name', None)) or (
-                    getattr(b, 'item_name', '') if hasattr(b, 'item_name') else b.get('item_name', ''))
-                for b in bom_items
-                if (getattr(b, 'tag', '') if hasattr(b, 'tag') else b.get('tag', '')) in ('door_casing', 'casing')
-                or (getattr(b, 'section', '') if hasattr(b, 'section') else b.get('section', '')) in ('door_casing',
-                                                                                                      'casing', 'הלבשה',
-                                                                                                      'הלבשות')
-            ]
-            paint_opt = getattr(item, 'frame_paint_option', None) if hasattr(item, 'frame_paint_option') else item.get(
-                'frame_paint_option', None)
-            frame_finish_display = "צבע" if paint_opt and str(paint_opt).upper() != 'NO_PAINT' else ""
-            frames_caption = ''
-            for b in bom_items:
-                b_tag = getattr(b, 'tag', '') if hasattr(b, 'tag') else b.get('tag', '')
-                b_sec = getattr(b, 'section', '') if hasattr(b, 'section') else b.get('section', '')
+        frame_materials_map = {
+            m.id: m
+            for m in Material.objects.filter(id__in=frame_mat_ids).select_related('color')
+        } if frame_mat_ids else {}
 
-                if b_tag == 'frame' or b_sec == 'frame':
-                    common_name = getattr(b, 'common_name', None) if hasattr(b, 'common_name') else b.get('common_name',
-                                                                                                          None)
-                    if common_name:
-                        frames_caption = str(common_name).strip()
-                        break
+        # Уровень 1: Страницы (Модель + модификация כפולה), порядок сохранения без сортировки
+        pages_map = {}
 
-            if not frames_caption:
-                frames_caption = getattr(item, 'frame', '') if hasattr(item, 'frame') else item.get('frame', '')
-            frames_caption += " " + frame_finish_display
-            door_casing = " / ".join(dict.fromkeys(filter(None, casing_names))) or "-"
+        for item in raw_items:
+            is_double = bool(_get(item, 'is_double_door', False))
+            base_family = (
+                    _get(item, 'product_family', '')
+                    or _get(item, 'product_name', '')
+            ).strip()
+            page_title = f"{base_family} כפולה" if is_double else base_family
+            page_key = (base_family, is_double)
 
-            raw_cmz = getattr(item, 'frames_report_customizers', []) if hasattr(item,
-                                                                                'frames_report_customizers') else item.get(
-                'frames_report_customizers', [])
-            cmz_signature = []
-            for c in raw_cmz:
-                c_name = c.get('name') if isinstance(c, dict) else getattr(c, 'name', '')
-                c_params = c.get('params', []) if isinstance(c, dict) else getattr(c, 'params', [])
-                p_strs = [
-                    f"{p.get('label') if isinstance(p, dict) else getattr(p, 'label', '')}:"
-                    f"{p.get('value') if isinstance(p, dict) else getattr(p, 'value', '')}"
-                    for p in c_params
-                ]
-                cmz_signature.append(f"{c_name}({', '.join(p_strs)})")
-            cmz_key = " + ".join(cmz_signature)
-            raw_hinges = getattr(item, 'hinge_heights', []) if hasattr(item, 'hinge_heights') else item.get(
-                'hinge_heights', [])
-            hinges_tuple = tuple(h for h in raw_hinges if h is not None)
-
-            group_key = (
-                (getattr(item, 'product_family', '') if hasattr(item, 'product_family') else item.get('product_family',
-                                                                                                      '')) or (
-                    getattr(item, 'product_name', '') if hasattr(item, 'product_name') else item.get('product_name',
-                                                                                                     '')),
-                getattr(item, 'series', '') if hasattr(item, 'series') else item.get('series', ''),
-                getattr(item, 'frame', '') if hasattr(item, 'frame') else item.get('frame', ''),
-                door_casing,
-                getattr(item, 'basic_color_frames', '') if hasattr(item, 'basic_color_frames') else item.get(
-                    'basic_color_frames', ''),
-                getattr(item, 'color_frames', '') if hasattr(item, 'color_frames') else item.get('color_frames', ''),
-                getattr(item, 'lock_name', '') if hasattr(item, 'lock_name') else item.get('lock_name', ''),
-                getattr(item, 'lock_height', None) if hasattr(item, 'lock_height') else item.get('lock_height', None),
-                getattr(item, 'hinge_name', '') if hasattr(item, 'hinge_name') else item.get('hinge_name', ''),
-                hinges_tuple,
-                cmz_key,
-            )
-
-            if group_key not in groups_map:
-                groups_map[group_key] = {
-                    'product_name': (getattr(item, 'product_family', '') if hasattr(item,
-                                                                                    'product_family') else item.get(
-                        'product_family', '')) or (getattr(item, 'product_name', '') if hasattr(item,
-                                                                                                'product_name') else item.get(
-                        'product_name', '')),
-                    'frames_caption': frames_caption,
-
-                    'door_casing': door_casing,
-
-                    'lock_name': getattr(item, 'lock_name', '') if hasattr(item, 'lock_name') else item.get('lock_name',
-                                                                                                            ''),
-                    'lock_height': getattr(item, 'lock_height', None) if hasattr(item, 'lock_height') else item.get(
-                        'lock_height', None),
-                    'hinge_name': getattr(item, 'hinge_name', '') if hasattr(item, 'hinge_name') else item.get(
-                        'hinge_name', ''),
-                    'hinge_heights': list(hinges_tuple),
-                    'customizers_title': cmz_key,
-                    'items': [],
-                    'size_counter': Counter(),
+            if page_key not in pages_map:
+                pages_map[page_key] = {
+                    'product_name': page_title,
+                    'is_double_door': is_double,
+                    'materials_map': {},
                 }
 
-            w = getattr(item, 'width', None) if hasattr(item, 'width') else item.get('width', None)
-            h = getattr(item, 'height', None) if hasattr(item, 'height') else item.get('height', None)
-            wall = getattr(item, 'wall', None) if hasattr(item, 'wall') else item.get('wall', None)
-
-            groups_map[group_key]['items'].append(item)
-            if w and h:
-                groups_map[group_key]['size_counter'][(h, w, wall)] += 1
-
-        result_groups = []
-        for grp in groups_map.values():
-            raw_counter = grp.pop('size_counter')
-            sorted_sizes = sorted(
-                raw_counter.items(),
-                key=lambda x: (x[0][0], x[0][1], x[0][2] or 0),
-                reverse=True
-            )
-            grp['aggregated_sizes'] = [
-                {'height': h, 'width': w, 'wall': wall, 'qty': count}
-                for (h, w, wall), count in sorted_sizes
+            bom_items = _get(item, 'bom_items', []) or []
+            casing_names = [
+                (_get(b, 'common_name') or _get(b, 'item_name', ''))
+                for b in bom_items
+                if _get(b, 'tag', '') in ('door_casing', 'casing')
+                   or _get(b, 'section', '') in ('door_casing', 'casing', 'הלבשה', 'הלבשות')
             ]
 
-            def parse_mark(it):
-                try:
-                    return int(getattr(it, 'mark', 0) if hasattr(it, 'mark') else it.get('mark', 0) or 0)
-                except (ValueError, TypeError):
-                    return 999999
+            # Название коробки: NO_PAINT -> common_name + цвет из BOM, иначе -> common_name + "צבע"
+            paint_opt = str(_get(item, 'frame_paint_option', '') or '').upper()
+            frame_bom = next(
+                (b for b in bom_items if _get(b, 'tag', '') == 'frame' or _get(b, 'section', '') == 'frame'),
+                None
+            )
 
-            grp['items'].sort(key=parse_mark)
+            common_name = str(_get(frame_bom, 'common_name') or '').strip() if frame_bom else ''
+            item_name = str(_get(frame_bom, 'item_name') or '').strip() if frame_bom else ''
+            mat_id = _get(frame_bom, 'item_id') if frame_bom else None
+            mat_obj = frame_materials_map.get(mat_id)
 
-            # Формирование сгруппированных строк для печатного отчета משקופים
-            row_groups = {}
-            for it in grp['items']:
-                w = getattr(it, 'width', None) if hasattr(it, 'width') else it.get('width', None)
-                h = getattr(it, 'height', None) if hasattr(it, 'height') else it.get('height', None)
-                wall = getattr(it, 'wall', None) if hasattr(it, 'wall') else it.get('wall', None)
-                direction = getattr(it, 'direction', '') if hasattr(it, 'direction') else it.get('direction', '')
-                opening = getattr(it, 'opening', '') if hasattr(it, 'opening') else it.get('opening', '')
-                comment = getattr(it, 'comment', '') if hasattr(it, 'comment') else it.get('comment', '')
-                place = getattr(it, 'place', '') if hasattr(it, 'place') else it.get('place', '')
+            mat_color = ''
+            if mat_obj and getattr(mat_obj, 'color', None):
+                mat_color = str(mat_obj.color.name).strip()
+            elif common_name and item_name.startswith(common_name):
+                mat_color = item_name[len(common_name):].strip(' -')
 
-                row_key = (w, h, wall, direction or '', opening or '', (comment or '').strip(), (place or '').strip())
-                if row_key not in row_groups:
-                    row_groups[row_key] = {
-                        'width': w,
-                        'height': h,
-                        'wall': wall,
-                        'direction': direction,
-                        'opening': opening,
-                        'comment': (comment or '').strip(),
-                        'place': (place or '').strip(),
-                        'qty': 0,
-                    }
-                row_groups[row_key]['qty'] += 1
+            if paint_opt == 'NO_PAINT':
+                if common_name:
+                    frames_caption = f"{common_name} {mat_color}".strip() if mat_color else (item_name or common_name)
+                else:
+                    frames_caption = item_name or str(_get(item, 'frame', '') or '').strip()
+            else:
+                base_frame_title = common_name or item_name or str(_get(item, 'frame', '') or '').strip()
+                frames_caption = f"{base_frame_title} צבע".strip()
 
-            grouped_rows = []
-            for r in row_groups.values():
-                w = r['width']
-                h = r['height']
-                wall = r['wall']
-                direction = r['direction']
-                opening = r['opening']
-                comment = r['comment']
-                place = r['place']
-                qty = r['qty']
+            door_casing = " / ".join(dict.fromkeys(filter(None, casing_names))) or "ללא"
 
-                w_str = str(int(w)) if (w is not None and float(w).is_integer()) else (str(w) if w is not None else "")
-                h_str = str(int(h)) if (h is not None and float(h).is_integer()) else (str(h) if h is not None else "")
-                wall_str = str(int(wall)) if (wall is not None and float(wall).is_integer()) else (
-                    str(wall) if wall is not None else "")
+            # Уровень 2: Подзаголовок материала и наличника (без разрыва страницы, без сортировки)
+            mat_key = (
+                frames_caption,
+                door_casing,
+                _get(item, 'basic_color_frames', '') or '',
+                _get(item, 'color_frames', '') or '',
+            )
+            materials_map = pages_map[page_key]['materials_map']
+            if mat_key not in materials_map:
+                materials_map[mat_key] = {
+                    'frames_caption': frames_caption,
+                    'door_casing': door_casing,
+                    'hardware_map': {},
+                }
 
-                dim_display = f"{w_str} \\ {h_str} \t {wall_str}{direction}"
+            # Кастомизаторы коробки (структурированно, с флагом нестандартного параметра)
+            raw_cmz = _get(item, 'frames_report_customizers', []) or []
+            parsed_cmz = []
+            cmz_sig_parts = []
+            for c in raw_cmz:
+                c_name = str(_get(c, 'name', '')).strip()
+                if not c_name:
+                    continue
+                c_params = _get(c, 'params', []) or []
+                clean_params = []
+                p_sig = []
+                for p in c_params:
+                    p_val = _get(p, 'value', '')
+                    if p_val in (None, ''):
+                        continue
+                    p_label = str(_get(p, 'label', '')).strip()
+                    p_val_str = str(p_val).strip()
+                    is_custom = bool(
+                        _get(p, 'is_custom', False)
+                        or _get(p, 'is_modified', False)
+                        or (_get(p, 'is_default', None) is False)
+                    )
+                    clean_params.append({
+                        'label': p_label,
+                        'value': p_val_str,
+                        'is_custom': is_custom,
+                    })
+                    p_sig.append((p_label, p_val_str, is_custom))
 
-                notes_list = []
-                if comment:
-                    notes_list.append(comment)
-                if opening in ('OUT', 'החוצה'):
-                    notes_list.append('החוצה')
-                elif place and not comment:
-                    notes_list.append(place)
+                sig = (c_name, tuple(p_sig))
+                if sig not in cmz_sig_parts:
+                    cmz_sig_parts.append(sig)
+                    parsed_cmz.append({
+                        'name': c_name,
+                        'params': clean_params,
+                    })
 
-                note_text = " ".join(notes_list)
-                qty_label = f"{qty}x" if qty > 1 else ""
+            cmz_sig = tuple(cmz_sig_parts)
 
-                grouped_rows.append({
-                    'qty': qty,
-                    'qty_label': qty_label,
-                    'note_text': note_text,
-                    'dimension_display': dim_display,
-                    'width': w,
-                    'height': h,
-                    'wall': wall,
-                    'direction': direction,
-                    'opening': opening,
+            raw_hinges = _get(item, 'hinge_heights', []) or []
+            hinges_tuple = tuple(h for h in raw_hinges if h is not None)
+
+            lock_name = '' if is_double else (_get(item, 'lock_name', '') or '')
+            lock_height = None if is_double else _get(item, 'lock_height', None)
+
+            # Уровень 3: Подзаголовок фурнитуры (замки и петли)
+            hw_key = (
+                lock_name,
+                lock_height,
+                _get(item, 'hinge_name', '') or '',
+                hinges_tuple,
+            )
+            hardware_map = materials_map[mat_key]['hardware_map']
+            if hw_key not in hardware_map:
+                hardware_map[hw_key] = {
+                    'is_double_door': is_double,
+                    'lock_name': lock_name,
+                    'lock_height': lock_height,
+                    'hinge_name': _get(item, 'hinge_name', '') or '',
+                    'hinge_heights': list(hinges_tuple),
+                    'items': [],
+                }
+
+            hardware_map[hw_key]['items'].append((item, parsed_cmz, cmz_sig))
+
+        # Сборка финальной структуры с сортировками уровней 3 и 4
+        pages = []
+        for page_data in pages_map.values():
+            material_groups = []
+
+            for mat_data in page_data['materials_map'].values():
+                # Сортируем подгруппы фурнитуры по высоте замка по убыванию
+                sorted_hw_items = sorted(
+                    mat_data['hardware_map'].values(),
+                    key=lambda h: float(h['lock_height']) if h['lock_height'] is not None else float('-inf'),
+                    reverse=True,
+                )
+
+                hardware_groups = []
+                for hw_grp in sorted_hw_items:
+                    row_groups = {}
+                    for it, parsed_cmz, cmz_sig in hw_grp['items']:
+                        w = _get(it, 'width', None)
+                        h = _get(it, 'height', None)
+                        wall = _get(it, 'wall', None)
+                        direction = '' if hw_grp['is_double_door'] else (_get(it, 'direction', '') or '')
+                        comment = (_get(it, 'comment', '') or '').strip()
+
+                        row_key = (w, h, wall, direction, comment, cmz_sig)
+                        if row_key not in row_groups:
+                            row_groups[row_key] = {
+                                'width': w,
+                                'height': h,
+                                'wall': wall,
+                                'direction': direction,
+                                'qty': 0,
+                                'customizers': parsed_cmz,
+                                'comment': comment,
+                            }
+                        row_groups[row_key]['qty'] += 1
+
+                    # Уровень 4: Сортируем по wall (возр.), затем по высоте (убыв.)
+                    sorted_rows = sorted(
+                        row_groups.values(),
+                        key=lambda r: (
+                            float(r['wall']) if r['wall'] is not None else float('inf'),
+                            -float(r['height']) if r['height'] is not None else float('inf'),
+                            -float(r['width']) if r['width'] is not None else float('inf'),
+                        ),
+                    )
+
+                    hinge_heights = hw_grp.get('hinge_heights', [])
+                    hinge_heights_display = " \\ ".join(
+                        str(int(hh)) if float(hh).is_integer() else str(hh) for hh in hinge_heights
+                    ) if hinge_heights else ""
+
+                    hardware_groups.append({
+                        'is_double_door': hw_grp['is_double_door'],
+                        'lock_name': hw_grp['lock_name'],
+                        'lock_height': hw_grp['lock_height'],
+                        'hinge_name': hw_grp['hinge_name'],
+                        'hinge_heights_display': hinge_heights_display,
+                        'grouped_rows': sorted_rows,
+                    })
+
+                material_groups.append({
+                    'frames_caption': mat_data['frames_caption'],
+                    'door_casing': mat_data['door_casing'],
+                    'hardware_groups': hardware_groups,
                 })
 
-            grp['grouped_rows'] = grouped_rows
+            pages.append({
+                'product_name': page_data['product_name'],
+                'is_double_door': page_data['is_double_door'],
+                'material_groups': material_groups,
+            })
 
-            hinge_heights = grp.get('hinge_heights', [])
-            grp['hinge_heights_display'] = " \\ ".join(
-                str(int(hh)) if float(hh).is_integer() else str(hh) for hh in hinge_heights
-            ) if hinge_heights else ""
+        total_pages = len(pages)
+        for idx, page in enumerate(pages, start=1):
+            page['page_num'] = idx
+            page['total_pages'] = total_pages
 
-            casing_val = grp.get('door_casing', '')
-            if not casing_val or casing_val.strip() in ('-', 'ללא'):
-                grp['door_casing_display'] = 'ללא'
-            else:
-                grp['door_casing_display'] = casing_val.strip()
-
-            result_groups.append(grp)
-
-        return result_groups
+        return pages
 
     @classmethod
     def get_order_customizable_hardware(cls, order, spec_obj):
@@ -1193,6 +1218,13 @@ class ProductionDataService:
         else:
             stage_label = "קומפלט"
 
+        from .models import OrderStationNote
+        station_notes_by_code = dict(
+            OrderStationNote.objects.filter(order=self.order)
+            .select_related('station')
+            .values_list('station__code', 'comment')
+        )
+        station_comment = station_notes_by_code.get(station.code, '') if station else ''
         context = {
             'order': self.order,
             'batch_number': batch_number,
@@ -1202,6 +1234,8 @@ class ProductionDataService:
             'svg_patterns': SvgPattern.objects.all(),
             'report_type': report_type,
             'station': station,
+            'station_comment': station_comment,
+            'station_notes_by_code': station_notes_by_code,
             'report_label': label,
             'stage_label': stage_label,
             'groups_data': self.prepare_grouped_data(target_items),

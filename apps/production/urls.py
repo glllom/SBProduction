@@ -14,6 +14,7 @@ urlpatterns = [
     path('order/<int:pk>/complete-production/', views.order_complete_production, name='order-complete-production'),
     path('order/<int:pk>/group/<int:group_id>/toggle-state/', views.group_toggle_state, name='group-toggle-state'),
     path('order/<int:pk>/check-validation/', views.order_check_validation, name='order-check-validation'),
+    path('orders/<int:order_id>/station-note/', views.save_station_note, name='save-station-note'),
 
     # Отчеты и документы
     path('order/<int:pk>/station-report/', views.station_report, name='station-report'),
@@ -38,4 +39,10 @@ urlpatterns = [
     path('tracking/', views.StationTrackingDashboardView.as_view(), name='station_tracking_dashboard'),
     path('tracking/toggle-batch/', views.ToggleBatchStationAjaxView.as_view(), name='toggle_batch_station_ajax'),
     path('tracking/print-all/', views.StationsBatchDailyPrintView.as_view(), name='tracking_print_all'),
+
+    path('tracking/orders/', views.order_tracking_list, name='order-tracking-list'),
+    path('tracking/orders/search-api/', views.order_tracking_search_ajax, name='order-tracking-search-api'),
+    path('tracking/orders/<int:pk>/', views.order_tracking_detail, name='order-tracking-detail'),
+    path('tracking/orders/<int:pk>/action/', views.order_tracking_station_action, name='order-tracking-action'),
+
 ]

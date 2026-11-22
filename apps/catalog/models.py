@@ -532,6 +532,7 @@ class ProductModel(models.Model):
 
         req_scoped = Customizer.objects.filter(
             active=True,
+            hidden_in_sales=False,
             is_required=True
         ).filter(
             q_model | q_family | q_type | q_global
@@ -561,6 +562,21 @@ class Customizer(models.Model):
         default=False,
         verbose_name="חובה (אוטומטי לקבוצה)",
         help_text="אם מסומן, קסטומייזר זה יצורף אוטומטית לקבוצה ויידרש במעבר לייצור",
+    )
+    hidden_in_sales = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="מוסתר במכירות (טכני)",
+        help_text="אם מסומן, הקסטומייזר לא יופיע בחיפוש בהזמנה (משמש כתחליף טכני לפתיחה החוצה)",
+    )
+    outward_replacement = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inward_originals",
+        verbose_name="תחליף לפתיחה החוצה (OUT)",
+        help_text="קסטומייזר שיחליף את הנוכחי אוטומטית עבור דלתות הנפתחות החוצה",
     )
 
     # --- Catalog hierarchy link (Optional / Nullable) ---
@@ -762,6 +778,13 @@ class Customizer(models.Model):
 
     def __str__(self):
         return f"[{self.code}] {self.name}"
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        if self.outward_replacement_id and self.outward_replacement_id == self.id:
+            errors['outward_replacement'] = "קסטומייזר לא יכול להפנות לעצמו כתחליף."
 
     def get_parameter_options(self, par_number):
         """

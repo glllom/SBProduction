@@ -10,275 +10,488 @@
     </a>
 {% endblock %}
 {% block content %}
-    <div class="container mt-3" dir="rtl">
-        <div class="sb-page-header d-print-none align-items-center gap-3 mb-4">
-            <span class="sb-stat-icon sb-accent flex-shrink-0">
-                <i class="bi bi-rulers"></i>
-            </span>
-            <div>
-                <h2 class="sb-page-title">טופס מידות: {{ order.order_number }}</h2>
-                <p class="sb-page-subtitle mb-0">לקוח: {{ order.customer }}</p>
+    <div dir="rtl">
+        <!-- Единая шапка страницы -->
+        <div class="sb-page-header d-print-none align-items-center justify-content-between gap-3 mb-3">
+            <div class="d-flex align-items-center gap-3">
+                <span class="sb-stat-icon sb-accent flex-shrink-0">
+                    <i class="bi bi-rulers"></i>
+                </span>
+                <div>
+                    <h2 class="sb-page-title mb-0">טופס מידות: {{ order.order_number }}</h2>
+                    <p class="sb-page-subtitle mb-0">לקוח: {{ order.customer }}</p>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        onclick="exportToExcel()"
+                        data-bs-toggle="tooltip"
+                        title="ייצוא כל טבלאות המידות לקובץ Excel / CSV">
+                    <i class="bi bi-download me-1"></i>ייצוא CSV
+                </button>
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        onclick="window.print()"
+                        data-bs-toggle="tooltip"
+                        title="הדפסת טופס מידות">
+                    <i class="bi bi-printer me-1"></i>הדפסה
+                </button>
+                <a href="{% url 'order-detail' order.pk %}"
+                   class="btn btn-sm btn-outline-secondary">
+                    <span>חזרה להזמנה</span>
+                    <i class="bi bi-arrow-left ms-1"></i>
+                </a>
             </div>
         </div>
+        <!-- Печатная шапка -->
         <div class="print-header d-none d-print-block mb-4">
             <h2 class="h3 fw-bold">טופס מידות: {{ order.order_number }}</h2>
             <p class="mb-0">לקוח: {{ order.customer }}</p>
             <hr>
         </div>
         {% for group in groups %}
-            <div class="card mb-4 overflow-hidden">
-                <div class="card-header bg-body-tertiary border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="meas-group-block mb-4">
+                <!-- Заголовок группы вынесен над карточкой, чтобы не дублировать фон шапки таблицы -->
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 px-1">
                     <div class="d-flex flex-wrap align-items-center gap-2">
-                        <h5 class="mb-0 fw-bold text-dark d-inline"
+                        <h5 class="mb-0 fw-bold"
                             data-bs-toggle="tooltip"
                             title="{{ group.product.description|default:group.product.name }}">{{ group.product.name }}</h5>
-                        <span class="d-inline-flex flex-wrap gap-1">
-                            {% for gc in group.customizers.all %}
-                                <span class="badge rounded-pill bg-body text-body border fw-normal"
-                                      data-bs-toggle="tooltip"
-                                      title="{{ gc.customizer.description|default:gc.customizer.name }}">
-                                    {{ gc.customizer.name }}{% if gc.customizer.par1_value %}:
-                                    {{ gc.customizer.par1_value }}{% endif %}
+                        {% if group.customizers.all %}
+                            <span class="d-inline-flex flex-wrap gap-1">
+                                {% for gc in group.customizers.all %}
+                                    <span class="sb-badge-soft sb-neutral"
+                                          data-bs-toggle="tooltip"
+                                          title="{{ gc.customizer.description|default:gc.customizer.name }}">
+                                        {{ gc.customizer.name }}{% if gc.customizer.par1_value %}: {{ gc.customizer.par1_value }}{% endif %}
+                                    </span>
+                                {% endfor %}
                             </span>
+                        {% endif %}
+                    </div>
+                    <span class="sb-badge-soft">{{ group.items.count }} יח'</span>
+                </div>
+                <div class="card overflow-hidden">
+                    <div class="table-responsive meas-table-wrap">
+                        <table class="table table-hover align-middle text-center mb-0 excel-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 44px"
+                                        data-bs-toggle="tooltip"
+                                        title="מספר סידורי של הפריט (Mark)">#</th>
+                                    <th style="width: 11%"
+                                        data-bs-toggle="tooltip"
+                                        title="מיקום ההתקנה (חדר, קומה, דירה)">מיקום</th>
+                                    <th style="width: 7%"
+                                        data-bs-toggle="tooltip"
+                                        title="רוחב פתח אור / כנף במילימטרים">רוחב</th>
+                                    <th style="width: 7%"
+                                        data-bs-toggle="tooltip"
+                                        title="גובה פתח אור / כנף במילימטרים">גובה</th>
+                                    <th style="width: 7%"
+                                        data-bs-toggle="tooltip"
+                                        title="עובי קיר עבור המשקוף במילימטרים">משקוף</th>
+                                    <th style="width: 11%"
+                                        data-bs-toggle="tooltip"
+                                        title="יד פתיחה וכיוון (L/R פנימה/החוצה)">פתיחה</th>
+                                    <th style="width: 7%"
+                                        data-bs-toggle="tooltip"
+                                        title="חיתוך תחתון נוסף במילימטרים">רווח נוסף</th>
+                                    <th data-bs-toggle="tooltip" title="הערות מיוחדות לפריט">הערה</th>
+                                    <th class="no-print"
+                                        style="width: 176px"
+                                        data-bs-toggle="tooltip"
+                                        title="פעולות ועריכה">פעולות</th>
+                                </tr>
+                            </thead>
+                            <tbody id="group-body-{{ group.id }}">
+                                {% for item in group.items.all %}
+                                    <tr id="row-{{ item.id }}"
+                                        class="item-row {% if not group.can_edit or item.state == 'CANCELED' %}table-secondary text-muted row-locked{% else %}clickable-row{% endif %}"
+                                        data-item-id="{{ item.id }}"
+                                        data-can-edit="{% if group.can_edit and item.state != 'CANCELED' %}true{% else %}false{% endif %}"
+                                        data-state="{{ item.state }}"
+                                        data-mark="{{ item.mark|default:'' }}"
+                                        data-height="{{ item.h_fmt }}"
+                                        data-width="{{ item.w_fmt }}"
+                                        data-wall="{{ item.wall_fmt }}"
+                                        data-opening="{{ item.opening|default:'' }}"
+                                        data-direction="{{ item.direction|default:'' }}"
+                                        data-allowed-direction="{{ group.product.allowed_direction|default:'BOTH' }}"
+                                        data-place="{{ item.place|default:'' }}"
+                                        data-bottom-correction="{{ item.bottom_correction|default:'' }}"
+                                        data-comment="{{ item.comment|default:'' }}"
+                                        data-custom-lock-height="{{ item.custom_lock_height|default:'' }}"
+                                        data-custom-hinge1="{{ item.custom_hinge1|default:'' }}"
+                                        data-custom-hinge2="{{ item.custom_hinge2|default:'' }}"
+                                        data-custom-hinge3="{{ item.custom_hinge3|default:'' }}"
+                                        data-custom-hinge4="{{ item.custom_hinge4|default:'' }}"
+                                        data-custom-hinge5="{{ item.custom_hinge5|default:'' }}"
+                                        data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
+                                        data-has-door="{{ group.product.product_family.has_door|yesno:'true,false' }}"
+                                        data-has-frame="{{ group.product.product_family.has_frame|yesno:'true,false' }}">
+                                        <td class="fw-bold meas-mark-cell">{{ item.mark }}</td>
+                                        <td class="field-place small text-start">{{ item.place|default:'' }}</td>
+                                        <td class="field-width fw-semibold">{{ item.w_fmt }}</td>
+                                        <td class="field-height fw-semibold">{{ item.h_fmt }}</td>
+                                        <td class="field-wall">{{ item.wall_fmt }}</td>
+                                        <td class="field-opening small">
+                                            {% if item.opening or item.direction %}
+                                                {{ item.direction|default:"" }} | {{ item.get_opening_display|default:"" }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td class="field-bottom-correction small">{{ item.bottom_correction|default:'' }}</td>
+                                        <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
+                                        <td class="no-print text-nowrap">
+                                            <div class="d-inline-flex align-items-center justify-content-center gap-1">
+                                                {% if order.sketch or item.sketch %}
+                                                    <a href="{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
+                                                       target="_blank"
+                                                       class="btn btn-sm btn-outline-primary meas-action-btn"
+                                                       data-bs-toggle="tooltip"
+                                                       title="צפה בשרטוט עבור פריט זה">
+                                                        <i class="bi bi-file-earmark-image"></i>
+                                                    </a>
+                                                {% endif %}
+                                                {% if group.can_edit and item.state != 'CANCELED' %}
+                                                    <span class="btn btn-sm btn-light border-0 meas-action-btn text-muted"
+                                                          data-bs-toggle="tooltip"
+                                                          title="לחץ לעריכת שורה">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </span>
+                                                {% else %}
+                                                    <span class="meas-action-btn text-muted opacity-50"
+                                                          data-bs-toggle="tooltip"
+                                                          title="פריט נעול לעריכה">
+                                                        <i class="bi bi-lock-fill"></i>
+                                                    </span>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% if item.custom_lock_height or item.custom_hinge1 or item.custom_hinge2 or item.custom_hinge3 or item.custom_hinge4 or item.custom_hinge5 %}
+                                        <tr id="display-custom-{{ item.id }}"
+                                            class="custom-heights-display-row text-muted">
+                                            <td class="meas-mark-cell"></td>
+                                            <td colspan="7" class="text-start">
+                                                <span class="ps-3" dir="rtl">
+                                                    {% if item.custom_lock_height %}
+                                                        <span class="custom-label">מנעול:</span>
+                                                        <span class="custom-value ms-1 me-3">{{ item.custom_lock_height }}</span>
+                                                    {% endif %}
+                                                    {% if item.custom_hinge1 %}
+                                                        <span class="custom-label">ציר 1:</span>
+                                                        <span class="custom-value ms-1 me-3">{{ item.custom_hinge1 }}</span>
+                                                    {% endif %}
+                                                    {% if item.custom_hinge2 %}
+                                                        <span class="custom-label">ציר 2:</span>
+                                                        <span class="custom-value ms-1 me-3">{{ item.custom_hinge2 }}</span>
+                                                    {% endif %}
+                                                    {% if item.custom_hinge3 %}
+                                                        <span class="custom-label">ציר 3:</span>
+                                                        <span class="custom-value ms-1 me-3">{{ item.custom_hinge3 }}</span>
+                                                    {% endif %}
+                                                    {% if item.custom_hinge4 %}
+                                                        <span class="custom-label">ציר 4:</span>
+                                                        <span class="custom-value ms-1 me-3">{{ item.custom_hinge4 }}</span>
+                                                    {% endif %}
+                                                    {% if item.custom_hinge5 %}
+                                                        <span class="custom-label">ציר 5:</span>
+                                                        <span class="custom-value ms-1 me-3">{{ item.custom_hinge5 }}</span>
+                                                    {% endif %}
+                                                </span>
+                                            </td>
+                                            <td class="no-print"></td>
+                                        </tr>
+                                    {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         {% endfor %}
-    </span>
     </div>
-    {% if forloop.first %}
-        <div class="no-print d-flex gap-2">
-            <button class="btn btn-sm btn-outline-secondary"
-                    onclick="exportToExcel()"
-                    data-bs-toggle="tooltip"
-                    title="ייצוא כל טבלאות המידות לקובץ Excel / CSV">
-                <i class="bi bi-download"></i>
-            </button>
-            <button class="btn btn-sm btn-outline-secondary"
-                    onclick="window.print()"
-                    data-bs-toggle="tooltip"
-                    title="הדפסת טופס מידות">
-                <i class="bi bi-printer"></i>
-            </button>
-        </div>
-    {% endif %}
-    </div>
-    <div class="table-responsive">
-        <table class="table table-hover align-middle text-center mb-0 excel-table">
-            <thead class="table-light small">
-                <tr>
-                    <th style="width: 40px"
-                        data-bs-toggle="tooltip"
-                        title="מספר סידורי של הפריט (Mark)">#</th>
-                    <th style="width: 8%"
-                        data-bs-toggle="tooltip"
-                        title="מיקום ההתקנה (חדר, קומה, דירה)">מיקום</th>
-                    <th style="width: 6%"
-                        data-bs-toggle="tooltip"
-                        title="רוחב פתח אור / כנף במילימטרים">רוחב</th>
-                    <th style="width: 7%"
-                        data-bs-toggle="tooltip"
-                        title="גובה פתח אור / כנף במילימטרים">גובה</th>
-                    <th style="width: 6%"
-                        data-bs-toggle="tooltip"
-                        title="עובי קיר עבור המשקוף במילימטרים">משקוף</th>
-                    <th style="width: 10%"
-                        data-bs-toggle="tooltip"
-                        title="יד פתיחה וכיוון (L/R פנימה/החוצה)">פתיחה</th>
-                    <th style="width: 6%"
-                        data-bs-toggle="tooltip"
-                        title="חיתוך תחתון נוסף במילימטרים">
-                        רווח
-                        נוסף
-                    </th>
-                    <th data-bs-toggle="tooltip" title="הערות מיוחדות לפריט">הערה</th>
-                    <th class="no-print"
-                        style="width: 160px"
-                        data-bs-toggle="tooltip"
-                        title="פעולות ועריכה">פעולות</th>
-                </tr>
-            </thead>
-            <tbody id="group-body-{{ group.id }}">
-                {% for item in group.items.all %}
-                    <tr id="row-{{ item.id }}"
-                        class="item-row {% if not group.can_edit or item.state == 'CANCELED' %}table-secondary text-muted row-locked{% else %}clickable-row{% endif %}"
-                        data-item-id="{{ item.id }}"
-                        data-can-edit="{% if group.can_edit and item.state != 'CANCELED' %}true{% else %}false{% endif %}"
-                        data-state="{{ item.state }}"
-                        data-mark="{{ item.mark|default:'' }}"
-                        data-height="{{ item.h_fmt }}"
-                        data-width="{{ item.w_fmt }}"
-                        data-wall="{{ item.wall_fmt }}"
-                        data-opening="{{ item.opening|default:'' }}"
-                        data-direction="{{ item.direction|default:'' }}"
-                        data-allowed-direction="{{ group.product.allowed_direction|default:'BOTH' }}"
-                        data-place="{{ item.place|default:'' }}"
-                        data-bottom-correction="{{ item.bottom_correction|default:'' }}"
-                        data-comment="{{ item.comment|default:'' }}"
-                        data-custom-lock-height="{{ item.custom_lock_height|default:'' }}"
-                        data-custom-hinge1="{{ item.custom_hinge1|default:'' }}"
-                        data-custom-hinge2="{{ item.custom_hinge2|default:'' }}"
-                        data-custom-hinge3="{{ item.custom_hinge3|default:'' }}"
-                        data-custom-hinge4="{{ item.custom_hinge4|default:'' }}"
-                        data-custom-hinge5="{{ item.custom_hinge5|default:'' }}"
-                        data-sketch-url="{% if item.sketch %}{{ item.sketch.url }}{% endif %}"
-                        data-has-door="{{ group.product.product_family.has_door|yesno:'true,false' }}"
-                        data-has-frame="{{ group.product.product_family.has_frame|yesno:'true,false' }}">
-                        <td class="fw-bold bg-light">{{ item.mark }}</td>
-                        <td class="field-place small text-start">{{ item.place|default:'' }}</td>
-                        <td class="field-width">{{ item.w_fmt }}</td>
-                        <td class="field-height">{{ item.h_fmt }}</td>
-                        <td class="field-wall">{{ item.wall_fmt }}</td>
-                        <td class="field-opening small">
-                            {% if item.opening or item.direction %}
-                                {{ item.direction|default:"" }} |
-                                {{ item.get_opening_display|default:"" }}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td class="field-bottom-correction small">{{ item.bottom_correction|default:'' }}</td>
-                        <td class="field-comment small text-start">{{ item.comment|default:'' }}</td>
-                        <td class="no-print text-nowrap">
-                            {% if order.sketch or item.sketch %}
-                                <a href="
-												{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
-                                   target="_blank"
-                                   class="btn btn-sm btn-outline-primary py-0"
-                                   data-bs-toggle="tooltip"
-                                   title="צפה בשרטוט עבור פריט זה">
-                                    <i class="bi bi-file-earmark-image"></i>
-                                </a>
-                            {% endif %}
-                            {% if group.can_edit and item.state != 'CANCELED' %}
-                                <i class="bi bi-pencil-square opacity-50 ms-2"
-                                   data-bs-toggle="tooltip"
-                                   title="עריכת פריט"></i>
-                            {% else %}
-                                <i class="bi bi-lock-fill opacity-25 ms-2"
-                                   data-bs-toggle="tooltip"
-                                   title="פריט נעול לעריכה"></i>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% if item.custom_lock_height or item.custom_hinge1 or item.custom_hinge2 or item.custom_hinge3 or item.custom_hinge4 or item.custom_hinge5 %}
-                        <tr id="display-custom-{{ item.id }}"
-                            class="custom-heights-display-row text-muted">
-                            <td></td>
-                            <td colspan="7" class="text-start">
-                                <span class="ps-4" dir="rtl">
-                                    {% if item.custom_lock_height %}<span class="custom-label">מנעול:</span>
-                                    <span class="custom-value ms-1 me-3">{{ item.custom_lock_height }}</span>{% endif %}
-                                {% if item.custom_hinge1 %}
-                                    <span class="custom-label" dir="rtl">ציר 1:</span>
-                                    <span class="custom-value ms-1 me-3">{{ item.custom_hinge1 }}</span>{% endif %}
-                                {% if item.custom_hinge2 %}
-                                    <span class="custom-label" dir="rtl">ציר 2:</span>
-                                    <span class="custom-value ms-1 me-3">{{ item.custom_hinge2 }}</span>{% endif %}
-                                {% if item.custom_hinge3 %}
-                                    <span class="custom-label" dir="rtl">ציר 3:</span>
-                                    <span class="custom-value ms-1 me-3">{{ item.custom_hinge3 }}</span>{% endif %}
-                                {% if item.custom_hinge4 %}
-                                    <span class="custom-label" dir="rtl">ציר 4:</span>
-                                    <span class="custom-value ms-1 me-3">{{ item.custom_hinge4 }}</span>{% endif %}
-                                {% if item.custom_hinge5 %}
-                                    <span class="custom-label" dir="rtl">ציר 5:</span>
-                                    <span class="custom-value ms-1 me-3">{{ item.custom_hinge5 }}</span>{% endif %}
-                            </span>
-                        </td>
-                        <td class="no-print"></td>
-                    </tr>
-                {% endif %}
-{% endfor %}
-</tbody>
-</table>
-</div>
-</div>
-{% endfor %}
-</div>
-<style>
-        .border-excel {
-            border: 1px solid #dee2e6 !important;
-            border-radius: 0;
+    <style>
+        .meas-table-wrap {
+            border-radius: 0 !important;
         }
 
+        /* Строгая 1px сетка в цветах дизайн-системы */
         .excel-table {
             border-collapse: collapse;
         }
 
-        .excel-table th, .excel-table td {
-            border: 1px solid #dee2e6 !important;
-            padding: 0.4rem !important;
+        .excel-table thead th,
+        .excel-table tbody td {
+            border: 1px solid var(--sb-border-strong) !important;
         }
 
         .excel-table thead th {
-            background-color: #f8f9fa;
-            color: #333;
-            font-weight: 600;
+            border-top: 0 !important;
+            background-color: var(--sb-surface-muted) !important;
+            color: var(--sb-text-soft) !important;
+            font-weight: 700;
+        }
+
+        .excel-table tbody tr:last-child td {
+            border-bottom: 0 !important;
+        }
+
+        .excel-table tr > th:first-child,
+        .excel-table tr > td:first-child {
+            border-inline-start: 0 !important;
+        }
+
+        .excel-table tr > th:last-child,
+        .excel-table tr > td:last-child {
+            border-inline-end: 0 !important;
+        }
+
+        .excel-table tbody td {
+            padding: 0.42rem 0.55rem !important;
+            height: 38px;
+        }
+
+        .meas-mark-cell {
+            background-color: var(--sb-bg) !important;
+            color: var(--sb-text-soft);
         }
 
         .clickable-row {
             cursor: pointer;
-            transition: background 0.1s;
+            transition: background-color 0.12s ease;
         }
 
-        .clickable-row:hover {
-            background-color: #f1f3f5 !important;
+        .clickable-row:hover > td:not(.meas-mark-cell) {
+            background-color: var(--sb-row-hover) !important;
         }
 
-        .edit-mode {
-            background-color: #fffde7 !important;
+        /* Активная строка редактирования в фирменной палитре */
+        .excel-table tbody tr.edit-mode > td:not(.meas-mark-cell) {
+            background-color: color-mix(in srgb, var(--sb-primary) 6%, var(--sb-surface)) !important;
         }
 
-        .edit-mode td {
-            padding: 2px !important;
+        .excel-table tbody tr.edit-mode > td.meas-edit-td {
+            padding: 0 !important;
+            height: 1px;
+            vertical-align: middle;
         }
 
+        /* Ячейки Excel: инпуты на 100% ячейки без внешней рамки */
+        .meas-excel-input {
+            display: block;
+            width: 100%;
+            height: 100%;
+            min-height: 38px;
+            padding: 0.35rem 0.5rem;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background-color: transparent !important;
+            box-shadow: none !important;
+            font-size: 0.875rem;
+            color: var(--sb-text);
+            text-align: center;
+            outline: none;
+            transition: background-color 0.12s ease, box-shadow 0.12s ease;
+        }
+
+        .meas-excel-input.text-start {
+            text-align: start;
+        }
+
+        .meas-excel-input::placeholder {
+            color: var(--sb-muted);
+            opacity: 0.6;
+        }
+
+        .meas-excel-input:hover:not(:disabled) {
+            background-color: color-mix(in srgb, var(--sb-primary) 5%, transparent) !important;
+        }
+
+        .meas-excel-input:focus {
+            background-color: var(--sb-surface) !important;
+            box-shadow: inset 0 0 0 2px var(--sb-primary) !important;
+        }
+
+        .meas-excel-input:disabled {
+            background-color: color-mix(in srgb, var(--sb-surface-muted) 55%, transparent) !important;
+            color: var(--sb-muted);
+            cursor: not-allowed;
+        }
+
+        /* Разделённая ячейка выбора стороны и направления открывания (R/L | פ/ח) */
+        .meas-split-select {
+            display: flex;
+            align-items: stretch;
+            width: 100%;
+            height: 100%;
+            min-height: 38px;
+        }
+
+        .meas-split-select .meas-excel-select {
+            flex: 1 1 50%;
+            width: 50%;
+            min-width: 0;
+            height: 100%;
+            min-height: 38px;
+            padding: 0 0.35rem 0 1.35rem;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background-color: transparent;
+            background-position: left 0.35rem center;
+            background-size: 11px 9px;
+            box-shadow: none !important;
+            font-size: 0.85rem;
+            font-weight: 600;
+            line-height: 38px;
+            color: var(--sb-text);
+            text-align: center;
+            cursor: pointer;
+            accent-color: var(--sb-primary);
+            transition: background-color 0.12s ease, box-shadow 0.12s ease;
+        }
+
+        .meas-split-select .meas-excel-select:first-child {
+            border-inline-end: 1px solid var(--sb-border-strong) !important;
+        }
+
+        .meas-split-select .meas-excel-select:hover:not(:disabled) {
+            background-color: color-mix(in srgb, var(--sb-primary) 5%, transparent);
+        }
+
+        .meas-split-select .meas-excel-select:focus {
+            background-color: var(--sb-surface);
+            box-shadow: inset 0 0 0 2px var(--sb-primary) !important;
+        }
+
+        .meas-split-select .meas-excel-select:disabled {
+            color: var(--sb-muted);
+            cursor: not-allowed;
+        }
+
+        .meas-excel-select option {
+            background-color: var(--sb-surface);
+            color: var(--sb-text);
+        }
+
+        .meas-excel-select option:checked {
+            background: var(--sb-primary) linear-gradient(0deg, var(--sb-primary) 0%, var(--sb-primary) 100%);
+            color: #ffffff;
+        }
+
+        /* Кастомизация выпадающего списка в Chrome / Edge с вертикальным центрированием текста */
+        @supports (appearance: base-select) {
+            .meas-split-select .meas-excel-select {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                line-height: 1.2;
+                padding: 0 0.35rem 0 1.35rem;
+            }
+
+            .meas-excel-select,
+            .meas-excel-select::picker(select) {
+                appearance: base-select;
+            }
+
+            .meas-excel-select::picker-icon {
+                display: none;
+            }
+
+            .meas-excel-select::picker(select) {
+                border: 1px solid var(--sb-border-strong);
+                border-radius: var(--sb-radius-sm);
+                background-color: var(--sb-surface);
+                box-shadow: var(--sb-shadow-dropdown);
+                padding: 4px;
+            }
+
+            .meas-excel-select option {
+                padding: 5px 10px;
+                border-radius: var(--sb-radius-xs);
+                font-size: 0.85rem;
+                text-align: center;
+            }
+
+            .meas-excel-select option:hover,
+            .meas-excel-select option:focus {
+                background-color: var(--sb-primary-soft);
+                color: var(--sb-primary-text);
+            }
+
+            .meas-excel-select option:checked {
+                background-color: var(--sb-primary);
+                color: #ffffff;
+            }
+        }
+
+        /* Единые компактные кнопки в колонке действий */
+        .meas-action-btn {
+            width: 30px;
+            height: 30px;
+            padding: 0 !important;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--sb-radius-xs) !important;
+        }
+
+        .meas-action-btn i {
+            font-size: 0.95rem;
+        }
+
+        /* Строка нестандартных высот замка и петель */
         .custom-heights-row td {
-            background-color: #f8f9fa !important;
-            border-top: none !important;
+            background-color: var(--sb-bg) !important;
+            border-top: 0 !important;
+            padding: 0.45rem 0.6rem !important;
         }
 
         .custom-heights-row .input-group-text {
-            font-size: 0.7rem;
-            background-color: #e9ecef;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background-color: var(--sb-surface-muted);
+            border-color: var(--sb-border-strong);
+            color: var(--sb-text-soft);
         }
 
         .custom-heights-row input {
             text-align: center;
-            font-size: 0.8rem;
+            font-size: 0.82rem;
+            border-color: var(--sb-border-strong);
+        }
+
+        .custom-heights-row input:focus {
+            border-color: var(--sb-primary);
+            box-shadow: 0 0 0 0.2rem var(--sb-primary-ring);
         }
 
         .custom-heights-display-row td {
-            font-size: 0.75rem;
-            padding: 0 0.4rem 0.2rem 0.4rem !important;
-            border-top: none !important;
-            background-color: #fdfdfe !important;
+            font-size: 0.76rem;
+            padding: 0.2rem 0.55rem !important;
+            border-top: 0 !important;
+            background-color: var(--sb-bg) !important;
         }
 
         .custom-label {
             font-weight: 600;
-            color: #666;
-            margin-left: 2px;
+            color: var(--sb-muted);
+            margin-left: 3px;
         }
 
         .custom-value {
+            font-weight: 600;
+            color: var(--sb-text);
             margin-right: 12px;
-        }
-
-        .form-control-sm {
-            border-radius: 0;
-            border: 1px solid #0d6efd;
-            text-align: center;
         }
 
         @media print {
             .no-print {
                 display: none !important;
-            }
-
-            .container {
-                width: 100% !important;
-                max-width: none !important;
-                margin: 0 !important;
-                padding: 0 !important;
             }
 
             .card {
@@ -291,7 +504,7 @@
                 border: 1px solid #000 !important;
             }
 
-            .bg-light {
+            .meas-mark-cell {
                 background-color: #fff !important;
             }
 
@@ -300,24 +513,7 @@
                 -webkit-print-color-adjust: exact;
             }
         }
-
-        /* Стиль для квадратной кнопки подтверждения сохранения с галочкой */
-        .btn-save-row {
-            width: 31px;
-            height: 31px;
-            padding: 0 !important;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            margin-left: 2px;
-        }
-
-        .btn-save-row i {
-            font-size: 1.1rem;
-            font-weight: bold;
-        }
-</style>
+    </style>
 {% endblock %}
 {% block extra_js %}
     <script>
@@ -325,7 +521,7 @@
             orderNumber: "{{ order.order_number|escapejs }}",
             customer: "{{ order.customer|escapejs }}",
             csrfToken: "{{ csrf_token }}",
-            canEdit: true // Разрешаем скрипту работать, а за блокировку конкретных строк отвечает data-can-edit самой строки
+            canEdit: true
         };
     </script>
     <script src="/static/js/order_measurements.js"></script>

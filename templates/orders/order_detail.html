@@ -1,40 +1,89 @@
 {% extends "base.html" %}
-{% block page_title %}הזמנה: {{ order.order_number }}
-    <span class="badge bg-secondary"
+{% block page_title %}
+    <span>הזמנה: {{ order.order_number }}</span>
+    <span class="sb-badge-soft {% if order.status == 'COMPLETED' %}sb-success{% elif order.status == 'CANCELED' %}sb-danger{% elif order.status != 'NEW' %}sb-accent{% endif %} ms-3"
           data-bs-toggle="tooltip"
           title="סטטוס נוכחי של ההזמנה: {{ order.get_status_display }}">{{ order.get_status_display }}</span>
 {% endblock %}
 {% block content %}
-    <div class="sb-page-header align-items-center gap-3 mb-4">
+    <!-- Верхняя строка: Клиент, основные кнопки добавления и Dev Tools -->
+    <div class="sb-page-header align-items-center justify-content-between gap-3 mb-3">
         <div class="d-flex align-items-center flex-wrap gap-2">
             <span class="sb-stat-icon sb-accent flex-shrink-0">
                 <i class="bi bi-person-badge"></i>
             </span>
-            <h2 class="sb-page-title me-2">{{ order.customer }}</h2>
+            <h2 class="sb-page-title ms-2 mb-0">{{ order.customer }}</h2>
             {% if order.status != 'CANCELED' %}
                 <a href="{% url 'order-edit-header' order.pk %}"
-                   class="btn btn-sm btn-outline-primary"
+                   class="btn btn-sm btn-outline-secondary"
                    data-bs-toggle="tooltip"
                    title="עריכת פרטי הזמנה">
                     <i class="bi bi-pencil"></i>
                 </a>
             {% endif %}
-            <button class="btn btn-sm btn-outline-primary"
-                    data-bs-toggle="modal"
-                    data-bs-target="#groupModal"
-                    title="הוספת קבוצת דלתות חדשה להזמנה">
-                <i class="bi bi-plus-lg me-2"></i>הוספת דלתות
-            </button>
-            <button class="btn btn-sm btn-outline-warning btn-open-load-spec"
-                    data-group-id=""
-                    title="הוספת קבוצה ממפרט שמור">
-                <i class="bi bi-box-arrow-in-down me-2"></i>טעינת מפרט שמור
-            </button>
+            {% if can_edit_order %}
+                <button class="btn btn-sm btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#groupModal"
+                        title="הוספת קבוצת דלתות חדשה להזמנה">
+                    <i class="bi bi-plus-lg me-1"></i>הוספת דלתות
+                </button>
+                <button class="btn btn-sm btn-outline-accent btn-open-load-spec"
+                        data-group-id=""
+                        title="הוספת קבוצה ממפרט שמור">
+                    <i class="bi bi-box-arrow-in-down me-1"></i>טעינת מפרט שמור
+                </button>
+            {% endif %}
         </div>
+        <!-- Dev Tools (в верхней строке, без смещения по центру экрана) -->
+        {% if is_admin_user %}
+            <div class="dropdown">
+                <button class="btn btn-outline-warning btn-sm dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown">
+                    <i class="bi bi-tools me-1"></i>Dev Tools
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <a class="dropdown-item"
+                           href="{% url 'production:order-rebuild-batch-spec' order.pk %}">
+                            <i class="bi bi-cpu ms-2 text-warning"></i>Rebuild Spec
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item"
+                           href="{% url 'production:spec-json-preview' order.pk %}"
+                           target="_blank">
+                            <i class="bi bi-filetype-json ms-2 text-info"></i>צפייה ב-JSON Spec
+                        </a>
+                    </li>
+                    {% if order.status != 'NEW' %}
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li>
+                            <a class="dropdown-item text-warning"
+                               href="{% url 'order-reset-to-new' order.pk %}"
+                               onclick="return confirm('בטוח?')">
+                                <i class="bi bi-arrow-counterclockwise ms-2"></i>Reset to NEW
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item text-danger"
+                               href="{% url 'order-cancel' order.pk %}"
+                               onclick="return confirm('בטוח?')">
+                                <i class="bi bi-x-circle ms-2"></i>ביטול הזמנה
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% endif %}
     </div>
-    <div class="card mb-4">
-        <div class="card-body">
-            <div class="row g-3">
+    <!-- Карточка параметров заказа -->
+    <div class="card mb-3">
+        <div class="card-body py-2 px-3">
+            <div class="row g-2">
                 <div class="col-6 col-md-4 col-xl-3"
                      data-bs-toggle="tooltip"
                      title="סדרת הדלתות הראשית בהזמנה">
@@ -74,208 +123,139 @@
                      data-bs-toggle="tooltip"
                      title="תאריך יצירת ההזמנה במערכת">
                     <div class="text-muted small">ירידה לייצור</div>
-                    <div class="fw-medium">{{ order.production_start_date|date:"d/m/y" }}</div>
+                    <div class="fw-medium">{{ order.production_start_date|date:"d/m/y"|default:"-" }}</div>
                 </div>
                 <div class="col-6 col-md-4 col-xl-3"
                      data-bs-toggle="tooltip"
                      title="תאריך יעד סופי לסיום ייצור">
                     <div class="text-muted small">סיום ייצור</div>
-                    <div class="fw-medium">{{ order.completion_date|date:"d/m/y" }}</div>
+                    <div class="fw-medium">{{ order.completion_date|date:"d/m/y"|default:"-" }}</div>
                 </div>
                 <div class="col-6 col-md-4 col-xl-3"
                      data-bs-toggle="tooltip"
                      title="תאריך מתוכנן לצביעת הפריטים">
                     <div class="text-muted small">סיום צבע</div>
-                    <div class="fw-medium">{{ order.painting_completion_date|date:"d/m/y" }}</div>
+                    <div class="fw-medium">{{ order.painting_completion_date|date:"d/m/y"|default:"-" }}</div>
                 </div>
             </div>
         </div>
     </div>
-    <!-- Action Toolbar & Primary Process CTAs -->
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 p-3 mb-4 rounded-3 border bg-body-tertiary">
-        <div class="d-flex flex-wrap align-items-center gap-2">
-            <!-- 1. ЗАПУСК В ПРОИЗВОДСТВО И ВАЛИДАЦИЯ -->
+    <!-- Панель производственных действий (показывается только при наличии групп или активного статуса) -->
+    {% if groups or order.status != 'NEW' and order.status != 'CANCELED' %}
+        <div class="d-flex flex-wrap align-items-center justify-content-start gap-2 py-2 px-3 mb-3 rounded-3 border"
+             style="background-color: var(--sb-surface)">
             {% if order.can_start_production %}
                 {% if order.status == 'PHASE1_READY' %}
                     <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-                       class="btn btn-warning fw-semibold">
-                        <i class="bi bi-arrow-right-circle me-1"></i> העבר לשלב ב' (הזנת מידות)
+                       class="btn btn-primary fw-semibold">
+                        <i class="bi bi-arrow-right-circle me-1"></i>העבר לשלב ב'
                     </a>
                 {% else %}
                     <button type="button"
                             class="btn btn-primary fw-semibold"
                             onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
-                        <i class="bi bi-play-circle me-1"></i> העבר לייצור (אצווה חדשה)
+                        <i class="bi bi-play-circle me-1"></i>העבר לייצור
                     </button>
                 {% endif %}
                 <a href="{% url 'production:order-check-validation' order.pk %}"
-                   class="btn btn-outline-info"
+                   class="btn btn-outline-secondary"
                    data-bs-toggle="tooltip"
                    title="בדיקת תקינות הנתונים של ההזמנה">
-                    <i class="bi bi-list-task me-1"></i> בדיקת תקינות
+                    <i class="bi bi-list-task me-1"></i>בדיקת תקינות
                 </a>
-            {% endif %}
-            <!-- ========================================== -->
-            <!-- 2. ЗАВЕРШЕНИЕ ЭТАПОВ                      -->
-            <!-- Скрываем, если есть группы в статусе NEW   -->
-            <!-- ========================================== -->
-            {% if not order.can_start_production %}
-                {% if order.status == 'PHASE1_PRODUCTION' %}
-                    <a href="{% url 'production:order-complete-phase1' order.pk %}"
-                       class="btn btn-success fw-semibold"
-                       data-bs-toggle="tooltip"
-                       title="סיום שלב א' של ההזמנה">
-                        <i class="bi bi-check-circle me-1"></i> סיום שלב א'
-                    </a>
-                {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' or order.status == 'PARTIALLY_READY' %}
-                    <a href="{% url 'production:order-complete-production' order.pk %}"
-                       class="btn btn-success fw-semibold"
-                       data-bs-toggle="tooltip"
-                       title="סיום תהליך הייצור והעברה למוכן למשלוח">
-                        <i class="bi bi-check-all me-1"></i> סיום ייצור
+                {% if order.status != 'NEW' %}
+                    <a href="{% url 'production:order-tracking-detail' order.pk %}"
+                       class="btn btn-outline-accent">
+                        <i class="bi bi-diagram-3 me-1"></i>מעקב ייצור
                     </a>
                 {% endif %}
             {% endif %}
-            <!-- 3. ФОРМА РАЗМЕРОВ (טופס מידות) -->
-            <a href="{% url 'order-measurements' order.pk %}"
-               class="btn btn-outline-primary"
-               data-bs-toggle="tooltip"
-               title="צפייה ועריכת מידות הפריטים">
-                <i class="bi bi-rulers me-1"></i> טופס מידות
-            </a>
-            <!-- 4. ОТЧЕТЫ И ЧПУ (Модальное окно) -->
+            {% if not order.can_start_production %}
+                {% if order.status == 'PHASE1_PRODUCTION' %}
+                    <a href="{% url 'production:order-complete-phase1' order.pk %}"
+                       class="btn btn-primary fw-semibold"
+                       data-bs-toggle="tooltip"
+                       title="סיום שלב א' של ההזמנה">
+                        <i class="bi bi-check-circle me-1"></i>סיום שלב א'
+                    </a>
+                {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' or order.status == 'PARTIALLY_READY' %}
+                    <a href="{% url 'production:order-complete-production' order.pk %}"
+                       class="btn btn-primary fw-semibold"
+                       data-bs-toggle="tooltip"
+                       title="סיום תהליך הייצור והעברה למוכן למשלוח">
+                        <i class="bi bi-check-all me-1"></i>סיום ייצור
+                    </a>
+                {% endif %}
+            {% endif %}
+            {% if groups %}
+                <a href="{% url 'order-measurements' order.pk %}"
+                   class="btn btn-outline-primary"
+                   data-bs-toggle="tooltip"
+                   title="צפייה ועריכת מידות הפריטים">
+                    <i class="bi bi-rulers me-1"></i>טופס מידות
+                </a>
+            {% endif %}
             {% if order.status != 'NEW' and order.status != 'CANCELED' %}
                 <button type="button"
-                        class="btn btn-dark fw-semibold"
+                        class="btn btn-outline-accent fw-semibold"
                         data-bs-toggle="modal"
                         data-bs-target="#reportsModal"
                         title="הדפסת דוחות, מדבקות והורדת קבצי מכונה">
-                    <i class="bi bi-printer me-1"></i> דוחות וייצור קבצים
+                    <i class="bi bi-printer me-1"></i>דוחות וייצור קבצים
                 </button>
             {% endif %}
         </div>
-        <!-- Dev Tools -->
-        {% if is_admin_user %}
-            <div class="dropdown">
-                <button class="btn btn-outline-warning btn-sm dropdown-toggle"
-                        type="button"
-                        data-bs-toggle="dropdown">
-                    <i class="bi bi-tools me-1"></i>Dev Tools
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item"
-   href="{% url 'production:order-rebuild-batch-spec' order.pk %}"><i class="bi bi-cpu me-2 text-warning"></i>Rebuild Spec</a></li>
-                    <li><a class="dropdown-item"
-   href="{% url 'production:spec-json-preview' order.pk %}"
-   target="_blank"><i class="bi bi-filetype-json me-2 text-info"></i>צפייה ב-JSON Spec</a></li>
-                    {% if order.status != 'NEW' %}
-                        <li>
-                            <hr class="dropdown-divider">
-                        </li>
-                        <li><a class="dropdown-item text-warning"
-   href="{% url 'order-reset-to-new' order.pk %}"
-   onclick="return confirm('בטוח?')"><i class="bi bi-arrow-counterclockwise me-2"></i>Reset
-                            to NEW</a>
-                        </li>
-                        <li><a class="dropdown-item text-danger"
-   href="{% url 'order-cancel' order.pk %}"
-   onclick="return confirm('בטוח?')"><i class="bi bi-x-circle me-2"></i>ביטול הזמנה</a></li>
-                    {% endif %}
-                </ul>
-            </div>
-        {% endif %}
-    </div>
-    <div class="row">
-        <div class="col-lg-10 mb-4">
-            {% if groups %}
-                <!-- Панель управления: Свернуть все / Развернуть все -->
-                <div class="d-flex justify-content-between align-items-center mb-3 px-1">
-                    <span class="text-muted small fw-semibold">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
-                    <div class="btn-group btn-group-sm" role="group">
-                        <button type="button"
-                                class="btn btn-outline-secondary"
-                                id="btnExpandAllGroups"
-                                data-bs-toggle="tooltip"
-                                title="פתח את כל הקבוצות">
-                            <i class="bi bi-plus-lg me-1"></i>פתח הכל
-                        </button>
-                        <button type="button"
-                                class="btn btn-outline-secondary"
-                                id="btnCollapseAllGroups"
-                                data-bs-toggle="tooltip"
-                                title="סגור את כל הקבוצות">
-                            <i class="bi bi-dash-lg me-1"></i>סגור הכל
-                        </button>
-                    </div>
+    {% endif %}
+    <!-- Группы дверей или компактная заглушка без скроллбара -->
+    {% if groups %}
+        <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                <span class="text-muted small fw-semibold">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
+                <div class="d-inline-flex align-items-center gap-1">
+                    <button type="button"
+                            class="sb-view-toggle-btn"
+                            id="btnExpandAllGroups"
+                            data-bs-toggle="tooltip"
+                            title="פתח את כל הקבוצות">
+                        <i class="bi bi-arrows-expand me-1"></i>פתח הכל
+                    </button>
+                    <span class="text-muted opacity-25">|</span>
+                    <button type="button"
+                            class="sb-view-toggle-btn"
+                            id="btnCollapseAllGroups"
+                            data-bs-toggle="tooltip"
+                            title="סגור את כל הקבוצות">
+                        <i class="bi bi-arrows-collapse me-1"></i>סגור הכל
+                    </button>
                 </div>
-            {% endif %}
+            </div>
             <div class="accordion d-flex flex-column gap-3" id="groupsAccordion">
                 {% for group in groups %}
-                    {% with items=group.items.all %}
-                        <div class="card overflow-hidden group-accordion-item"
-                             data-group-id="{{ group.id }}">
-                            <!-- Компактная шапка (видна всегда, в свернутом виде оставляет только модель и диапазон) -->
-                            <div class="card-header bg-body border-0 py-3 px-3 d-flex justify-content-between align-items-center cursor-pointer"
-                                 role="button"
-                                 data-bs-toggle="collapse"
-                                 data-bs-target="#groupCollapse-{{ group.id }}"
-                                 aria-expanded="true"
-                                 aria-controls="groupCollapse-{{ group.id }}">
-                                <div class="d-flex align-items-center gap-3">
-                                    <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle fs-6 px-3">
-                                        <i class="bi bi-door-closed me-1"></i>
-                                        {% if items|length > 1 %}
-                                            דלתות {{ items.0.mark }}-{{ items.last.mark }}
-                                        {% elif items|length == 1 %}
-                                            דלת {{ items.0.mark }}
-                                        {% else %}
-                                            ללא דלתות
-                                        {% endif %}
-                                    </span>
-                                    <h5 class="mb-0 fw-bold text-dark">
-                                        {{ group.product.name|default:"דגם לא נבחר" }}
-                                        {% if group.product.code %}
-                                            <small class="text-muted fw-normal fs-6">({{ group.product.code }})</small>
-                                        {% endif %}
-                                    </h5>
-                                </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <span class="badge rounded-pill bg-body-secondary text-body-secondary border">{{ group.quantity }} יח'</span>
-                                    <i class="bi bi-chevron-down fs-5 text-secondary collapse-arrow"></i>
-                                </div>
-                            </div>
-                            <!-- Тело карточки (полное содержимое группы) -->
-                            <div id="groupCollapse-{{ group.id }}"
-                                 class="collapse show group-collapse-body"
-                                 data-bs-parent="">
-                                <div class="card-body p-0 border-top">{% include "orders/includes/group_card.html" %}</div>
-                            </div>
-                        </div>
-                    {% endwith %}
-                {% empty %}
-                    <div class="card">
-                        <div class="card-body sb-empty">
-                            <i class="bi bi-layers d-block mb-3"></i>
-                            <h5 class="text-muted">אין עדיין קבוצות דלתות בהזמנה</h5>
-                            <p class="text-muted small">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
-                            <div class="d-flex justify-content-center gap-2 mt-3">
-                                {% if can_edit_order %}
-                                    <button class="btn btn-primary"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#groupModal">
-                                        <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
-                                    </button>
-                                    <button class="btn btn-outline-warning btn-open-load-spec" data-group-id="">
-                                        <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
-                                    </button>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
+                    {% include "orders/includes/group_card.html" %}
                 {% endfor %}
             </div>
         </div>
-    </div>
+    {% else %}
+        <div class="card">
+            <div class="card-body py-4 px-3 text-center">
+                <i class="bi bi-layers fs-2 text-muted d-block mb-2 opacity-50"></i>
+                <h6 class="fw-bold text-muted mb-1">אין עדיין קבוצות דלתות בהזמנה</h6>
+                <p class="text-muted small mb-3">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
+                {% if can_edit_order %}
+                    <div class="d-flex justify-content-center flex-wrap gap-2">
+                        <button class="btn btn-primary"
+                                data-bs-toggle="modal"
+                                data-bs-target="#groupModal">
+                            <i class="bi bi-plus-lg me-1"></i>הוסף קבוצה ראשונה
+                        </button>
+                        <button class="btn btn-outline-accent btn-open-load-spec" data-group-id="">
+                            <i class="bi bi-box-arrow-in-down me-1"></i>טען ממפרט שמור
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
     <!-- Modals -->
     {% include "orders/includes/group_modal.html" %}
     {% include "orders/includes/group_customizer_modal.html" %}
@@ -500,8 +480,8 @@
                         }
                         $productSelect.val(productId);
                         $groupModal.find('.product-info-display').html(
-                            '<strong class="text-success-emphasis"><i class="bi bi-check-circle-fill me-1"></i> ' +
-                            productName + ' (' + productCode + ')</strong>'
+                            '<span class="sb-product-found fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>' +
+                            productName + ' (' + productCode + ')</span>'
                         );
                     }
 
@@ -773,8 +753,8 @@
 
                             if ($display.length) {
                                 $display.html(
-                                    '<strong class="text-success-emphasis" data-bs-toggle="tooltip" title="' + (desc || model['name']) + '">' +
-                                    '<i class="bi bi-check-circle-fill me-1"></i> ' + model['name'] + ' (' + model['code'] + ')</strong>'
+                                    '<span class="sb-product-found fw-semibold" data-bs-toggle="tooltip" title="' + (desc || model['name']) + '">' +
+                                    '<i class="bi bi-check-circle-fill me-1"></i>' + model['name'] + ' (' + model['code'] + ')</span>'
                                 );
                                 if (window['initTooltips']) window['initTooltips']($display[0]);
                             }
@@ -1030,7 +1010,7 @@
                                 }
                             }
 
-                            const reqBadge = (cust['customizer_is_required'] || cust['is_required']) ? '<span class="badge bg-danger-subtle text-danger ms-1">חובה</span>' : '';
+                            const reqBadge = (cust['customizer_is_required'] || cust['is_required']) ? '<span class="badge bg-danger-subtle text-danger me-1">חובה</span>' : '';
                             html +=
                                 '<div class="col">' +
                                 '<div class="p-3 border rounded-3 bg-body h-100" data-bs-toggle="tooltip" title="' + (cust['customizer_description'] || cust['customizer_name']) + '">' +
@@ -1115,7 +1095,7 @@
                 if (!hasParams) paramsHtml += '<div class="col-12 text-muted extra-small">אין פרמטרים להגדרה</div>';
                 paramsHtml += '</div>';
 
-                const reqBadge = custIsRequired ? '<span class="badge bg-danger-subtle text-danger ms-1">חובה</span>' : '';
+                const reqBadge = custIsRequired ? '<span class="badge bg-danger-subtle text-danger me-1">חובה</span>' : '';
                 return '<tr data-item-id="' + item['id'] + '">' +
                     '<td><div class="fw-bold text-primary" data-bs-toggle="tooltip" title="' + (item['customizer_description'] || item['customizer_name']) + '">' +
                     item['customizer_name'] + reqBadge + '</div>' +
@@ -1650,6 +1630,7 @@
                 $cb.prop('checked', !$cb.prop('checked')).trigger('change');
             });
 
+
             $(document).on('click', '.btn-generate-action', function (e) {
                 e.preventDefault();
                 if ($(this).prop('disabled')) return;
@@ -1679,6 +1660,82 @@
                 }
 
                 $('#reportsModal').modal('hide');
+            });
+
+            // --- Комментарии к отчётам станций (#stationNoteModal поверх #reportsModal) ---
+            let activeStationNoteBtn = null;
+
+            $(document).on('click', '.btn-edit-station-note', function () {
+                activeStationNoteBtn = $(this);
+                const stationId = activeStationNoteBtn.attr('data-station-id');
+                const stationName = activeStationNoteBtn.attr('data-station-name');
+                const currentNote = activeStationNoteBtn.attr('data-note') || '';
+
+                $('#stationNoteStationId').val(stationId);
+                $('#stationNoteModalTitle').text(stationName);
+                $('#stationNoteTextarea').val(currentNote);
+
+                const modalEl = document.getElementById('stationNoteModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+
+                // Поднимаем backdrop второго модального окна выше первого (#reportsModal = 1055)
+                setTimeout(function () {
+                    $('.modal-backdrop').last().css('z-index', 1060);
+                    $('#stationNoteTextarea').trigger('focus');
+                }, 50);
+            });
+
+            $('#btnSaveStationNote').on('click', function () {
+                const $saveBtn = $(this);
+                const stationId = $('#stationNoteStationId').val();
+                const comment = $('#stationNoteTextarea').val();
+
+                $saveBtn.prop('disabled', true);
+
+                fetch("{% url 'production:save-station-note' order.pk %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({
+                        station_id: stationId,
+                        comment: comment
+                    })
+                })
+                    .then(function (res) {
+                        return res.json();
+                    })
+                    .then(function (data) {
+                        $saveBtn.prop('disabled', false);
+                        if (data.status === 'ok') {
+                            const savedText = data.comment || '';
+                            if (activeStationNoteBtn) {
+                                activeStationNoteBtn.attr('data-note', savedText);
+                                if (savedText) {
+                                    activeStationNoteBtn
+                                        .removeClass('btn-outline-secondary')
+                                        .addClass('btn-warning')
+                                        .attr('title', 'הערה קיימת: ' + savedText);
+                                } else {
+                                    activeStationNoteBtn
+                                        .removeClass('btn-warning')
+                                        .addClass('btn-outline-secondary')
+                                        .attr('title', 'הוסף הערה לדו"ח');
+                                }
+                            }
+                            const modalEl = document.getElementById('stationNoteModal');
+                            bootstrap.Modal.getInstance(modalEl).hide();
+                        } else {
+                            alert(data.message || 'שגיאה בשמירת ההערה');
+                        }
+                    })
+                    .catch(function () {
+                        $saveBtn.prop('disabled', false);
+                        alert('שגיאת תקשורת עם השרת');
+                    });
             });
 
             // --- Массовое сворачивание / разворачивание карточек групп ---

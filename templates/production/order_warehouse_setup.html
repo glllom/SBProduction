@@ -3,286 +3,486 @@
 {% block page_title %}
     <span>תעודת ליקוט מחסן - הזמנה {{ order.order_number }}</span>
     {% if is_locked %}
-        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle ms-2 fs-6 fw-normal">
+        <span class="sb-badge-soft sb-success ms-3">
             <i class="bi bi-lock-fill me-1"></i>מאושר ונעול
         </span>
     {% else %}
-        <span class="badge bg-light text-secondary border ms-2 fs-6 fw-normal">טיוטה בעריכה</span>
+        <span class="sb-badge-soft sb-accent ms-3">טיוטה בעריכה</span>
     {% endif %}
 {% endblock %}
 {% block content %}
-    <div class="container-fluid py-3" dir="rtl">
-        <!-- Верхняя панель действий -->
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
-            <div class="d-flex align-items-center gap-2">
-                <span class="fw-bold fs-5 text-dark">{{ order.customer }}</span>
-                {% if is_locked and order.warehouse_locked_at %}
-                    <span class="text-muted small">
-                        | אושר ב-{{ order.warehouse_locked_at|date:"d/m/Y" }}
-                        {% if order.warehouse_locked_by %}(
-                            {{ order.warehouse_locked_by.get_full_name|default:order.warehouse_locked_by.username }}
-                            ){% endif %}
-                    </span>
-                {% endif %}
+    <div dir="rtl">
+        <!-- Верхняя строка: клиент и сервисные действия -->
+        <div class="sb-page-header align-items-center justify-content-between gap-3 mb-3">
+            <div class="d-flex align-items-center flex-wrap gap-2">
+                <span class="sb-stat-icon sb-accent flex-shrink-0">
+                    <i class="bi bi-box-seam"></i>
+                </span>
+                <div>
+                    <h2 class="sb-page-title mb-0">{{ order.customer }}</h2>
+                    {% if is_locked and order.warehouse_locked_at %}
+                        <div class="text-muted small">
+                            אושר ב-{{ order.warehouse_locked_at|date:"d/m/Y" }}
+                            {% if order.warehouse_locked_by %}
+                                ע״י {{ order.warehouse_locked_by.get_full_name|default:order.warehouse_locked_by.username }}
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
             </div>
-            <div class="d-flex align-items-center gap-2">
-                <!-- Кнопка раскрытия общего комментария -->
+            <div class="d-flex align-items-center flex-wrap gap-2">
+                <!-- Кнопка раскрытия общего примечания -->
                 <button type="button"
-                        class="btn btn-sm btn-outline-secondary position-relative d-inline-flex align-items-center justify-content-center"
-                        style="width: 34px;
-                               height: 34px"
+                        class="btn btn-sm {% if order.warehouse_notes %}btn-outline-accent{% else %}btn-outline-secondary{% endif %}"
                         data-bs-toggle="collapse"
                         data-bs-target="#warehouseNotesCollapse"
                         aria-expanded="{% if order.warehouse_notes %}true{% else %}false{% endif %}"
-                        aria-controls="warehouseNotesCollapse"
-                        title="הערות כלליות למחסן">
-                    <i class="bi bi-pencil"></i>
-                    {% if order.warehouse_notes %}
-                        <span class="position-absolute top-0 start-0 translate-middle p-1 bg-primary border border-light rounded-circle"></span>
-                    {% endif %}
+                        aria-controls="warehouseNotesCollapse">
+                    <i class="bi bi-chat-right-text me-1"></i>הערות למחסן
                 </button>
                 {% if is_locked %}
                     <a href="{% url 'production:station-report' order.id %}?station=WAREHOUSE"
                        target="_blank"
                        class="btn btn-sm btn-primary fw-semibold">
-                        <i class="bi bi-printer me-1"></i> הדפסת תעודת ליקוט
+                        <i class="bi bi-printer me-1"></i>הדפסת תעודת ליקוט
                     </a>
                     {% if is_admin %}
+                        <!-- Кнопка снятия блокировки -->
                         <button type="submit"
                                 form="warehouseForm"
                                 name="action"
                                 value="unlock"
-                                class="btn btn-sm btn-outline-secondary"
-                                onclick="return confirm('ביטול הנעילה יפתח את התעודה לעריכה מחדש. להמשיך?')">
-                            <i class="bi bi-unlock me-1"></i> בטל נעילה
+                                class="btn btn-sm btn-outline-warning"
+                                data-confirm-title="ביטול נעילת תעודה"
+                                data-confirm="ביטול הנעילה יפתח את התעודה לעריכה מחדש. להמשיך?"
+                                data-confirm-variant="warning"
+                                data-confirm-ok="בטל נעילה">
+                            <i class="bi bi-unlock me-1"></i>בטל נעילה
                         </button>
                     {% endif %}
                 {% else %}
+                    <!-- Кнопка пересчёта -->
                     <button type="submit"
                             form="warehouseForm"
                             name="action"
                             value="recalculate"
-                            class="btn btn-sm btn-outline-secondary"
-                            onclick="return confirm('פעולה זו תמחק את השורות הנוכחיות ותחשב מחדש את הפריטים מתוך ההזמנה (ההערה הכללית תישמר). להמשיך?')">
-                        <i class="bi bi-arrow-clockwise me-1"></i> חשב מחדש
+                            class="btn btn-sm btn-outline-danger"
+                            data-confirm-title="חישוב מחדש של התעודה"
+                            data-confirm="פעולה זו תמחק את השורות הנוכחיות ותחשב מחדש את הפריטים מתוך ההזמנה (ההערה הכללית תישמר). להמשיך?"
+                            data-confirm-variant="danger"
+                            data-confirm-ok="מחק וחשב מחדש">
+                        <i class="bi bi-arrow-clockwise me-1"></i>חשב מחדש
                     </button>
                 {% endif %}
             </div>
         </div>
         <form method="post" id="warehouseForm">
             {% csrf_token %}
+            <!-- Карточка общих примечаний к накладной -->
             <div class="collapse {% if order.warehouse_notes %}show{% endif %} mb-3"
                  id="warehouseNotesCollapse">
-                <label class="form-label small fw-semibold text-secondary mb-1">הערות כלליות למחסן:</label>
-                <textarea name="warehouse_notes"
-                          class="form-control form-control-sm bg-white"
-                          rows="2"
-                          {% if is_locked %}disabled{% endif %}
-                          placeholder="">{{ order.warehouse_notes }}</textarea>
+                <div class="card">
+                    <div class="card-body py-2 px-3">
+                        <label for="warehouseNotesInput" class="form-label mb-1">
+                            <i class="bi bi-info-circle me-1 text-primary"></i>הערות כלליות למחסן
+                        </label>
+                        <textarea id="warehouseNotesInput"
+                                  name="warehouse_notes"
+                                  class="form-control form-control-sm"
+                                  rows="2"
+                                  {% if is_locked %}disabled{% endif %}
+                                  placeholder="הקלד הנחיות מיוחדות לליקוט או לאריזה...">{{ order.warehouse_notes }}</textarea>
+                    </div>
+                </div>
             </div>
+            <!-- Быстрый выбор цвета для всей фурнитуры -->
             {% if not is_locked and available_colors %}
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                    <span class="text-muted small me-1"><i class="bi bi-palette me-1"></i> גוון לכל הרכיבים:</span>
-                    {% for color in available_colors %}
-                        <button type="button"
-                                class="btn btn-sm btn-light border quick-color-btn"
-                                data-color="{{ color }}">{{ color }}</button>
-                    {% endfor %}
+                <div class="card mb-3">
+                    <div class="card-body py-2 px-3 d-flex flex-wrap align-items-center gap-2">
+                        <span class="text-muted small fw-semibold me-1">
+                            <i class="bi bi-palette me-1 text-primary"></i>גוון לכל הרכיבים:
+                        </span>
+                        {% for color in available_colors %}
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary quick-color-btn"
+                                    data-color="{{ color }}">{{ color }}</button>
+                        {% endfor %}
+                    </div>
                 </div>
             {% endif %}
-            <div class="table-responsive mb-3">
-                <table class="table table-bordered table-hover align-middle mb-0 bg-white">
-                    <thead class="table-light text-secondary small">
-                        <tr>
-                            <th style="width: 12%;">קטגוריה</th>
-                            <th style="width: 22%;">פריט</th>
-                            <th style="width: 12%;">מק"ט</th>
-                            <th style="width: 18%;">גוון / צבע</th>
-                            <th style="width: 5%;" class="text-center">כמות</th>
-                            <th>הערה</th>
-                            {% if not is_locked %}
-                                <th style="width: 5%;" class="text-center">מחק</th>{% endif %}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for sec in sections %}
-                            {% for row in sec.rows %}
-                                {% with it=row.obj %}
-                                    <tr>
-                                        {% if forloop.first %}
-                                            <td rowspan="{{ sec.rows|length }}"
-                                                class="fw-bold bg-light align-top text-dark">{{ sec.label }}</td>
-                                        {% endif %}
-                                        <td class="fw-semibold">{{ it.name|default:it.name }}</td>
-                                        <td class="text-muted small font-monospace sku-cell-{{ it.id }}">{{ it.sku|default:"-" }}</td>
-                                        <td>
-                                            {% if it.is_color_required %}
-                                                <select name="hw_color_{{ it.id }}"
-                                                        class="form-select form-select-sm color-select {% if not it.hardware_id %}border-danger{% endif %}"
-                                                        data-item-id="{{ it.id }}"
-                                                        {% if is_locked %}disabled{% endif %}>
-                                                    <option value="">-- חובה לבחור גוון --</option>
-                                                    {% for opt in row.color_options %}
-                                                        <option value="{{ opt.id }}"
-                                                                data-color-name="{{ opt.color_name }}"
-                                                                data-sku="{{ opt.sku }}"
-                                                                {% if it.hardware_id == opt.id %}selected{% endif %}>
-                                                            {{ opt.color_name }} ({{ opt.sku }})
-                                                        </option>
-                                                    {% endfor %}
-                                                </select>
-                                            {% else %}
-                                                <span class="text-muted small">{{ it.color_name|default:"-" }}</span>
+            <!-- Основная таблица комплектации со строгой сеткой 1px как в Excel -->
+            <div class="card overflow-hidden mb-3">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 wh-excel-grid"
+                           id="warehouseTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 13%;">קטגוריה</th>
+                                <th style="width: 23%;">פריט</th>
+                                <th style="width: 13%;">מק"ט</th>
+                                <th style="width: 19%;">גוון / צבע</th>
+                                <th style="width: 7%;" class="text-center">כמות</th>
+                                <th>הערה</th>
+                                {% if not is_locked %}
+                                    <th style="width: 5%;" class="text-center">מחק</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sec in sections %}
+                                {% for row in sec.rows %}
+                                    {% with it=row.obj %}
+                                        <tr class="wh-item-row">
+                                            {% if forloop.first %}
+                                                <td rowspan="{{ sec.rows|length }}"
+                                                    class="fw-bold align-top wh-category-cell">{{ sec.label }}</td>
                                             {% endif %}
-                                        </td>
-                                        <td class="excel-td">
-                                            <input type="number"
-                                                   step="0.5"
-                                                   min="0"
-                                                   name="qty_{{ it.id }}"
-                                                   value="{{ it.qty_display }}"
-                                                   class="excel-input text-center fw-semibold"
-                                                   {% if is_locked %}disabled{% endif %}>
-                                        </td>
-                                        <td class="excel-td">
-                                            <input type="text"
-                                                   name="comment_{{ it.id }}"
-                                                   value="{{ it.comment }}"
-                                                   class="excel-input"
-                                                   placeholder="הערה לשורה..."
-                                                   {% if is_locked %}disabled{% endif %}>
-                                        </td>
-                                        {% if not is_locked %}
-                                            <td class="text-center">
-                                                <input type="checkbox"
-                                                       name="delete_{{ it.id }}"
-                                                       value="1"
-                                                       class="form-check-input">
+                                            <td class="fw-semibold">{{ it.name }}</td>
+                                            <td class="text-muted small font-monospace sku-cell-{{ it.id }}">{{ it.sku|default:"-" }}</td>
+                                            <td class="wh-excel-td">
+                                                {% if it.is_color_required %}
+                                                    <select name="hw_color_{{ it.id }}"
+                                                            class="form-select form-select-sm no-select2 color-select {% if not it.hardware_id %}border-danger{% endif %}"
+                                                            data-item-id="{{ it.id }}"
+                                                            {% if is_locked %}disabled{% endif %}>
+                                                        <option value="">-- חובה לבחור גוון --</option>
+                                                        {% for opt in row.color_options %}
+                                                            <option value="{{ opt.id }}"
+                                                                    data-color-name="{{ opt.color_name }}"
+                                                                    data-sku="{{ opt.sku }}"
+                                                                    {% if it.hardware_id == opt.id %}selected{% endif %}>
+                                                                {{ opt.color_name }}
+                                                            </option>
+                                                        {% endfor %}
+                                                    </select>
+                                                {% else %}
+                                                    <span class="text-muted small px-3">{{ it.color_name|default:"-" }}</span>
+                                                {% endif %}
                                             </td>
-                                        {% endif %}
+                                            <td class="wh-excel-td">
+                                                <input type="number"
+                                                       step="0.5"
+                                                       min="0"
+                                                       name="qty_{{ it.id }}"
+                                                       value="{{ it.qty_display }}"
+                                                       class="wh-excel-input text-center fw-bold"
+                                                       {% if is_locked %}disabled{% endif %}>
+                                            </td>
+                                            <td class="wh-excel-td">
+                                                <input type="text"
+                                                       name="comment_{{ it.id }}"
+                                                       value="{{ it.comment }}"
+                                                       class="wh-excel-input"
+                                                       placeholder="הערה לשורה..."
+                                                       {% if is_locked %}disabled{% endif %}>
+                                            </td>
+                                            {% if not is_locked %}
+                                                <td class="text-center">
+                                                    <input type="checkbox"
+                                                           name="delete_{{ it.id }}"
+                                                           value="1"
+                                                           class="form-check-input delete-row-checkbox"
+                                                           title="סמן למחיקת שורה"
+                                                           style="cursor: pointer;
+                                                                  margin-top: 0;
+                                                                  vertical-align: middle">
+                                                </td>
+                                            {% endif %}
+                                        </tr>
+                                    {% endwith %}
+                                {% empty %}
+                                    <tr>
+                                        <td class="fw-bold wh-category-cell">{{ sec.label }}</td>
+                                        <td colspan="{% if is_locked %}5{% else %}6{% endif %}"
+                                            class="text-muted small py-2">אין פריטים בקטגוריה זו</td>
                                     </tr>
-                                {% endwith %}
-                            {% empty %}
-                                <tr>
-                                    <td class="fw-bold bg-light text-dark">{{ sec.label }}</td>
-                                    <td colspan="{% if is_locked %}5{% else %}6{% endif %}"
-                                        class="text-muted small">אין
-                                        פריטים
-                                        בקטגוריה
-                                        זו
+                                {% endfor %}
+                            {% endfor %}
+                            <!-- Строка ручного добавления позиции -->
+                            {% if not is_locked %}
+                                <tr class="wh-add-row">
+                                    <td class="p-1">
+                                        <select name="new_item_category"
+                                                class="form-select form-select-sm no-select2">
+                                            {% for code, label in categories %}
+                                                <option value="{{ code }}" {% if code == 'OTHER' %}selected{% endif %}>{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                    <td class="p-1">
+                                        <input type="text"
+                                               name="new_item_name"
+                                               class="form-control form-control-sm"
+                                               placeholder="+ הוסף פריט ידני...">
+                                    </td>
+                                    <td class="p-1">
+                                        <input type="text"
+                                               name="new_item_sku"
+                                               class="form-control form-control-sm"
+                                               placeholder='מק"ט'>
+                                    </td>
+                                    <td class="p-1">
+                                        <input type="text"
+                                               name="new_item_color"
+                                               class="form-control form-control-sm"
+                                               placeholder="גוון">
+                                    </td>
+                                    <td class="p-1">
+                                        <input type="number"
+                                               step="0.5"
+                                               min="0"
+                                               name="new_item_qty"
+                                               class="form-control form-control-sm text-center"
+                                               placeholder="1">
+                                    </td>
+                                    <td class="p-1">
+                                        <input type="text"
+                                               name="new_item_comment"
+                                               class="form-control form-control-sm"
+                                               placeholder="הערה לפריט החדש">
+                                    </td>
+                                    <td class="text-center p-1">
+                                        <button type="submit"
+                                                name="action"
+                                                value="save_draft"
+                                                class="btn btn-sm btn-outline-primary sb-icon-btn"
+                                                data-bs-toggle="tooltip"
+                                                title="הוסף פריט ושמור טיוטה">
+                                            <i class="bi bi-plus-lg"></i>
+                                        </button>
                                     </td>
                                 </tr>
-                            {% endfor %}
-                        {% endfor %}
-                        <!-- Строка добавления произвольной позиции -->
-                        {% if not is_locked %}
-                            <tr class="table-light">
-                                <td>
-                                    <select name="new_item_category" class="form-select form-select-sm">
-                                        {% for code, label in categories %}
-                                            <option value="{{ code }}" {% if code == 'OTHER' %}selected{% endif %}>{{ label }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </td>
-                                <td>
-                                    <input type="text"
-                                           name="new_item_name"
-                                           class="form-control form-control-sm"
-                                           placeholder="+ הוסף פריט ידני...">
-                                </td>
-                                <td>
-                                    <input type="text"
-                                           name="new_item_sku"
-                                           class="form-control form-control-sm"
-                                           placeholder='מק"ט'>
-                                </td>
-                                <td>
-                                    <input type="text"
-                                           name="new_item_color"
-                                           class="form-control form-control-sm"
-                                           placeholder="גוון">
-                                </td>
-                                <td class="p-1">
-                                    <input type="number"
-                                           step="0.5"
-                                           name="new_item_qty"
-                                           class="form-control form-control-sm text-center"
-                                           placeholder="1">
-                                </td>
-                                <td colspan="2">
-                                    <input type="text"
-                                           name="new_item_comment"
-                                           class="form-control form-control-sm"
-                                           placeholder="הערה לפריט החדש">
-                                </td>
-                            </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <!-- Нижняя панель кнопок -->
-            <div class="d-flex justify-content-between align-items-center pt-2">
-                <a href="{% url 'order-detail' order.id %}"
-                   class="btn btn-sm btn-outline-secondary">חזרה להזמנה</a>
-                {% if not is_locked %}
-                    <div class="d-flex gap-2">
-                        <button type="submit"
-                                name="action"
-                                value="save_draft"
-                                class="btn btn-sm btn-outline-secondary">שמור טיוטה</button>
-                        <button type="submit"
-                                name="action"
-                                value="approve_and_print"
-                                class="btn btn-sm btn-primary fw-semibold"
-                                onclick="return validateBeforeApprove()">
-                            <i class="bi bi-check2-circle me-1"></i> אשר והדפס למחסן
-                        </button>
+            <!-- Нижняя панель действий -->
+            <div class="card">
+                <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        {% if not is_locked %}
+                            <button type="submit"
+                                    name="action"
+                                    value="approve_and_print"
+                                    class="btn btn-primary fw-semibold"
+                                    onclick="return handleApproveClick(this)">
+                                <i class="bi bi-check2-circle me-1"></i>אשר והדפס למחסן
+                            </button>
+                            <button type="submit"
+                                    name="action"
+                                    value="save_draft"
+                                    class="btn btn-outline-secondary">
+                                <i class="bi bi-save me-1"></i>שמור טיוטה
+                            </button>
+                        {% else %}
+                            <a href="{% url 'production:station-report' order.id %}?station=WAREHOUSE"
+                               target="_blank"
+                               class="btn btn-primary fw-semibold">
+                                <i class="bi bi-printer me-1"></i>הדפסת תעודת ליקוט
+                            </a>
+                        {% endif %}
                     </div>
-                {% endif %}
+                    <a href="{% url 'order-detail' order.id %}"
+                       class="btn btn-outline-secondary">
+                        <span>חזרה להזמנה</span>
+                        <i class="bi bi-arrow-left ms-1"></i>
+                    </a>
+                </div>
             </div>
         </form>
     </div>
     <style>
-        .excel-td {
-            padding: 0 !important;
-            vertical-align: middle;
-            height: 1px; /* позволяет input растянуться на всю высоту строки */
+        /* Строгая сетка 1px в цветах дизайн-системы (без двойных границ по краям карточки) */
+        .wh-excel-grid {
+            border-collapse: collapse;
         }
 
-        .excel-input {
+        .wh-excel-grid thead th,
+        .wh-excel-grid tbody td {
+            border: 1px solid var(--sb-border-strong) !important;
+        }
+
+        .wh-excel-grid thead th {
+            border-top: 0 !important;
+        }
+
+        .wh-excel-grid tbody tr:last-child td {
+            border-bottom: 0 !important;
+        }
+
+        .wh-excel-grid tr > th:first-child,
+        .wh-excel-grid tr > td:first-child {
+            border-inline-start: 0 !important;
+        }
+
+        .wh-excel-grid tr > th:last-child,
+        .wh-excel-grid tr > td:last-child {
+            border-inline-end: 0 !important;
+        }
+
+        .wh-excel-grid .wh-category-cell {
+            background-color: var(--sb-bg);
+            color: var(--sb-text);
+        }
+
+        /* Ячейки Excel: инпут занимает 100% ячейки без собственной рамки */
+        .wh-excel-td {
+            padding: 0 !important;
+            height: 1px;
+            vertical-align: middle;
+        }
+
+        .wh-excel-input {
+            display: block;
             width: 100%;
             height: 100%;
             min-height: 38px;
-            border: none !important;
+            padding: 0.4rem 0.65rem;
+            border: 0 !important;
             border-radius: 0 !important;
-            background-color: transparent !important;
+            background-color: transparent;
             box-shadow: none !important;
-            padding: 6px 10px;
-            font-size: 0.9rem;
-            color: inherit;
+            font-size: 0.875rem;
+            color: var(--sb-text);
             outline: none;
+            transition: background-color 0.12s ease, box-shadow 0.12s ease;
         }
 
-        .excel-input:focus {
-            background-color: #ffffff !important;
-            /* Внутренняя рамка выделения активной ячейки, как в Excel */
-            box-shadow: inset 0 0 0 2px #0d6efd !important;
+        .wh-excel-input::placeholder {
+            color: var(--sb-muted);
+            opacity: 0.65;
         }
 
-        .excel-input:disabled {
-            color: #495057;
+        .wh-excel-input:hover:not(:disabled) {
+            background-color: color-mix(in srgb, var(--sb-primary) 4%, transparent);
+        }
+
+        .wh-excel-input:focus {
+            background-color: var(--sb-surface);
+            box-shadow: inset 0 0 0 2px var(--sb-primary) !important;
+        }
+
+        .wh-excel-input:disabled {
+            color: var(--sb-text-soft);
             cursor: default;
         }
 
-        /* Убираем стрелки у числового поля (опционально, для чистого вида) */
-        .excel-input[type="number"]::-webkit-inner-spin-button,
-        .excel-input[type="number"]::-webkit-outer-spin-button {
+        .wh-excel-input[type="number"]::-webkit-inner-spin-button,
+        .wh-excel-input[type="number"]::-webkit-outer-spin-button {
             -webkit-appearance: none;
             margin: 0;
         }
+
+        /* Нативный select в стиле ячеек Excel (без Select2 и синей системной подсветки) */
+        .wh-excel-td .form-select {
+            width: 100%;
+            height: 100%;
+            min-height: 38px;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background-color: transparent;
+            box-shadow: none !important;
+            font-size: 0.875rem;
+            color: var(--sb-text);
+            padding-block: 0.4rem;
+            cursor: pointer;
+            accent-color: var(--sb-primary);
+            transition: background-color 0.12s ease, box-shadow 0.12s ease;
+        }
+
+        .wh-excel-td .form-select:hover:not(:disabled) {
+            background-color: color-mix(in srgb, var(--sb-primary) 4%, transparent);
+        }
+
+        .wh-excel-td .form-select:focus {
+            background-color: var(--sb-surface);
+            box-shadow: inset 0 0 0 2px var(--sb-primary) !important;
+        }
+
+        .wh-excel-td .form-select:disabled {
+            color: var(--sb-text-soft);
+            cursor: default;
+        }
+
+        .wh-excel-td .form-select option {
+            background-color: var(--sb-surface);
+            color: var(--sb-text);
+        }
+
+        .wh-excel-td .form-select option:checked {
+            background: var(--sb-primary) linear-gradient(0deg, var(--sb-primary) 0%, var(--sb-primary) 100%);
+            color: #ffffff;
+        }
+
+        /* Кастомизация выпадающего списка в Chrome / Edge без системного синего */
+        @supports (appearance: base-select) {
+            .wh-excel-td .form-select,
+            .wh-excel-td .form-select::picker(select) {
+                appearance: base-select;
+            }
+
+            /* Скрываем дублирующую системную стрелку, оставляя стрелку Bootstrap */
+            .wh-excel-td .form-select::picker-icon {
+                display: none;
+            }
+
+            .wh-excel-td .form-select::picker(select) {
+                border: 1px solid var(--sb-border-strong);
+                border-radius: var(--sb-radius-sm);
+                background-color: var(--sb-surface);
+                box-shadow: var(--sb-shadow-dropdown);
+                padding: 4px;
+            }
+
+            .wh-excel-td .form-select option {
+                padding: 6px 10px;
+                border-radius: var(--sb-radius-xs);
+                font-size: 0.875rem;
+            }
+
+            .wh-excel-td .form-select option:hover,
+            .wh-excel-td .form-select option:focus {
+                background-color: var(--sb-primary-soft);
+                color: var(--sb-primary-text);
+            }
+
+            .wh-excel-td .form-select option:checked {
+                background-color: var(--sb-primary);
+                color: #ffffff;
+            }
+        }
+
+        /* Подсветка обязательного, но не выбранного цвета */
+        .wh-excel-td .color-select.border-danger {
+            background-color: var(--sb-danger-soft) !important;
+            box-shadow: inset 0 0 0 2px var(--sb-danger) !important;
+        }
+
+        /* Строка ручного добавления внизу таблицы */
+        .wh-add-row td {
+            background-color: var(--sb-bg);
+        }
+
+        /* Подсветка строки, отмеченной на удаление */
+        tr.row-marked-delete > td:not(.wh-category-cell) {
+            background-color: var(--sb-danger-soft) !important;
+            color: var(--sb-danger-text);
+            text-decoration: line-through;
+        }
+
+        .delete-row-checkbox:checked {
+            background-color: var(--sb-danger) !important;
+            border-color: var(--sb-danger) !important;
+        }
     </style>
     <script>
-        function validateBeforeApprove() {
+        async function handleApproveClick(btn) {
+            if (btn.dataset.confirmedBypass === '1') {
+                delete btn.dataset.confirmedBypass;
+                return true;
+            }
+
             const missingColors = [];
             document.querySelectorAll('.color-select').forEach(select => {
                 if (!select.value) {
@@ -290,12 +490,29 @@
                     missingColors.push(select);
                 }
             });
+
             if (missingColors.length > 0) {
-                alert('לא ניתן לאשר ולהדפיס: יש לבחור גוון עבור כל הפריטים המסומנים באדום.');
+                await sbAlert(
+                    'לא ניתן לאשר ולהדפיס: יש לבחור גוון עבור כל הפריטים המסומנים באדום.',
+                    'חסרים נתונים לאישור',
+                    'danger'
+                );
                 missingColors[0].focus();
                 return false;
             }
-            return confirm('שימו לב! לאחר האישור תעודת הליקוט תינעל לעריכה ותועבר להדפסה למחסן. להמשיך?');
+
+            const ok = await sbConfirm({
+                title: 'אישור ונעילת תעודת ליקוט',
+                message: 'לאחר האישור תעודת הליקוט תינעל לעריכה ותועבר להדפסה למחסן. להמשיך?',
+                variant: 'primary',
+                okText: 'אשר והדפס'
+            });
+
+            if (ok) {
+                btn.dataset.confirmedBypass = '1';
+                btn.click();
+            }
+            return false;
         }
 
         document.addEventListener('DOMContentLoaded', function () {
@@ -328,6 +545,15 @@
                         this.classList.remove('border-danger');
                     } else {
                         this.classList.add('border-danger');
+                    }
+                });
+            });
+
+            document.querySelectorAll('.delete-row-checkbox').forEach(cb => {
+                cb.addEventListener('change', function () {
+                    const tr = this.closest('tr');
+                    if (tr) {
+                        tr.classList.toggle('row-marked-delete', this.checked);
                     }
                 });
             });

@@ -1,3 +1,40 @@
+/* ==========================================================================
+   SBProduction - Shop-floor reports & print preview theme
+   Aligned with theme.css tokens; preserves high-contrast A4 print rules
+   ========================================================================== */
+
+:root {
+    --sb-primary: #157485;
+    --sb-primary-hover: color-mix(in srgb, var(--sb-primary) 85%, #000);
+    --sb-primary-soft: color-mix(in srgb, var(--sb-primary) 14%, #fff);
+    --sb-primary-border: color-mix(in srgb, var(--sb-primary) 32%, #fff);
+
+    --sb-accent: #6b649e;
+    --sb-accent-hover: color-mix(in srgb, var(--sb-accent) 85%, #000);
+    --sb-accent-border: color-mix(in srgb, var(--sb-accent) 32%, #fff);
+    --sb-accent-text: color-mix(in srgb, var(--sb-accent) 70%, #000);
+
+    --sb-bg: #f3f6f5;
+    --sb-surface: #ffffff;
+    --sb-surface-muted: #e1e9ec;
+    --sb-surface-subtle: #dae4e8;
+    --sb-border: #e0e8e6;
+    --sb-border-strong: #cbd8d5;
+    --sb-text: #1c2b28;
+    --sb-text-soft: #3d4f4b;
+
+    --sb-btn-relief: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(0, 0, 0, 0.04) 100%);
+    --sb-btn-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 2px rgba(20, 50, 45, 0.08);
+    --sb-btn-shadow-hover: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 4px 10px rgba(20, 50, 45, 0.12);
+
+    /* Перекрываем стандартный синий Bootstrap на наш primary по всем отчётам */
+    --bs-primary: var(--sb-primary);
+    --bs-primary-rgb: 21, 116, 133;
+    --bs-link-color: var(--sb-primary);
+    --bs-link-hover-color: var(--sb-primary-hover);
+    --bs-font-sans-serif: 'Heebo', 'Inter', Arial, sans-serif;
+}
+
 * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -6,14 +43,110 @@
 
 body {
     font-family: Arial, sans-serif;
-    margin: 20px;
-    background-color: #f0f0f0;
+    margin: 0;
+    padding-bottom: 24px;
+    background-color: var(--sb-bg);
+    color: var(--sb-text);
 }
 
+/* ---------- Верхняя панель предпросмотра (только на экране) ---------- */
+.sb-report-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: color-mix(in srgb, var(--sb-surface) 94%, transparent);
+    backdrop-filter: saturate(160%) blur(8px);
+    border-bottom: 1px solid var(--sb-border);
+    box-shadow: 0 1px 3px rgba(20, 50, 45, 0.06);
+    padding: 0.75rem 1.5rem;
+    margin-bottom: 1.5rem;
+    font-family: var(--bs-font-sans-serif), sans-serif;
+}
+
+.no-print .btn {
+    font-family: var(--bs-font-sans-serif), sans-serif;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    padding: 0.42rem 0.95rem;
+    transition: transform 0.12s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+
+.no-print .btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.no-print .btn-primary {
+    --bs-btn-color: #ffffff;
+    --bs-btn-bg: var(--sb-primary);
+    --bs-btn-border-color: var(--sb-primary);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-hover-bg: var(--sb-primary-hover);
+    --bs-btn-hover-border-color: var(--sb-primary-hover);
+    --bs-btn-active-bg: var(--sb-primary-hover);
+    --bs-btn-active-border-color: var(--sb-primary-hover);
+    background-image: var(--sb-btn-relief);
+    box-shadow: var(--sb-btn-shadow);
+}
+
+.no-print .btn-primary:hover {
+    box-shadow: var(--sb-btn-shadow-hover);
+}
+
+.no-print .btn-accent {
+    --bs-btn-color: #ffffff;
+    --bs-btn-bg: var(--sb-accent);
+    --bs-btn-border-color: var(--sb-accent);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-hover-bg: var(--sb-accent-hover);
+    --bs-btn-hover-border-color: var(--sb-accent-hover);
+    --bs-btn-active-bg: var(--sb-accent-hover);
+    --bs-btn-active-border-color: var(--sb-accent-hover);
+    background-image: var(--sb-btn-relief);
+    box-shadow: var(--sb-btn-shadow);
+}
+
+.no-print .btn-accent:hover {
+    box-shadow: var(--sb-btn-shadow-hover);
+}
+
+.no-print .btn-outline-primary {
+    --bs-btn-color: var(--sb-primary);
+    --bs-btn-border-color: var(--sb-primary-border);
+    --bs-btn-bg: var(--sb-surface);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-hover-bg: var(--sb-primary);
+    --bs-btn-hover-border-color: var(--sb-primary);
+    box-shadow: 0 1px 2px rgba(20, 50, 45, 0.05);
+}
+
+.no-print .btn-outline-accent {
+    --bs-btn-color: var(--sb-accent-text);
+    --bs-btn-border-color: var(--sb-accent-border);
+    --bs-btn-bg: var(--sb-surface);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-hover-bg: var(--sb-accent);
+    --bs-btn-hover-border-color: var(--sb-accent);
+    box-shadow: 0 1px 2px rgba(20, 50, 45, 0.05);
+}
+
+.no-print .btn-outline-secondary,
+.no-print .btn-secondary {
+    --bs-btn-color: var(--sb-text-soft);
+    --bs-btn-bg: var(--sb-surface);
+    --bs-btn-border-color: var(--sb-border-strong);
+    --bs-btn-hover-color: var(--sb-text);
+    --bs-btn-hover-bg: var(--sb-surface-muted);
+    --bs-btn-hover-border-color: var(--sb-border-strong);
+    --bs-btn-active-bg: var(--sb-surface-subtle);
+    --bs-btn-active-border-color: var(--sb-border-strong);
+    box-shadow: 0 1px 2px rgba(20, 50, 45, 0.05);
+}
+
+/* ---------- Листы А4 на экране ---------- */
 .page {
-    background: white;
+    background: #ffffff;
     margin: 10mm auto;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 3px rgba(20, 50, 45, 0.08), 0 8px 24px rgba(20, 50, 45, 0.08);
     box-sizing: border-box;
     width: 297mm;
     min-height: 210mm;
@@ -47,27 +180,6 @@ th, td {
 
 th {
     background-color: #f2f2f2;
-}
-
-.no-print {
-    text-align: center;
-    margin-bottom: 20px;
-}
-
-/* Ограничиваем стили только верхними сервисными кнопками, чтобы не ломать Bootstrap-кнопки в отчёте */
-.no-print .btn {
-    padding: 10px 20px;
-    font-size: 16px;
-    cursor: pointer;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    margin: 0 5px;
-}
-
-.no-print .btn-secondary {
-    background-color: #6c757d;
 }
 
 .page-break {
@@ -143,3 +255,4 @@ th {
         display: none !important;
     }
 }
+

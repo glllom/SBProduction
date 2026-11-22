@@ -158,19 +158,35 @@ class OrderListView(LoginRequiredMixin, ListView):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        q = self.request.GET.get('q')
+
+        q = (self.request.GET.get('q') or '').strip()
         if q:
             queryset = queryset.filter(
                 Q(order_number__icontains=q) |
                 Q(customer__icontains=q)
             )
-        return queryset[:10]
+
+        status = (self.request.GET.get('status') or '').strip()
+        valid_statuses = {choice[0] for choice in OrderStatus.choices}
+        if status in valid_statuses:
+            queryset = queryset.filter(status=status)
+
+        orders = list(queryset[:11])
+        self.has_more = len(orders) > 10
+        return orders[:10]
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['search_query'] = self.request.GET.get('q', '')
-        return context
+        q = (self.request.GET.get('q') or '').strip()
+        status = (self.request.GET.get('status') or '').strip()
+        valid_statuses = {choice[0] for choice in OrderStatus.choices}
 
+        context['search_query'] = q
+        context['selected_status'] = status if status in valid_statuses else ''
+        context['status_choices'] = OrderStatus.choices
+        context['has_more'] = getattr(self, 'has_more', False)
+        return context
+    
 
 class OrderCreateView(LoginRequiredMixin, CreateView):
     model = Order

@@ -1,0 +1,31 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: he\n"
+
+msgid "All applications"
+msgstr "כל היישומים"
+
+msgid "Search apps and models..."
+msgstr "חיפוש יישומים ומודלים..."
+
+msgid "Type to search"
+msgstr "הקלד לחיפוש..."
+
+msgid "Reset filters"
+msgstr "איפוס סינון"
+
+msgid "Filters"
+msgstr "סינון"
+
+msgid "No results found"
+msgstr "לא נמצאו תוצאות"
+
+msgid "Navigate"
+msgstr "ניווט"
+
+msgid "Select"
+msgstr "בחירה"
+
+msgid "Dismiss"
+msgstr "סגור"

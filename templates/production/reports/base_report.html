@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
     <head>
@@ -6,20 +7,19 @@
         <title>{% block title %}דו''ח ייצור - הזמנה {{ order.order_number }}{% endblock %}</title>
         <!-- Bootstrap 5 RTL CSS -->
         <link rel="stylesheet"
-              href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+              href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.rtl.min.css">
         <!-- Bootstrap Icons -->
         <link rel="stylesheet"
-              href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+              href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
         <!-- Google Fonts -->
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+        <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
               rel="stylesheet">
-        {% load static %}
         <link rel="stylesheet" href="{% static 'css/style_reports.css' %}">
         {% block extra_css %}{% endblock %}
     </head>
     <body class="{% block body_class %}{% endblock %}">
-        <div class="no-print d-flex flex-wrap align-items-center gap-2 p-3 mb-4 bg-body-tertiary border-bottom">
-            <button onclick="window.print()" class="btn btn-primary fw-bold">
+        <div class="no-print sb-report-toolbar d-flex flex-wrap align-items-center gap-2">
+            <button onclick="window.print()" class="btn btn-primary fw-semibold">
                 <i class="bi bi-printer-fill me-1"></i>{% block print_button_text %}הדפס דו''ח{% endblock %}
             </button>
             <button onclick="window.close()" class="btn btn-outline-secondary">

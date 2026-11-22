@@ -19,7 +19,7 @@ from apps.catalog.models import Hardware
 from apps.orders.models import (
     Order, OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus
 )
-from apps.production.models import ProductionStation, StationProgressSource
+from apps.production.models import StationProgressSource, ProductionStation, OrderStationNote
 from apps.production.tracking_services import StationTrackingService
 from .models import DoorLabel, SvgPattern
 from .services import (
@@ -30,6 +30,15 @@ from .services import (
     TechnicalSpecService, get_qr_base64,
 )
 from .usb_sync import run_usb_sync
+
+
+def get_station_comment(order, station) -> str:
+    if not order or not station:
+        return ''
+    if hasattr(station, 'note_text'):
+        return station.note_text or ''
+    note = OrderStationNote.objects.filter(order=order, station=station).first()
+    return note.comment if note else ''
 
 
 def extract_items_from_batches(batches_dict: dict, batch_filter: str = None) -> list:
@@ -48,50 +57,58 @@ def extract_items_from_batches(batches_dict: dict, batch_filter: str = None) -> 
 def enrich_report_doors_spec(items):
     """
     Размечает элементы для вывода в таблице дверей:
-    1. Помечает элементы сменившейся фурнитуры (show_hardware_subhead).
+    1. Помечает элементы сменившейся фурнитуры или основной группы (show_hardware_subhead).
     2. Вычисляет addons_rowspan для одинаковых идущих подряд кастомизаторов/комментариев.
     """
+    if not items:
+        return []
+
+    def get_group_key(item_dict):
+        return (
+            item_dict.get('product_family'),
+            item_dict.get('series'),
+            item_dict.get('front_name'),
+        )
+
+    def get_hw_key(item_dict):
+        return (
+            item_dict.get('lock_name'),
+            item_dict.get('hinge_name'),
+        )
 
     def get_addons_signature(item_dict):
-        cmz = item_dict.get('doors_report_customizers', []) or []
-        comment = item_dict.get('comment', '') or ''
+        cmz = item_dict.get('doors_report_customizers') or []
+        comment = (item_dict.get('comment') or '').strip()
         return json.dumps({
-            'c': str(comment),
-            'cmz': cmz
+            'c': comment,
+            'cmz': cmz,
         }, sort_keys=True, default=str)
 
     items_data = [
-        item.model_dump() if hasattr(item, 'model_dump') else (item if isinstance(item, dict) else item.dict())
+        item.model_dump() if hasattr(item, 'model_dump') else (dict(item) if isinstance(item, dict) else item.dict())
         for item in items
     ]
-    n = len(items_data)
 
-    current_key = None
+    prev_key = None
     for item in items_data:
-        group_key = (item.get('product_family'), item.get('series'))
-        hw_key = (item.get('lock_name'), item.get('hinge_name'))
+        curr_key = (get_group_key(item), get_hw_key(item))
+        item['show_hardware_subhead'] = (curr_key != prev_key)
+        prev_key = curr_key
 
-        if current_key is None or current_key[0] != group_key or current_key[1] != hw_key:
-            item['show_hardware_subhead'] = True
-            current_key = (group_key, hw_key)
-        else:
-            item['show_hardware_subhead'] = False
-
+    n = len(items_data)
     i = 0
     while i < n:
-        sig = get_addons_signature(items_data[i])
-        curr_group = (items_data[i].get('product_family'), items_data[i].get('series'))
-        curr_hw = (items_data[i].get('lock_name'), items_data[i].get('hinge_name'))
+        curr_group = get_group_key(items_data[i])
+        curr_hw = get_hw_key(items_data[i])
+        curr_sig = get_addons_signature(items_data[i])
 
         run_len = 1
-        while i + run_len < n:
-            next_group = (items_data[i + run_len].get('product_family'), items_data[i + run_len].get('series'))
-            next_hw = (items_data[i + run_len].get('lock_name'), items_data[i + run_len].get('hinge_name'))
-
-            if (next_group != curr_group or
-                    next_hw != curr_hw or
-                    get_addons_signature(items_data[i + run_len]) != sig):
-                break
+        while (
+                i + run_len < n
+                and get_group_key(items_data[i + run_len]) == curr_group
+                and get_hw_key(items_data[i + run_len]) == curr_hw
+                and get_addons_signature(items_data[i + run_len]) == curr_sig
+        ):
             run_len += 1
 
         items_data[i]['addons_rowspan'] = run_len
@@ -762,6 +779,7 @@ def station_report(request, pk):
                 sections.append({
                     'station': station,
                     'station_code': station.code,
+                    'station_comment': get_station_comment(order, station),
                     'report_label': station.label or station.name,
                     'batches_label': batches_label,
                     'order_spec': spec_obj,
@@ -847,6 +865,7 @@ def station_report(request, pk):
             'batches_label': batches_label,
             'frame_groups': frame_groups,
             'station': station,
+            'station_comment': get_station_comment(order, station),
             'report_label': report_label,
             'now': timezone.now(),
             'order_qr': get_qr_base64(barcode_data),
@@ -889,6 +908,7 @@ def station_report(request, pk):
         'order_spec': spec_obj,
         'spec_json': spec_obj.model_dump(by_alias=True) if hasattr(spec_obj, 'model_dump') else spec_obj,
         'station': station,
+        'station_comment': get_station_comment(order, station),
         'report_label': report_label,
         'batches_label': batches_label,
         'groups_data': service.prepare_grouped_data(station_items),
@@ -1614,6 +1634,7 @@ def report_facing(request, pk):
         'order': order,
         'facings_data': facings_data,
         'station': station,
+        'station_comment': get_station_comment(order, station),
         'report_label': (station.label if station else "דוח חיפויים"),
         'batches_label': batches_label,
         'order_qr': get_qr_base64(barcode_data),
@@ -1802,3 +1823,141 @@ class StationsBatchDailyPrintView(LoginRequiredMixin, TemplateView):
 
         context['sheets'] = printable_sheets
         return context
+
+
+@login_required
+@require_POST
+def save_station_note(request, order_id):
+    order = get_object_or_404(Order, pk=order_id)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        payload = request.POST
+
+    station_id = payload.get('station_id')
+    comment = (payload.get('comment') or '').strip()
+    station = get_object_or_404(ProductionStation, pk=station_id)
+
+    if comment:
+        note, _ = OrderStationNote.objects.update_or_create(
+            order=order,
+            station=station,
+            defaults={
+                'comment': comment,
+                'updated_by': request.user,
+            }
+        )
+        saved_comment = note.comment
+    else:
+        OrderStationNote.objects.filter(order=order, station=station).delete()
+        saved_comment = ''
+
+    return JsonResponse({
+        'status': 'ok',
+        'station_id': station.id,
+        'comment': saved_comment,
+    })
+
+
+@login_required
+def order_tracking_list(request):
+    """
+    Страница поиска заказа в производстве + список активных заказов с фильтром аномалий.
+    """
+    from .order_tracking_service import OrderTrackingService
+
+    query = request.GET.get('q', '').strip()
+    only_anomalies = request.GET.get('anomalies') == '1'
+
+    orders_overview = OrderTrackingService.get_active_orders_overview(
+        query=query,
+        only_anomalies=only_anomalies,
+        limit=60,
+    )
+
+    # Если ввели точный номер заказа и нашёлся ровно 1 результат — сразу открываем его
+    if query and len(orders_overview) == 1 and str(orders_overview[0]['order'].order_number) == query:
+        return redirect('production:order-tracking-detail', pk=orders_overview[0]['order'].pk)
+
+    return render(request, 'production/order_tracking_list.html', {
+        'query': query,
+        'only_anomalies': only_anomalies,
+        'orders_overview': orders_overview,
+    })
+
+
+@login_required
+def order_tracking_search_ajax(request):
+    """
+    JSON-эндпоинт живого поиска заказа (для автокомплита в трекере станций и на странице трекинга заказа).
+    """
+    from .order_tracking_service import OrderTrackingService
+
+    q = request.GET.get('q', '').strip()
+    if len(q) < 1:
+        return JsonResponse({'results': []})
+
+    matches = OrderTrackingService.get_active_orders_overview(query=q, limit=10)
+    payload = [
+        {
+            'id': m['order'].id,
+            'order_number': str(m['order'].order_number),
+            'customer': m['order'].customer or '',
+            'progress_pct': m['progress_pct'],
+            'batches_count': m['batches_count'],
+            'has_anomaly': m['has_anomaly'],
+            'bypassed_count': m['bypassed_count'],
+            'url': reverse('production:order-tracking-detail', kwargs={'pk': m['order'].id}),
+        }
+        for m in matches
+    ]
+    return JsonResponse({'results': payload})
+
+
+@login_required
+def order_tracking_detail(request, pk):
+    """
+    Отдельная страница детального отслеживания и ручного управления маршрутом заказа и его батчей.
+    """
+    from .order_tracking_service import OrderTrackingService
+
+    order = get_object_or_404(Order, pk=pk)
+    batch_param = request.GET.get('batch')
+    selected_batch = int(batch_param) if batch_param and batch_param.isdigit() else None
+
+    ctx = OrderTrackingService.get_order_tracking_context(order, selected_batch=selected_batch)
+    return render(request, 'production/order_tracking_detail.html', ctx)
+
+
+@login_required
+@require_POST
+def order_tracking_station_action(request, pk):
+    """
+    Обработчик ручных действий диспетчера по станции батча или отдельной двери.
+    """
+    from .order_tracking_service import OrderTrackingService
+
+    order = get_object_or_404(Order, pk=pk)
+    action = request.POST.get('action', '').strip()
+    batch_raw = request.POST.get('batch_number', '1')
+    batch_number = int(batch_raw) if str(batch_raw).isdigit() else 1
+    station_code = request.POST.get('station_code')
+    progress_raw = request.POST.get('progress_id')
+    progress_id = int(progress_raw) if progress_raw and str(progress_raw).isdigit() else None
+
+    ok, msg = OrderTrackingService.apply_station_action(
+        order=order,
+        batch_number=batch_number,
+        action=action,
+        user=request.user,
+        station_code=station_code,
+        progress_id=progress_id,
+    )
+
+    if ok:
+        messages.success(request, msg)
+    else:
+        messages.warning(request, msg)
+
+    return redirect(f"{reverse('production:order-tracking-detail', kwargs={'pk': order.pk})}?batch={batch_number}")

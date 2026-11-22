@@ -1,45 +1,63 @@
 {% extends "base.html" %}
 {% block page_title %}רשימת הזמנות{% endblock %}
 {% block content %}
-    <div class="sb-page-header justify-content-between align-items-center gap-3 mb-4">
-        <div class="d-flex align-items-center gap-3">
+    <!-- Ряд 1: Заголовок, поиск и кнопка создания — компактно справа -->
+    <div class="d-flex flex-wrap align-items-center justify-content-start gap-3 mb-3">
+        <div class="d-flex align-items-center gap-3 ms-1">
             <span class="sb-stat-icon sb-accent flex-shrink-0">
                 <i class="bi bi-receipt"></i>
             </span>
-            <h2 class="sb-page-title">הזמנות</h2>
+            <h2 class="sb-page-title mb-0">הזמנות</h2>
         </div>
+        <form method="get"
+              class="flex-grow-1 flex-sm-grow-0"
+              style="min-width: 360px;
+                     max-width: 420px">
+            {% if selected_status %}
+                <input type="hidden" name="status" value="{{ selected_status }}">
+            {% endif %}
+            <div class="input-group">
+                <span class="input-group-text bg-body border-end-0">
+                    <i class="bi bi-search text-muted"></i>
+                </span>
+                <input type="text"
+                       name="q"
+                       class="form-control border-start-0 ps-0"
+                       placeholder="חיפוש לפי מספר הזמנה או לקוח..."
+                       value="{{ search_query }}"
+                       data-bs-toggle="tooltip"
+                       title="חיפוש לפי מספר הזמנה או שם לקוח (Enter לחיפוש)">
+                {% if search_query %}
+                    <a href="
+
+
+
+							{% url 'order-list' %}{% if selected_status %}?status={{ selected_status|urlencode }}{% endif %}"
+                       class="btn btn-outline-secondary border-start-0"
+                       data-bs-toggle="tooltip"
+                       title="איפוס חיפוש">
+                        <i class="bi bi-x-lg"></i>
+                    </a>
+                {% endif %}
+            </div>
+        </form>
         <a href="{% url 'order-add' %}"
-           class="btn btn-primary"
+           class="btn btn-primary flex-shrink-0"
            data-bs-toggle="tooltip"
            title="יצירת הזמנה חדשה במערכת">
-            <i class="bi bi-plus-lg ms-2"></i>הזמנה חדשה
+            <i class="bi bi-plus-lg me-1"></i>הזמנה חדשה
         </a>
     </div>
-    <div class="row mb-4">
-        <div class="col-12 col-md-8 col-xl-5">
-            <form method="get">
-                <div class="input-group">
-                    <span class="input-group-text bg-body border-end-0">
-                        <i class="bi bi-search text-muted"></i>
-                    </span>
-                    <input type="text"
-                           name="q"
-                           class="form-control border-start-0 ps-0"
-                           placeholder="חיפוש לפי מספר הזמנה או לקוח..."
-                           value="{{ search_query }}"
-                           data-bs-toggle="tooltip"
-                           title="חיפוש לפי מספר הזמנה או שם לקוח">
-                    {% if search_query %}
-                        <a href="{% url 'order-list' %}"
-                           class="btn btn-outline-secondary border-start-0"
-                           data-bs-toggle="tooltip"
-                           title="איפוס חיפוש">
-                            <i class="bi bi-x-lg"></i>
-                        </a>
-                    {% endif %}
-                </div>
-            </form>
-        </div>
+    <!-- Ряд 2: Быстрые фильтры по статусу -->
+    <div class="sb-filter-pills mb-4"
+         role="group"
+         aria-label="סינון לפי סטטוס">
+        <a href="{% url 'order-list' %}{% if search_query %}?q={{ search_query|urlencode }}{% endif %}"
+           class="sb-filter-pill {% if not selected_status %}active{% endif %}">הכל</a>
+        {% for code, label in status_choices %}
+            <a href="?status={{ code|urlencode }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+               class="sb-filter-pill {% if selected_status == code %}active{% endif %}">{{ label }}</a>
+        {% endfor %}
     </div>
     <div class="card overflow-hidden">
         <div class="card-body p-0">
@@ -53,42 +71,40 @@
                             <th data-bs-toggle="tooltip" title="שם הלקוח או הפרויקט">לקוח</th>
                             <th data-bs-toggle="tooltip" title="תאריך פתיחת ההזמנה במערכת">תאריך יצירה</th>
                             <th data-bs-toggle="tooltip" title="סטטוס נוכחי של ההזמנה בתהליך הייצור">סטטוס</th>
-                            <th class="text-end pe-4" data-bs-toggle="tooltip" title="פעולות אפשריות">פעולות</th>
+                            <th class="pe-4" style="width: 44px;"></th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for order in orders %}
-                            <tr>
-                                <td class="ps-4 fw-semibold">
+                            <tr class="sb-clickable-row"
+                                data-href="{% url 'order-detail' order.id %}">
+                                <td class="ps-4 fw-bold">
                                     <a href="{% url 'order-detail' order.id %}"
-                                       class="text-decoration-none text-body"
-                                       data-bs-toggle="tooltip"
-                                       title="צפייה בפרטי הזמנה {{ order.order_number }}">{{ order.order_number }}</a>
+                                       class="text-decoration-none sb-order-link">{{ order.order_number }}</a>
                                 </td>
                                 <td>
                                     <span>{{ order.customer }}</span>
                                 </td>
                                 <td class="text-muted"
                                     data-bs-toggle="tooltip"
-                                    title="נוצר בתאריך: {{ order.created_at|date:'d/m/Y H:i' }}">{{ order.created_at|date:"d/m/Y" }}</td>
+                                    title="נוצר בתאריך: {{ order.created_at|date:'d/m/y' }}">{{ order.created_at|date:"d/m/y" }}</td>
                                 <td>
-                                    {% if order.status == 'PHASE1_PRODUCTION' or order.status == 'PHASE1_READY' %}
-                                        <span class="badge rounded-pill bg-info-subtle text-info-emphasis border border-info-subtle px-3 fw-medium"
-                                              data-bs-toggle="tooltip"
-                                              title="סטטוס: {{ order.get_status_display }}">{{ order.get_status_display }}</span>
+                                    {% if order.status == 'NEW' %}
+                                        <span class="sb-badge-soft">{{ order.get_status_display }}</span>
+                                    {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE1_PRODUCTION' or order.status == 'PHASE1_READY' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETIONS_PRODUCTION' %}
+                                        <span class="sb-badge-soft sb-accent">{{ order.get_status_display }}</span>
+                                    {% elif order.status == 'PARTIALLY_READY' or order.status == 'PHASE1_READY' %}
+                                        <span class="sb-badge-soft sb-warning">{{ order.get_status_display }}</span>
+                                    {% elif order.status == 'COMPLETED' %}
+                                        <span class="sb-badge-soft sb-success">{{ order.get_status_display }}</span>
+                                    {% elif order.status == 'CANCELED' %}
+                                        <span class="sb-badge-soft sb-danger">{{ order.get_status_display }}</span>
                                     {% else %}
-                                        <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle px-3 fw-medium"
-                                              data-bs-toggle="tooltip"
-                                              title="סטטוס: {{ order.get_status_display }}">{{ order.get_status_display }}</span>
+                                        <span class="sb-badge-soft sb-neutral">{{ order.get_status_display }}</span>
                                     {% endif %}
                                 </td>
                                 <td class="text-end pe-4">
-                                    <a href="{% url 'order-detail' order.id %}"
-                                       class="btn btn-outline-secondary btn-sm"
-                                       data-bs-toggle="tooltip"
-                                       title="צפייה וניהול פרטי הזמנה {{ order.order_number }}">
-                                        <i class="bi bi-eye"></i>
-                                    </a>
+                                    <i class="bi bi-chevron-left sb-row-chevron"></i>
                                 </td>
                             </tr>
                         {% empty %}
@@ -96,7 +112,11 @@
                                 <td colspan="5">
                                     <div class="sb-empty">
                                         <i class="bi bi-inbox d-block mb-3"></i>
-                                        אין הזמנות כרגע
+                                        {% if search_query or selected_status %}
+                                            לא נמצאו הזמנות התואמות לסינון
+                                        {% else %}
+                                            אין הזמנות כרגע
+                                        {% endif %}
                                     </div>
                                 </td>
                             </tr>
@@ -106,4 +126,27 @@
             </div>
         </div>
     </div>
+    {% if has_more %}
+        <div class="sb-list-ellipsis"
+             data-bs-toggle="tooltip"
+             title="מוצגות 10 ההזמנות האחרונות — השתמש בחיפוש לאיתור הזמנות נוספות">•••</div>
+    {% endif %}
+{% endblock %}
+{% block extra_js %}
+    <script>
+        document.addEventListener('click', function (e) {
+            const row = e.target.closest('tr.sb-clickable-row');
+            if (!row) return;
+            if (e.target.closest('a, button, input')) return;
+
+            const href = row.dataset.href;
+            if (!href) return;
+
+            if (e.ctrlKey || e.metaKey) {
+                window.open(href, '_blank');
+            } else {
+                window.location.href = href;
+            }
+        });
+    </script>
 {% endblock %}

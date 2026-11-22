@@ -251,17 +251,22 @@ class ProductAdmin(ModelAdmin):
 
 @admin.register(Customizer)
 class CustomizerAdmin(ModelAdmin):
-    list_display = ('id', 'code', 'name', 'tag', 'is_required', 'active', 'hardware')
-    list_select_related = ('hardware',)
-    list_filter = ('active', 'is_required', 'tag')
+    list_display = ('id', 'code', 'name', 'tag', 'is_required', 'hidden_in_sales', 'outward_replacement', 'active',
+                    'hardware')
+    list_select_related = ('hardware', 'outward_replacement')
+    list_filter = ('active', 'is_required', 'hidden_in_sales', 'tag')
     search_fields = ('code', 'name', 'tag', 'description')
-    autocomplete_fields = ('hardware',)
+    autocomplete_fields = ('hardware', 'outward_replacement')
     filter_horizontal = ('product_types', 'product_families', 'product_models')
     formfield_overrides = JSON_FORMFIELD_OVERRIDES
     save_as = True
     fieldsets = (
                     ('מידע כללי', {
-                        'fields': ('code', 'name', 'description', 'active', 'is_required', 'tag')
+                        'fields': (
+                            'code', 'name', 'description',
+                            'active', 'is_required', 'hidden_in_sales',
+                            'tag', 'outward_replacement',
+                        )
                     }),
                     ('שיוך לקטלוג (ריק = גלובלי)', {
                         'fields': ('product_types', 'product_families', 'product_models')
