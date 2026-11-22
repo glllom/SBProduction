@@ -385,6 +385,7 @@ class CustomizerProductionStation(models.Model):
         verbose_name = 'ניתוב התאמה אישית לתחנה'
         verbose_name_plural = 'ניתוב התאמות אישיות לתחנות'
 
+
 class OrderStationNote(models.Model):
     """
     Адресные комментарии менеджера к печатным отчётам производственных участков.
@@ -908,14 +909,14 @@ class ItemStationProgress(models.Model):
         help_text='סדר התחנה במסלול של הקבוצה'
     )
     status = models.CharField(
-        max_length=20,
+        max_length=50,
         choices=StationStatus.choices,
         default=StationStatus.PENDING,
         db_index=True,
         verbose_name='סטטוס'
     )
     source = models.CharField(
-        max_length=20,
+        max_length=50,
         choices=StationProgressSource.choices,
         default=StationProgressSource.MANUAL,
         verbose_name='מקור הסימון'
