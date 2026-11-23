@@ -89,7 +89,7 @@
                     <!-- 4. Подзаголовок фурнитуры -->
                     {% for hw in mat.hardware_groups %}
                         <div class="wood-hardware-block mb-3">
-                            <div class="bg-secondary-subtle px-3 py-1 mb-0 d-flex justify-content-between align-items-center">
+                            <div class="bg-secondary-subtle px-3 py-1 mb-0 d-flex justify-content-evenly align-items-center">
                                 {% if not hw.is_double_door %}
                                     <div>
                                         מנעול: <strong class="fs-4 text-danger">{{ hw.lock_name|default:"ללא" }}</strong>

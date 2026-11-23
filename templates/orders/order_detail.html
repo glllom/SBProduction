@@ -6,7 +6,7 @@
           title="סטטוס נוכחי של ההזמנה: {{ order.get_status_display }}">{{ order.get_status_display }}</span>
 {% endblock %}
 {% block content %}
-    <!-- Верхняя строка: Клиент, основные кнопки добавления и Dev Tools -->
+    <!-- Верхняя строка: Клиент и Dev Tools -->
     <div class="sb-page-header align-items-center justify-content-between gap-3 mb-3">
         <div class="d-flex align-items-center flex-wrap gap-2">
             <span class="sb-stat-icon sb-accent flex-shrink-0">
@@ -20,19 +20,6 @@
                    title="עריכת פרטי הזמנה">
                     <i class="bi bi-pencil"></i>
                 </a>
-            {% endif %}
-            {% if can_edit_order %}
-                <button class="btn btn-sm btn-primary"
-                        data-bs-toggle="modal"
-                        data-bs-target="#groupModal"
-                        title="הוספת קבוצת דלתות חדשה להזמנה">
-                    <i class="bi bi-plus-lg me-1"></i>הוספת דלתות
-                </button>
-                <button class="btn btn-sm btn-outline-accent btn-open-load-spec"
-                        data-group-id=""
-                        title="הוספת קבוצה ממפרט שמור">
-                    <i class="bi bi-box-arrow-in-down me-1"></i>טעינת מפרט שמור
-                </button>
             {% endif %}
         </div>
         <!-- Dev Tools (в верхней строке, без смещения по центру экрана) -->
@@ -147,12 +134,12 @@
             {% if order.can_start_production %}
                 {% if order.status == 'PHASE1_READY' %}
                     <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-                       class="btn btn-primary fw-semibold">
+                       class="btn btn-accent fw-semibold">
                         <i class="bi bi-arrow-right-circle me-1"></i>העבר לשלב ב'
                     </a>
                 {% else %}
                     <button type="button"
-                            class="btn btn-primary fw-semibold"
+                            class="btn btn-accent fw-semibold"
                             onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
                         <i class="bi bi-play-circle me-1"></i>העבר לייצור
                     </button>
@@ -209,8 +196,23 @@
     <!-- Группы дверей или компактная заглушка без скроллбара -->
     {% if groups %}
         <div class="mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-2 px-1">
-                <span class="text-muted small fw-semibold">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 px-1">
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <span class="text-muted small fw-semibold me-1">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
+                    {% if can_edit_order %}
+                        <button class="btn btn-sm btn-primary"
+                                data-bs-toggle="modal"
+                                data-bs-target="#groupModal"
+                                title="הוספת קבוצת דלתות חדשה להזמנה">
+                            <i class="bi bi-plus-lg me-1"></i>הוספת דלתות
+                        </button>
+                        <button class="btn btn-sm btn-outline-accent btn-open-load-spec"
+                                data-group-id=""
+                                title="הוספת קבוצה ממפרט שמור">
+                            <i class="bi bi-box-arrow-in-down me-1"></i>טעינת מפרט שמור
+                        </button>
+                    {% endif %}
+                </div>
                 <div class="d-inline-flex align-items-center gap-1">
                     <button type="button"
                             class="sb-view-toggle-btn"
