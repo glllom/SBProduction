@@ -899,7 +899,7 @@ class ProductionDataService:
                     )
 
                     hinge_heights = hw_grp.get('hinge_heights', [])
-                    hinge_heights_display = " \\ ".join(
+                    hinge_heights_display = "   ".join(
                         str(int(hh)) if float(hh).is_integer() else str(hh) for hh in hinge_heights
                     ) if hinge_heights else ""
 
@@ -1425,34 +1425,36 @@ class ProductionDataService:
                     thickness = float(we.get('thickness', 0) or 0)
                     sides = int(we.get('sides', 4) or 4)
 
-            # 2. Base & filling layers from BOM
-            bom_items = _get(item, 'bom_items', []) or []
+                    # 2. Base, filling & panel_frame layers from BOM
+                    bom_items = _get(item, 'bom_items', []) or []
 
-            def _bom_name(b):
-                return _get(b, 'common_name') or _get(b, 'item_name') or ''
+                    def _bom_name(b):
+                        return _get(b, 'common_name') or _get(b, 'item_name') or ''
 
-            base_names = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'base' and _bom_name(b)]
-            filling_names = [_get(b, 'item_name') for b in bom_items if
-                             _get(b, 'tag') == 'filling' and _get(b, 'item_name')]
+                    base_names = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'base' and _bom_name(b)]
+                    filling_names = [_get(b, 'item_name') for b in bom_items if
+                                     _get(b, 'tag') == 'filling' and _get(b, 'item_name')]
+                    panel_frame_names = [_bom_name(b) for b in bom_items if
+                                         _get(b, 'tag') == 'panel_frame' and _bom_name(b)]
 
-            # 3. Covering layer (hidden edge vs FORMICA vs PAINT)
-            finish_type = _get(item, 'finish_type', 'PAINT')
-            if is_hidden:
-                covering_names = ''
-            elif finish_type == 'FORMICA':
-                c_out = str(_get(item, 'color_panel_outside', '') or '').strip()
-                c_in = str(_get(item, 'color_panel_inside', '') or '').strip()
-                if c_in and c_in != c_out:
-                    covering_names = " חוץ: {c_out} / פנים: {c_in}"
-                elif c_out:
-                    covering_names = c_out
-            else:
-                coverings = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'covering' and _bom_name(b)]
-                covering_names = coverings[0] if coverings else ''
+                    # 3. Covering layer (hidden edge vs FORMICA vs PAINT)
+                    finish_type = _get(item, 'finish_type', 'PAINT')
+                    if is_hidden:
+                        covering_names = ''
+                    elif finish_type == 'FORMICA':
+                        c_out = str(_get(item, 'color_panel_outside', '') or '').strip()
+                        c_in = str(_get(item, 'color_panel_inside', '') or '').strip()
+                        if c_in and c_in != c_out:
+                            covering_names = f"חוץ: {c_out} / פנים: {c_in}"
+                        elif c_out:
+                            covering_names = c_out
+                    else:
+                        coverings = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'covering' and _bom_name(b)]
+                        covering_names = coverings[0] if coverings else ''
 
-            raw_components = base_names + filling_names
-            comp_title = "  |  ".join(dict.fromkeys(filter(None, raw_components))) or _get(item, 'product_name', '')
-
+                    raw_components = base_names + filling_names + panel_frame_names
+                    comp_title = "  |  ".join(dict.fromkeys(filter(None, raw_components))) or _get(item, 'product_name',
+                                                                                                   '')
             # 4. Customizer presets & signature
             applied = _get(item, 'applied_presets', []) or []
             customizer_presets, sig_parts = [], []
