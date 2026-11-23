@@ -82,7 +82,7 @@
             <!-- 3. Подзаголовок: Материал коробки и הלבשה -->
             {% for mat in page.material_groups %}
                 <div class="wood-material-section mb-2">
-                    <div class="bg-success p-2 text-dark bg-opacity-25 px-3 py-1 mb-1 d-flex justify-content-between align-items-center">
+                    <div class="bg-success text-dark bg-opacity-25 px-3 py-1 mb-0 d-flex justify-content-between align-items-center">
                         <span class="fs-4 fw-bold">{{ mat.frames_caption }}</span>
                         <span class="fs-5">{{ mat.door_casing }}</span>
                     </div>
@@ -90,6 +90,12 @@
                     {% for hw in mat.hardware_groups %}
                         <div class="wood-hardware-block mb-3">
                             <div class="bg-secondary-subtle px-3 py-1 mb-0 d-flex justify-content-between align-items-center">
+                                <div class="{% if hw.is_double_door %}w-100{% endif %}">
+                                    צירים: <strong class="fs-4 text-danger">{{ hw.hinge_name|default:"ללא" }}</strong>
+                                    {% if hw.hinge_heights_display %}
+                                        <span class="fs-5 fw-bold ms-2 text-danger" dir="ltr">{{ hw.hinge_heights_display }}</span>
+                                    {% endif %}
+                                </div>
                                 {% if not hw.is_double_door %}
                                     <div>
                                         מנעול: <strong class="fs-4 text-danger">{{ hw.lock_name|default:"ללא" }}</strong>
@@ -98,12 +104,6 @@
                                         {% endif %}
                                     </div>
                                 {% endif %}
-                                <div class="{% if hw.is_double_door %}w-100{% endif %}">
-                                    צירים: <strong class="fs-4 text-danger">{{ hw.hinge_name|default:"ללא" }}</strong>
-                                    {% if hw.hinge_heights_display %}
-                                        <span class="fs-5 fw-bold ms-2 text-danger" dir="ltr">{{ hw.hinge_heights_display }}</span>
-                                    {% endif %}
-                                </div>
                             </div>
                             <!-- 5. Строки с размерами -->
                             <div class="border border-2 border-bottom-0">
