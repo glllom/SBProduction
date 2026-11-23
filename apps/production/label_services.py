@@ -1,8 +1,11 @@
 import os
 from typing import Dict, Any, Optional, List
 
+from django.db.models import Q
+
+from apps.catalog.models import Hardware, MachiningFeature
 from apps.orders.models import Order
-from .models import DoorLabel, PerimeterRoutingFile, FrontEngravingFile, HardwareMacroFile, CustomizerMacroFile
+from .models import DoorLabel, PerimeterRoutingFile, FrontEngravingFile, CustomizerMacroFile, HardwareMacroFile
 
 
 class DoorLabelService:
@@ -55,19 +58,21 @@ class DoorLabelService:
     def enrich_geometry(
             drafts: list[dict],
             item_spec,
-            leaf_width: float,
-            leaf_height: float,
-            leaf_thickness: float = 40.0,
+            leaf_width: Optional[float],
+            leaf_height: Optional[float],
+            leaf_thickness: Optional[float] = 40.0,
             direction: str = '',
             opening: str = '',
             edge_type: str = '',
             is_paint: bool = False,
-            passive_width: float = None,
+            passive_width: Optional[float] = None,
     ) -> None:
         """
         Enriches label drafts with calculated panel dimensions, opening, and finish specs.
         Modifies drafts in-place.
         """
+        _ = item_spec  # Reserved for pipeline interface compatibility
+
         for draft in drafts:
             if draft.get('leaf_role') == DoorLabel.LeafRole.PASSIVE and passive_width is not None:
                 w = passive_width
@@ -89,7 +94,7 @@ class DoorLabelService:
             cls,
             label_type: int,
             door_family,
-            leaf_role: str
+            leaf_role: int
     ) -> tuple[str, bool]:
         """
         Resolves routing filename and edge_shape for label types 0 and 1.
@@ -216,14 +221,18 @@ class DoorLabelService:
         padded_hinges = (list(raw_hinges) + [None] * 5)[:5]
 
         # 1. Resolve product, door family and front
-        product = getattr(item.group, 'product', None) if getattr(item, 'group', None) else None
-        door_family = getattr(product, 'product_family', None) if product else None
-
         group = getattr(item, 'group', None)
+        product = getattr(group, 'product', None) if group else None
+        door_family = getattr(product, 'product_family', None) if product else None
         order = getattr(group, 'order', None) if group else None
         front = (getattr(group, 'front', None) or getattr(order, 'front', None)) if group else None
 
-        # 2. Resolve lock & hinge macros
+        # 2. Resolve active customizers
+        active_customizers = customizers
+        if active_customizers is None and group:
+            active_customizers = list(group.customizers.all())
+
+        # 3. Resolve lock & hinge macros (with MachiningFeature support)
         lock_id = getattr(spec, 'lock_id', None)
         hinge_bi = next(
             (bi for bi in getattr(spec, 'bom_items', []) if str(bi.tag).lower() == 'hinge'),
@@ -231,20 +240,43 @@ class DoorLabelService:
         )
         hinge_id = hinge_bi.item_id if hinge_bi else None
 
-        lock_program = cls._resolve_hardware_macro(lock_id, door_family)
-        hinge_program = cls._resolve_hardware_macro(hinge_id, door_family)
+        features_by_role = cls._collect_active_machining_features(
+            spec=spec,
+            item=item,
+            active_customizers=active_customizers or [],
+            lock_id=lock_id,
+            hinge_id=hinge_id,
+        )
 
-        # 3. Resolve front engraving and customizer macros
+        lock_macro, lock_err = cls._resolve_hardware_macro(
+            lock_id,
+            door_family,
+            target_role=Hardware.HardwareRole.LOCK,
+            features_by_role=features_by_role,
+        )
+        hinge_macro, hinge_err = cls._resolve_hardware_macro(
+            hinge_id,
+            door_family,
+            target_role=Hardware.HardwareRole.HINGE,
+            features_by_role=features_by_role,
+        )
+
+        for err_msg in (lock_err, hinge_err):
+            if err_msg and hasattr(spec, 'errors') and isinstance(spec.errors, list):
+                spec.errors.append(err_msg)
+
+        lock_program = lock_macro.file_name if (lock_macro and lock_macro.file_name) else ""
+        hinge_program = hinge_macro.file_name if (hinge_macro and hinge_macro.file_name) else ""
+
+        lock_label = cls._format_hardware_label(getattr(spec, 'lock_name', '') or '', lock_macro)
+        hinge_label = cls._format_hardware_label(getattr(spec, 'hinge_name', '') or '', hinge_macro)
+
+        # 4. Resolve front engraving and customizer macros
         front_program = cls._resolve_front_engraving(front)
-
-        active_customizers = customizers
-        if active_customizers is None and group:
-            active_customizers = list(group.customizers.all())
-
         cmz_macros = cls._resolve_customizer_macros(active_customizers or [])
         padded_cmz_macros = (list(cmz_macros) + [''] * 10)[:10]
 
-        # 4. Build addons summary strictly from tag-filtered label_customizers
+        # 5. Build addons summary strictly from tag-filtered label_customizers
         label_customizers = getattr(spec, 'label_customizers', []) or []
         addons_parts = []
         for c in label_customizers:
@@ -264,7 +296,7 @@ class DoorLabelService:
         engraving_data = getattr(spec, 'engraving_data', {}) or {}
         cnc_targets = getattr(spec, 'cnc_targets', {}) or {}
 
-        # 5. Enrich each label draft
+        # 6. Enrich each label draft
         for draft in drafts:
             l_type = draft.get('label_type', DoorLabel.LabelType.ROUGHING)
             role = draft.get('leaf_role', DoorLabel.LeafRole.SINGLE)
@@ -287,10 +319,10 @@ class DoorLabelService:
             qr_payload = cls._build_qr_payload(target_machine, l_type, draft, spec, engraving_data)
 
             draft.update({
-                'lock_name': getattr(spec, 'lock_name', '') or '',
+                'lock_name': lock_label,
                 'lock_height': getattr(spec, 'lock_height', None),
                 'lock_program': lock_program,
-                'hinge_name': getattr(spec, 'hinge_name', '') or '',
+                'hinge_name': hinge_label,
                 'hinge_program': hinge_program,
                 'hinge_1': padded_hinges[0],
                 'hinge_2': padded_hinges[1],
@@ -365,17 +397,142 @@ class DoorLabelService:
             DoorLabel.objects.bulk_create(to_create)
 
     @classmethod
-    def _resolve_hardware_macro(cls, hardware_id: Optional[int], door_family) -> str:
-        """Resolves macro file name for given hardware and door family."""
-        if not hardware_id or not door_family:
-            return ""
+    def _collect_active_machining_features(
+            cls,
+            spec,
+            item,
+            active_customizers: list,
+            lock_id: Optional[int],
+            hinge_id: Optional[int],
+    ) -> dict[str, list[MachiningFeature]]:
+        """
+        Собирает активные MachiningFeature со всех комплектующих двери
+        (ручка из шапки при has_handle=True, замок, петли, фурнитура кастомизаторов и BOM),
+        сгруппированные по affects_role (например: {'LOCK': [feature]}).
+        """
+        group = getattr(item, 'group', None)
+        order = getattr(group, 'order', None) if group else None
+        product = getattr(group, 'product', None) if group else None
+        door_family = getattr(product, 'product_family', None) if product else None
 
-        macro = HardwareMacroFile.objects.filter(
+        features_by_role: dict[str, dict[int, MachiningFeature]] = {}
+
+        def _register(feature: Optional[MachiningFeature]) -> None:
+            if not feature:
+                return
+            role_bucket = features_by_role.setdefault(feature.affects_role, {})
+            role_bucket[feature.id] = feature
+
+        # 1. Ручка из шапки заказа — только если группа и семейство предусматривают ручку
+        has_handle = bool(getattr(group, 'has_handle', True))
+        if door_family is not None:
+            has_handle = has_handle and bool(getattr(door_family, 'has_handle', True))
+
+        handle = getattr(order, 'handle', None) if (order and has_handle) else None
+        if handle is not None:
+            _register(getattr(handle, 'machining_feature', None))
+
+        # 2. Замок, петли и фурнитура из кастомизаторов
+        hw_ids: set[int] = set()
+        hw_skus: set[str] = set()
+
+        if lock_id:
+            hw_ids.add(lock_id)
+        if hinge_id:
+            hw_ids.add(hinge_id)
+
+        for gc in active_customizers:
+            cust = getattr(gc, 'customizer', gc)
+            cust_hw = getattr(cust, 'hardware', None)
+            if cust_hw is not None:
+                hw_ids.add(cust_hw.id)
+            for i in range(1, 6):
+                raw_val = getattr(gc, f'par{i}', None)
+                if isinstance(raw_val, str) and raw_val.strip().upper().startswith('SKU='):
+                    sku = raw_val.strip().split('=', 1)[1].strip()
+                    if sku:
+                        hw_skus.add(sku)
+
+        # 3. Прочая фурнитура из bom_items (исключая теги материалов, чтобы не путать с Material)
+        material_tags = {
+            'frame', 'covering', 'base', 'filling', 'panel_frame',
+            'casing', 'door_casing', 'profile1', 'profile2', 'profile3',
+            'other1', 'other2', 'other3', 'other4', 'other5',
+        }
+        for bi in getattr(spec, 'bom_items', []) or []:
+            tag = str(getattr(bi, 'tag', '') or '').lower()
+            if tag in material_tags:
+                continue
+            sku = getattr(bi, 'sku', None)
+            if sku:
+                hw_skus.add(str(sku).strip())
+
+        if hw_ids or hw_skus:
+            query = Q()
+            if hw_ids:
+                query |= Q(id__in=hw_ids)
+            if hw_skus:
+                query |= Q(sku__in=hw_skus)
+
+            hw_with_features = (
+                Hardware.objects.filter(query, machining_feature__isnull=False)
+                .select_related('machining_feature')
+            )
+            for hw in hw_with_features:
+                _register(hw.machining_feature)
+
+        return {role: list(bucket.values()) for role, bucket in features_by_role.items()}
+
+    @staticmethod
+    def _format_hardware_label(base_name: str, macro: Optional[HardwareMacroFile]) -> str:
+        """Формирует понятное оператору название замка/петель для печати на наклейке."""
+        if macro and macro.label_name and macro.label_name.strip():
+            return macro.label_name.strip()[:128]
+
+        if macro and macro.machining_feature_id:
+            feature_name = macro.machining_feature.name
+            text = f"{base_name} — {feature_name}" if base_name else feature_name
+            return text[:128]
+
+        return (base_name or '')[:128]
+
+    @classmethod
+    def _resolve_hardware_macro(
+            cls,
+            hardware_id: Optional[int],
+            door_family,
+            target_role: Optional[str] = None,
+            features_by_role: Optional[dict[str, list[MachiningFeature]]] = None,
+    ) -> tuple[Optional[HardwareMacroFile], Optional[str]]:
+        """
+        Возвращает кортеж (macro_obj, error_message) с учётом MachiningFeature.
+        """
+        if not hardware_id or not door_family:
+            return None, None
+
+        role_features = (features_by_role or {}).get(target_role, []) if target_role else []
+
+        if len(role_features) > 1:
+            names = ", ".join(f.name for f in role_features)
+            return None, f"התנגשות מאפייני עיבוד עבור {target_role}: {names}"
+
+        qs = HardwareMacroFile.objects.filter(
             hardware__id=hardware_id,
             door_families=door_family,
-        ).first()
+        ).select_related('machining_feature')
 
-        return macro.file_name if (macro and macro.file_name) else ""
+        if len(role_features) == 1:
+            feature = role_features[0]
+            macro = qs.filter(machining_feature=feature).first()
+            if not macro or not macro.file_name:
+                return (
+                    None,
+                    f"חסר קובץ מאקרו עבור '{feature.name}' למשפחת '{door_family.name}'"
+                )
+            return macro, None
+
+        macro = qs.filter(machining_feature__isnull=True).first()
+        return macro, None
 
     @classmethod
     def _resolve_front_engraving(cls, front) -> str:

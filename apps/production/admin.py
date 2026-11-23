@@ -442,14 +442,35 @@ class PerimeterRoutingFileAdmin(ModelAdmin):
 
 @admin.register(HardwareMacroFile)
 class HardwareMacroFileAdmin(ModelAdmin):
-    list_display = ('id', 'file_name', 'display_hardware', 'display_families', 'description')
-    list_filter = ('door_families', 'hardware__role')
-    search_fields = ('file_name', 'description', 'hardware__name', 'hardware__sku', 'door_families__name')
+    list_display = (
+        'id', 'file_name', 'label_name', 'machining_feature',
+        'display_hardware', 'display_families', 'description',
+    )
+    list_select_related = ('machining_feature',)
+    list_filter = ('machining_feature', 'door_families', 'hardware__role')
+    search_fields = (
+        'file_name', 'label_name', 'description',
+        'machining_feature__name', 'machining_feature__code',
+        'hardware__name', 'hardware__sku', 'door_families__name',
+    )
     filter_horizontal = ('hardware', 'door_families')
     save_as = True
+    fieldsets = (
+        ('מידע כללי', {
+            'fields': ('file_name', 'label_name', 'machining_feature', 'description')
+        }),
+        ('שיוך לפרזול ומשפחות', {
+            'fields': ('hardware', 'door_families')
+        }),
+    )
 
     def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related('hardware', 'door_families')
+        return (
+            super()
+            .get_queryset(request)
+            .select_related('machining_feature')
+            .prefetch_related('hardware', 'door_families')
+        )
 
     def display_hardware(self, obj):
         return ", ".join(h.name for h in obj.hardware.all()) or '-'

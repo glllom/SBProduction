@@ -289,9 +289,6 @@ class ProductionStation(models.Model):
         db_index=True,
     )
 
-    class Meta:
-        ordering = ['order', 'id']
-
     target_machine = models.CharField(
         'מכונת CNC משויכת',
         max_length=32,
@@ -1152,6 +1149,22 @@ class HardwareMacroFile(models.Model):
         related_name="macro_files",
         verbose_name="פרזול",
     )
+
+    machining_feature = models.ForeignKey(
+        'catalog.MachiningFeature',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='מאפיין עיבוד מיוחד',
+    )
+    label_name = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        verbose_name="שם להדפסה על מדבקה",
+        help_text="טקסט קצר למפעיל (למשל: מנעול מגנט חורים קטנים). אם ריק — יוצג שם הפרזול + מאפיין העיבוד.",
+    )
+
     # Door families where this specific macro applies
     door_families = models.ManyToManyField(
         "catalog.ProductFamily",
