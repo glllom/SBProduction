@@ -4,17 +4,17 @@ from django_json_widget.widgets import JSONEditorWidget
 from unfold.admin import ModelAdmin, TabularInline, StackedInline
 
 from apps.production.models import ProductTechnicalData, BOM
-from .models import (
-    Customizer,
-    ProductType,
-    ProductFamily,
-    Series,
-    Front,
-    Color,
-    Material,
-    ProductModel,
-    Hardware,
-)
+from .models import (Customizer,
+                     ProductType,
+                     ProductFamily,
+                     Series,
+                     Front,
+                     Color,
+                     Material,
+                     ProductModel,
+                     Hardware,
+                     MachiningFeature,
+                     )
 
 JSON_FORMFIELD_OVERRIDES = {
     models.JSONField: {'widget': JSONEditorWidget},
@@ -124,16 +124,23 @@ class MaterialAdmin(ModelAdmin):
         }),
     )
 
+@admin.register(MachiningFeature)
+class MachiningFeatureAdmin(ModelAdmin):
+    list_display = ('id', 'name', 'code', 'affects_role')
+    list_filter = ('affects_role',)
+    search_fields = ('name', 'code')
+
+
 
 @admin.register(Hardware)
 class HardwareAdmin(ModelAdmin):
     list_display = (
-        'id', 'name', 'sku', 'role', 'common_name',
+        'id', 'name', 'sku', 'role', 'machining_feature', 'common_name',
         'par1_value', 'rule_tag', 'color', 'price', 'active',
     )
-    list_select_related = ('color',)
+    list_select_related = ('color', 'machining_feature')
     list_editable = ('active',)
-    list_filter = ('role', 'rule_tag', 'active', 'color')
+    list_filter = ('role', 'machining_feature', 'rule_tag', 'active', 'color')
     search_fields = ('name', 'sku', 'common_name', 'par1_value', 'description')
     filter_horizontal = ('product_types', 'product_families', 'product_models', 'components')
     save_as = True
@@ -142,7 +149,8 @@ class HardwareAdmin(ModelAdmin):
             'fields': (
                 ('name', 'sku'),
                 ('role', 'common_name'),
-                ('color', 'price', 'active'),
+                ('machining_feature', 'color'),
+                ('price', 'active'),
                 'description',
             )
         }),

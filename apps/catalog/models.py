@@ -1,6 +1,37 @@
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator
 from django.db import models
+
+
+def _matches_product_scope(scoped_obj, product_model) -> bool:
+    """
+    Check compatibility/availability using OR logic across scoping levels.
+    Empty sets = globally compatible.
+    """
+    if not product_model:
+        return True
+
+    has_types = scoped_obj.product_types.exists()
+    has_families = scoped_obj.product_families.exists()
+    has_models = scoped_obj.product_models.exists()
+
+    if not (has_types or has_families or has_models):
+        return True
+
+    if has_models:
+        if scoped_obj.product_models.filter(id=product_model.id).exists():
+            return True
+        if product_model.parent_model and scoped_obj.product_models.filter(
+                id=product_model.parent_model.id
+        ).exists():
+            return True
+
+    if has_families and scoped_obj.product_families.filter(id=product_model.product_family_id).exists():
+        return True
+    if has_types and scoped_obj.product_types.filter(id=product_model.product_family.product_type_id).exists():
+        return True
+
+    return False
 
 
 # ==========================================
@@ -142,7 +173,8 @@ class Series(models.Model):
         """Deprecated: use available_frames instead"""
         return Color.objects.filter(
             id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(),
-            active=True)
+            active=True
+        )
 
 
 class Front(models.Model):
@@ -194,10 +226,21 @@ class Color(models.Model):
         return f"{self.name}"
 
 
+# ==========================================
+# 3. HARDWARE & MATERIALS
+# ==========================================
+
 class Hardware(models.Model):
     """
     General hardware components (locks, hinges, etc.)
     """
+
+    class HardwareRole(models.TextChoices):
+        LOCK = 'LOCK', 'מנעול'
+        CYLINDER = 'CYLINDER', 'צילינדר'
+        HANDLE = 'HANDLE', 'ידית'
+        HINGE = 'HINGE', 'ציר'
+        OTHER = 'OTHER', 'פרזול משלים / אביזרים'
 
     class RuleTag(models.TextChoices):
         STANDARD = 'STANDARD', 'רגיל (לפי יחידות)'
@@ -210,13 +253,6 @@ class Hardware(models.Model):
         ONLY_IF_HAS_FRAME = 'ONLY_IF_HAS_FRAME', 'רק אם יש משקוף'
         BUNDLE = 'BUNDLE', 'ערכה וירטואלית (כמות מ-par1, ללא תנאי)'
         CONDITIONAL_BUNDLE = 'CONDITIONAL_BUNDLE', 'סט וירטואלי (לפי חוקי צביעה של הרכיבים)'
-
-    class HardwareRole(models.TextChoices):
-        LOCK = 'LOCK', 'מנעול'
-        CYLINDER = 'CYLINDER', 'צילינדר'
-        HANDLE = 'HANDLE', 'ידית'
-        HINGE = 'HINGE', 'ציר'
-        OTHER = 'OTHER', 'פרזול משלים / אביזרים'
 
     name = models.CharField('שם', max_length=255)
     role = models.CharField(
@@ -278,10 +314,14 @@ class Hardware(models.Model):
         related_name='hardware_items',
         verbose_name='גוון / צבע'
     )
-
-    class Meta:
-        verbose_name = 'פרזול'
-        verbose_name_plural = 'פרזול'
+    machining_feature = models.ForeignKey(
+        'MachiningFeature',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='hardware_items',
+        verbose_name='מאפיין עיבוד מיוחד'
+    )
 
     rule_tag = models.CharField(
         'כלל חישוב למחסן',
@@ -290,10 +330,6 @@ class Hardware(models.Model):
         default=RuleTag.STANDARD,
         db_index=True
     )
-
-    @property
-    def code(self):
-        return self.sku
 
     # --- Метаданные (3 универсальных параметра с запасом) ---
     par1_label = models.CharField('שם פרמטר 1', max_length=100, blank=True, default='')
@@ -307,6 +343,14 @@ class Hardware(models.Model):
     par3_label = models.CharField('שם פרמטר 3', max_length=100, blank=True, default='')
     par3_value = models.CharField('ערך פרמטר 3', max_length=255, blank=True, default='')
     par3_desc = models.CharField('תיאור פרמטר 3', max_length=255, blank=True, default='')
+
+    class Meta:
+        verbose_name = 'פרזול'
+        verbose_name_plural = 'פרזול'
+
+    @property
+    def code(self):
+        return self.sku
 
     def get_numeric_par(self, index: int = 1) -> float | None:
         """Безопасно извлекает числовое значение из par1_value..par3_value."""
@@ -323,34 +367,24 @@ class Hardware(models.Model):
         return f"{self.name} ({self.sku})"
 
     def is_compatible_with(self, product_model):
-        """
-        Check if hardware is compatible with a given product model.
-        OR logic: if explicitly listed, OR if model's family is listed, OR if model's type is listed.
-        If all sets are empty, it's globally compatible.
-        """
-        if not product_model:
-            return True
+        return _matches_product_scope(self, product_model)
 
-        # Check if any constraints exist
-        has_types = self.product_types.exists()
-        has_families = self.product_families.exists()
-        has_models = self.product_models.exists()
 
-        if not (has_types or has_families or has_models):
-            return True
+class MachiningFeature(models.Model):
+    code = models.SlugField(unique=True, verbose_name='קוד')
+    name = models.CharField(max_length=100, verbose_name='מאפיין עיבוד')
+    affects_role = models.CharField(
+        max_length=20,
+        choices=Hardware.HardwareRole.choices,
+        verbose_name='משפיע על מקרו של',
+    )
 
-        if has_models:
-            if self.product_models.filter(id=product_model.id).exists():
-                return True
-            if product_model.parent_model and self.product_models.filter(id=product_model.parent_model.id).exists():
-                return True
+    class Meta:
+        verbose_name = 'מאפיין עיבוד מיוחד'
+        verbose_name_plural = 'מאפייני עיבוד מיוחדים'
 
-        if has_families and self.product_families.filter(id=product_model.product_family_id).exists():
-            return True
-        if has_types and self.product_types.filter(id=product_model.product_family.product_type_id).exists():
-            return True
-
-        return False
+    def __str__(self):
+        return f"{self.name} ({self.get_affects_role_display()})"
 
 
 class Material(models.Model):
@@ -369,7 +403,6 @@ class Material(models.Model):
     material_type = models.CharField(
         'סוג חומר',
         max_length=20,
-
     )
 
     thickness = models.DecimalField('עובי, מ"מ', max_digits=5, decimal_places=2, null=True, blank=True)
@@ -451,12 +484,12 @@ class ProductModel(models.Model):
     @property
     def effective_bom(self):
         """
-        Returns the BOM for this model. If not defined, attempts to return the effective BOM 
+        Returns the BOM for this model. If not defined, attempts to return the effective BOM
         from the parent model.
         """
         try:
             return self.bom
-        except Exception:
+        except ObjectDoesNotExist:
             if self.parent_model:
                 return self.parent_model.effective_bom
             return None
@@ -503,7 +536,8 @@ class ProductModel(models.Model):
         """Deprecated: use available_frames instead"""
         return Color.objects.filter(
             id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(),
-            active=True)
+            active=True
+        )
 
     def get_required_customizers(self):
         """
@@ -779,13 +813,6 @@ class Customizer(models.Model):
     def __str__(self):
         return f"[{self.code}] {self.name}"
 
-    def clean(self):
-        super().clean()
-        errors = {}
-
-        if self.outward_replacement_id and self.outward_replacement_id == self.id:
-            errors['outward_replacement'] = "קסטומייזר לא יכול להפנות לעצמו כתחליף."
-
     def get_parameter_options(self, par_number):
         """
         Parses the raw comma-separated option string into a structured list of key-value tuples.
@@ -800,7 +827,6 @@ class Customizer(models.Model):
             item = item.strip()
             if not item:
                 continue
-            # Split each item strictly on the first colon (item.split(':', 1))
             parts = item.split(':', 1)
             key = parts[0].strip()
             label = parts[1].strip() if len(parts) > 1 else key
@@ -816,7 +842,6 @@ class Customizer(models.Model):
             return options
 
         filtered = []
-        # Pre-fetch all hardware items referenced in SKUs to avoid N+1
         sku_keys = [key for key, _ in options if key.upper().startswith('SKU=')]
         sku_values = [key.split('=', 1)[1].strip() for key in sku_keys]
 
@@ -830,45 +855,20 @@ class Customizer(models.Model):
                     if hw.is_compatible_with(product_model):
                         filtered.append((key, label))
                 else:
-                    # If SKU doesn't exist in DB, we keep it so clean() can report it, 
-                    # OR we could skip it. The PRD says clean() should report invalid SKUs.
                     filtered.append((key, label))
             else:
-                # Generic/system choices always available
                 filtered.append((key, label))
         return filtered
 
     def is_available_for(self, product_model):
-        """
-        Check availability using OR logic across scoping levels.
-        Empty sets = Global.
-        """
-        if not product_model:
-            return True
-
-        has_types = self.product_types.exists()
-        has_families = self.product_families.exists()
-        has_models = self.product_models.exists()
-
-        if not (has_types or has_families or has_models):
-            return True
-
-        if has_models:
-            if self.product_models.filter(id=product_model.id).exists():
-                return True
-            if product_model.parent_model and self.product_models.filter(id=product_model.parent_model.id).exists():
-                return True
-
-        if has_families and self.product_families.filter(id=product_model.product_family_id).exists():
-            return True
-        if has_types and self.product_types.filter(id=product_model.product_family.product_type_id).exists():
-            return True
-
-        return False
+        return _matches_product_scope(self, product_model)
 
     def clean(self):
         super().clean()
         errors = {}
+
+        if self.outward_replacement_id and self.outward_replacement_id == self.id:
+            errors['outward_replacement'] = "קסטומייזר לא יכול להפנות לעצמו כתחליף."
 
         skus_to_check = set()
         field_to_skus = {}
@@ -880,22 +880,18 @@ class Customizer(models.Model):
                 continue
 
             field_skus = []
-            for key, label in options:
-                # Check if key starts with SKU= (case-insensitive)
+            for key, _ in options:
                 if key.upper().startswith('SKU='):
-                    # Extract the raw SKU
                     try:
                         raw_sku = key.split('=', 1)[1].strip()
                         field_skus.append(raw_sku)
                         skus_to_check.add(raw_sku)
                     except IndexError:
                         pass
-                # Keys without SKU= bypass warehouse validation
 
             field_to_skus[field_name] = field_skus
 
         if skus_to_check:
-            # Single bulk query to verify existence of all referenced SKUs
             existing_skus = set(
                 Hardware.objects.filter(sku__in=skus_to_check).values_list('sku', flat=True)
             )

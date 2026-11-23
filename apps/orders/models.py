@@ -573,21 +573,21 @@ class OrderItemsGroup(models.Model):
                 self.order.status = OrderStatus.PHASE1_PRODUCTION
                 self.order.save(update_fields=['status'])
 
-            # --- ШАГ 5: Инициализация has_handle из семейства продукта при создании или смене модели ---
-            if self.product_id:
-                product_changed = is_new
-                if not is_new:
-                    old_product_id = (
-                        OrderItemsGroup.objects.filter(pk=self.pk)
-                        .values_list('product_id', flat=True)
-                        .first()
-                    )
-                    product_changed = (old_product_id != self.product_id)
+        # --- ШАГ 5: Инициализация has_handle из семейства продукта при создании или смене модели ---
+        if self.product_id:
+            product_changed = is_new
+            if not is_new:
+                old_product_id = (
+                    OrderItemsGroup.objects.filter(pk=self.pk)
+                    .values_list('product_id', flat=True)
+                    .first()
+                )
+                product_changed = (old_product_id != self.product_id)
 
-                if product_changed:
-                    fam = getattr(self.product, 'product_family', None)
-                    if fam is not None:
-                        self.has_handle = fam.has_handle
+            if product_changed:
+                fam = getattr(self.product, 'product_family', None)
+                if fam is not None:
+                    self.has_handle = fam.has_handle
 
         # 3. Сохранение группы, синхронизация дверей и пересчет позиций
         with transaction.atomic():

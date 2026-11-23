@@ -274,6 +274,7 @@ class TechnicalSpecService:
                 'group__order__series',
                 'group__order__front',
                 'group__order__handle',
+                'group__order__handle__machining_feature',
                 'group__product',
                 'group__product__product_family',
                 'group__product__product_family__product_type',
