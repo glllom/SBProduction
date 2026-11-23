@@ -20,7 +20,7 @@ function renderStaticRowContent(data) {
     const wTop = formatNum(data.width);
     const wBottom = formatNum(data.widthBottom);
     const widthHtml = wBottom
-        ? `<span title="רוחב עליון">${wTop}</span><span class="text-muted mx-1">/</span><span class="text-accent" title="רוחב תחתון">${wBottom}</span>`
+        ? `<span title="רוחב עליון">${wTop}</span><span class="text-muted mx-1">\\</span><span class="text-accent" title="רוחב תחתון">${wBottom}</span>`
         : wTop;
     let combinedText = '-';
     if (openingText || directionText) {

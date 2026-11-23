@@ -84,7 +84,7 @@
                         <th style="width: 11%"
                             data-bs-toggle="tooltip"
                             title="מיקום ההתקנה (חדר, קומה, דירה)">מיקום</th>
-                        <th style="width: 7%"
+                        <th style="width: 9%"
                             data-bs-toggle="tooltip"
                             title="רוחב פתח אור / כנף במילימטרים">רוחב</th>
                         <th style="width: 7%"
@@ -141,7 +141,7 @@
                             <td class="field-width fw-semibold">
                                 {% if item.width_bottom %}
                                     <span title="רוחב עליון">{{ item.w_fmt }}</span>
-                                    <span class="text-muted mx-1">/</span>
+                                    <span class="text-muted mx-1">\</span>
                                     <span class="text-accent" title="רוחב תחתון">{{ item.w_bottom_fmt }}</span>
                                 {% else %}
                                     {{ item.w_fmt }}
@@ -162,6 +162,8 @@
                                 <div class="d-inline-flex align-items-center justify-content-center gap-1">
                                     {% if order.sketch or item.sketch %}
                                         <a href="
+
+
 
 
 														{% if item.sketch %}{{ item.sketch.url }}{% else %}{{ order.sketch.url }}{% endif %}"
@@ -523,7 +525,7 @@
         .meas-split-width .meas-excel-input:first-child {
             border-inline-end: 1px solid var(--sb-border-strong) !important;
         }
-     
+
         @media print {
             .no-print {
                 display: none !important;
