@@ -1339,14 +1339,31 @@ class FrameResolutionStep(SpecStep):
         if not spec.has_frame or not product:
             return
 
-        material = group.basic_color_frames
-        bom = getattr(product, 'effective_bom', None) or getattr(product, 'bom', None)
-        if not material and bom:
-            material = bom.frame
+        bom = context.bom
+        bom_frame = getattr(bom, 'frame', None) if bom else None
+        chosen = group.basic_color_frames
+
+        material = bom_frame
+        if chosen and bom_frame:
+            bom_cn = (bom_frame.common_name or '').strip()
+            chosen_cn = (chosen.common_name or '').strip()
+
+            if chosen.id == bom_frame.id or (bom_cn and chosen_cn == bom_cn):
+                material = chosen
+            elif bom_cn and chosen.color_id:
+                # Сохраняем выбранный цвет, но строго в рамках common_name из BOM
+                same_color_mat = Material.objects.filter(
+                    common_name=bom_cn,
+                    color_id=chosen.color_id,
+                ).first()
+                material = same_color_mat or bom_frame
+        elif chosen and not bom_frame:
+            material = chosen
 
         if not material:
             return
 
+        # Единственный допустимый случай смены профиля / common_name
         if context.item.opening == 'OUT' and material.outward_substitute:
             material = material.outward_substitute
 
@@ -1354,7 +1371,8 @@ class FrameResolutionStep(SpecStep):
         context.spec.context['resolved_frame_material'] = {
             'id': material.id,
             'name': material.name,
-            'sku': material.sku
+            'common_name': material.common_name or '',
+            'sku': material.sku,
         }
 
 
@@ -1494,12 +1512,14 @@ class BOMStep(SpecStep):
         if not product:
             return
 
+        resolved_frame = context.data.get('resolved_frame_material')
+
         calc_context = {
             'H': float(item.height or 0),
             'W': float(item.width or 0),
             'wall': float(item.wall or 0),
-            'basic_color_frames': group.basic_color_frames,
-            'resolved_frame_material': context.data.get('resolved_frame_material'),
+            'basic_color_frames': resolved_frame or group.basic_color_frames,
+            'resolved_frame_material': resolved_frame,
             'effective_bom': context.bom,
             'has_frame': spec.has_frame,
             'customizers': {}
@@ -1525,12 +1545,11 @@ class BOMStep(SpecStep):
             if b.get('tag') in ['profile1', 'profile2', 'profile3']:
                 profiles.append(item_obj.name)
 
+        if resolved_frame:
+            spec.frame = (resolved_frame.common_name or '').strip() or resolved_frame.name
+            
         spec.bom_items = spec_bom_items
         spec.profiles = profiles
-
-        resolved_frame = context.data.get('resolved_frame_material')
-        if resolved_frame:
-            spec.frame = resolved_frame.name
 
         lock_bom = next((b for b in bom_result if isinstance(b, dict) and b.get('tag') == 'Lock'), None)
         if lock_bom and lock_bom.get('item'):
