@@ -1518,17 +1518,17 @@ class ProductionDataService:
 
                 groups_map[group_key]['counter'][(round_press_dimension(w), round_press_dimension(h))] += 1
 
-                # 7. Format output grouped list
-                panel_groups = []
-                for grp in groups_map.values():
-                    dims = [
-                        {'width': w, 'height': h, 'qty': qty}
-                        for (w, h), qty in
-                        sorted(grp.pop('counter').items(), key=lambda x: (x[0][0], x[0][1]), reverse=True)
-                    ]
-                    if dims:
-                        grp['dimensions'] = dims
-                        panel_groups.append(grp)
+        # 7. Format output grouped list (сортировка по ширине, затем по высоте)
+        panel_groups = []
+        for grp in groups_map.values():
+            counter = grp.pop('counter', Counter())
+            dims = [
+                {'width': w, 'height': h, 'qty': qty}
+                for (w, h), qty in sorted(counter.items(), key=lambda x: (x[0][0], x[0][1]), reverse=True)
+            ]
+            if dims:
+                grp['dimensions'] = dims
+                panel_groups.append(grp)
 
         return panel_groups
 
