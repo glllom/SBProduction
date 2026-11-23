@@ -198,7 +198,7 @@
         <div class="mb-4">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 px-1">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="text-muted small fw-semibold me-1">קבוצות דלתות בהזמנה ({{ groups|length }})</span>
+                    <span class="text-muted small fw-semibold me-1">קבוצות דלתות בהזמנה [{{ groups|length }}]</span>
                     {% if can_edit_order %}
                         <button class="btn btn-sm btn-primary"
                                 data-bs-toggle="modal"
@@ -271,6 +271,7 @@
         const canEdit = "{% if can_edit_order %}true{% else %}false{% endif %}" === "true";
         const orderSeriesId = "{{ order.series_id|default:'' }}";
         const orderFrontId = "{{ order.front_id|default:'' }}";
+        const orderIsFramesToPaint = "{% if order.is_frames_to_paint %}true{% else %}false{% endif %}" === "true";
         const orderStatus = "{{ order.status }}";
         const csrfToken = "{{ csrf_token }}";
         const familyConfig = {};
@@ -469,8 +470,10 @@
                     $groupModal.find('input[name="color_panel_inside"]').val($btn.attr('data-color-panel-inside') || '');
 
                     const framePaint = $btn.attr('data-frame-paint-option') || 'NO_PAINT';
-                    $groupModal.find('select[name="frame_paint_option"]').val(framePaint).trigger('change');
-                    $groupModal.find('input[name="color_frames"]').val($btn.attr('data-color-frames') || '');
+                    $groupModal.find('select[name="frame_paint_option"]').val(
+                        orderIsFramesToPaint ? 'MAIN_COLOR' : 'NO_PAINT'
+                    ).trigger('change');
+                    $groupModal.find('input[name="color_frames"]').val('');
 
                     const productId = $btn.attr('data-product-id');
                     const productName = $btn.attr('data-product-name');

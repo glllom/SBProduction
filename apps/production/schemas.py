@@ -94,6 +94,7 @@ class ProductionSpec(BaseModel):
     # Geometry
     height: float = 0.0
     width: float = 0.0
+    width_bottom: Optional[float] = None
     wall: float = 0.0
     inner_height: float = 0.0
     inner_width: float = 0.0
@@ -101,7 +102,7 @@ class ProductionSpec(BaseModel):
     frame_inner_width_reduction: float = 0.0
     leaf_top_clearance: float = 0.0
     addition_cut: Optional[float] = None
-    panel_dimensions: List[Dict[str, float]] = Field(default_factory=list)
+    panel_dimensions: List[Dict[str, Optional[float]]] = Field(default_factory=list)
 
     # Opening parameters
     direction: str = ""  # L/R (localized)
@@ -110,7 +111,7 @@ class ProductionSpec(BaseModel):
     opening_code: str = ""  # IN/OUT
     is_double_door: bool = False
     edge_shape: bool = False
-    
+
     # Appearance
     front_name: str = ""
     finish_type: str = "PAINT"

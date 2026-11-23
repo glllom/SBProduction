@@ -85,33 +85,35 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
     class Meta:
         model = OrderItem
         fields = [
-            'mark', 'place', 'width', 'height', 'wall',
+            'mark', 'place', 'width', 'width_bottom', 'height', 'wall',
             'direction', 'opening', 'bottom_correction', 'comment',
             'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
             'custom_hinge3', 'custom_hinge4', 'custom_hinge5',
             'sketch'
         ]
         help_texts = {
-            'mark': 'סימון פריט ייחודי בהזמנה (למשל 1, 2, 3)',
-            'place': 'מיקום התקנה (חדר, קומה, דירה)',
-            'width': 'רוחב פתח אור / כנף במילימטרים',
-            'height': 'גובה פתח אור / כנף במילימטרים',
-            'wall': 'עובי קיר עבור המשקוף במילימטרים',
-            'direction': 'כיוון פתיחת הדלת (פנימה / החוצה)',
-            'opening': 'יד פתיחה (L = שמאל, R = ימין)',
-            'bottom_correction': 'חיתוך תחתון נוסף במילימטרים (עבור ריצוף או שטיח)',
+            'mark': 'מספר סדורי של פרית',
+            'place': 'מיקום התקנה',
+            'width': 'רוחב פריט',
+            'width_bottom': 'רוחב פריט',
+            'height': 'גובה פריט',
+            'wall': 'עובי קיר',
+            'direction': '',
+            'opening': '',
+            'bottom_correction': 'חיתוך תחתון נוסף',
             'comment': 'הערה ספציפית לפריט זה',
-            'custom_lock_height': 'גובה מרכז מנעול חריג מהרצפה במילימטרים',
-            'custom_hinge1': 'גובה ציר 1 חריג מהרצפה במילימטרים',
-            'custom_hinge2': 'גובה ציר 2 חריג מהרצפה במילימטרים',
-            'custom_hinge3': 'גובה ציר 3 חריג מהרצפה במילימטרים',
-            'custom_hinge4': 'גובה ציר 4 חריג מהרצפה במילימטרים',
-            'custom_hinge5': 'גובה ציר 5 חריג מהרצפה במילימטרים',
+            'custom_lock_height': 'גובה מנעול חריג',
+            'custom_hinge1': 'גובה ציר 1 חריג',
+            'custom_hinge2': 'גובה ציר 2 חריג',
+            'custom_hinge3': 'גובה ציר 3 חריג',
+            'custom_hinge4': 'גובה ציר 4 חריג',
+            'custom_hinge5': 'גובה ציר 5 חריג',
             'sketch': 'קובץ שרטוט לפרט זה (PDF, JPEG, PNG)',
         }
         widgets = {
             'mark': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'סימון'}),
             'width': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'רוחב'}),
+            'width_bottom': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'רוחב תחתון'}),
             'height': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'גובה'}),
             'wall': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'עובי קיר'}),
             'direction': TooltipSelect(attrs={'class': 'form-select'}),
@@ -163,6 +165,7 @@ class OrderItemForm(TooltipFormMixin, forms.ModelForm):
         # 3. Door parameters dependency
         if not product_family.has_door:
             # Clear door-only fields if they were somehow submitted
+            cleaned_data['width_bottom'] = None
             cleaned_data['direction'] = None
             cleaned_data['opening'] = None
             cleaned_data['bottom_correction'] = None
