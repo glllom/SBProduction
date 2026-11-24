@@ -636,16 +636,25 @@
             resolvedValue = false;
             confirmModal.show();
 
-            // Для опасных действий фокус ставим на "Отмена" для защиты от случайного Enter
-            confirmModalEl.addEventListener('shown.bs.modal', function onShown() {
-                confirmModalEl.removeEventListener('shown.bs.modal', onShown);
-                if (variantKey === 'danger' || variantKey === 'warning') {
-                    cancelBtn.focus();
-                } else {
-                    okBtn.focus();
-                }
+            confirmModalEl.addEventListener('show.bs.modal', function () {
+                setTimeout(function () {
+                    const backdrops = document.querySelectorAll('.modal-backdrop');
+                    if (backdrops.length > 1) {
+                        backdrops[backdrops.length - 1].style.zIndex = '1075';
+                    }
+                }, 0);
             });
 
+            confirmModalEl.addEventListener('hidden.bs.modal', function () {
+                if (document.querySelector('.modal.show')) {
+                    document.body.classList.add('modal-open');
+                }
+                if (activeResolver) {
+                    const fn = activeResolver;
+                    activeResolver = null;
+                    fn(resolvedValue);
+                }
+            });
             return new Promise(resolve => {
                 activeResolver = resolve;
             });

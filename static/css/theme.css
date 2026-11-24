@@ -1451,7 +1451,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Скрываем кнопку меню группы, когда карточка свернута */
-.group-card .card-header:has([aria-expanded="false"]) .dropdown {
+.group-card .card-header:has([data-bs-toggle="collapse"][aria-expanded="false"]) .dropdown {
     display: none !important;
 }
 

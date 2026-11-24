@@ -202,6 +202,10 @@ class BaseItemStep(SpecStep):
 
         h = float(item.height or 0)
         w = float(item.width or 0)
+        raw_wb = getattr(item, 'width_bottom', None)
+        w_bottom = float(raw_wb) if raw_wb not in (None, '') else None
+        if w_bottom is not None and w_bottom <= 0:
+            w_bottom = None
         wall = float(item.wall or 0)
 
         # 1. Проверка габаритов (только если есть полотно или коробка)
@@ -214,6 +218,7 @@ class BaseItemStep(SpecStep):
 
         spec.height = h
         spec.width = w
+        spec.width_bottom = w_bottom
         spec.wall = wall
 
         # 2. Проверка коробки
@@ -934,13 +939,26 @@ class PanelDimensionStep(SpecStep):
             spec.press_dimensions = []
             return
 
-        # 2. Чистовые размеры полотна
+        # 2. Чистовые размеры полотна (верх + опционально низ для трапеции)
         h_panel = spec.inner_height + float(pf.leaf_top_clearance or 0) + float(
             pf.leaf_bottom_clearance or 0) - bottom_correction
 
+        has_trapezoid = bool(spec.width_bottom and spec.width_bottom > 0)
+        inner_w_bottom = (
+            float(spec.width_bottom) + float(pf.frame_inner_width_reduction or 0)
+            if has_trapezoid else None
+        )
+
         if not context.data.get('is_double'):
             w_panel = spec.inner_width + float(pf.leaf_side_clearance or 0)
-            panels = [{'width': round(w_panel, 2), 'height': round(h_panel, 2)}]
+            panel_dict: Dict[str, float] = {
+                'width': round(w_panel, 2),
+                'height': round(h_panel, 2),
+            }
+            if inner_w_bottom is not None:
+                w_panel_bottom = inner_w_bottom + float(pf.leaf_side_clearance or 0)
+                panel_dict['width_bottom'] = round(w_panel_bottom, 2)
+            panels = [panel_dict]
         else:
             w_net = spec.inner_width + 2 * float(pf.leaf_side_clearance or 0)
             par1 = context.data.get('double_door_par1', 0.5)
@@ -954,20 +972,30 @@ class PanelDimensionStep(SpecStep):
                 w1 = w_net * par1 + 1
 
             w2 = w_net - w1 + float(pf.double_leaf_overlap or 0)
-            panels = [
-                {'width': round(w1, 2), 'height': round(h_panel, 2)},
-                {'width': round(w2, 2), 'height': round(h_panel, 2)}
-            ]
+            p1: Dict[str, float] = {'width': round(w1, 2), 'height': round(h_panel, 2)}
+            p2: Dict[str, float] = {'width': round(w2, 2), 'height': round(h_panel, 2)}
+
+            if inner_w_bottom is not None:
+                w_net_bottom = inner_w_bottom + 2 * float(pf.leaf_side_clearance or 0)
+                if par2 > 0:
+                    w1_b = par2 + 1
+                else:
+                    w1_b = w_net_bottom * par1 + 1
+                w2_b = w_net_bottom - w1_b + float(pf.double_leaf_overlap or 0)
+                p1['width_bottom'] = round(w1_b, 2)
+                p2['width_bottom'] = round(w2_b, 2)
+
+            panels = [p1, p2]
 
         spec.panel_dimensions = panels
 
-        # 3. Габариты заготовки/каркаса под пресс (с вычетом канта)
+        # 3. Габариты заготовки/каркаса под пресс (всегда по большей ширине + с вычетом канта)
         wood_edge = context.data.get('wood_edge')
         press_dims = []
 
         for p in panels:
-            pw = p['width']
-            ph = p['height']
+            pw = max(float(p['width'] or 0), float(p.get('width_bottom') or 0))
+            ph = float(p['height'] or 0)
 
             if not wood_edge:
                 # Обычная дверь: полотно + 1 мм припуска
@@ -990,6 +1018,7 @@ class PanelDimensionStep(SpecStep):
             })
 
         spec.press_dimensions = press_dims
+
         # 4. Обогащение заготовок наклеек геометрией полотен
         if context.label_drafts:
             from .label_services import DoorLabelService
@@ -1547,7 +1576,7 @@ class BOMStep(SpecStep):
 
         if resolved_frame:
             spec.frame = (resolved_frame.common_name or '').strip() or resolved_frame.name
-            
+
         spec.bom_items = spec_bom_items
         spec.profiles = profiles
 

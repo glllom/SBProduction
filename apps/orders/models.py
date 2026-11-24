@@ -449,6 +449,15 @@ class OrderItemsGroup(models.Model):
     def __str__(self):
         return f"קבוצה #{self.id} — {self.quantity} יח' (הזמנה ID:{self.order_id})"
 
+    def __init__(self, *args, **kwargs):
+        has_explicit_frame_paint = 'frame_paint_option' in kwargs
+        super().__init__(*args, **kwargs)
+        if self._state.adding and not has_explicit_frame_paint and self.order_id:
+            if getattr(self.order, 'is_frames_to_paint', False):
+                self.frame_paint_option = self.PaintOption.MAIN_COLOR
+            else:
+                self.frame_paint_option = self.PaintOption.NO_PAINT
+
     @property
     def available_frames(self):
         if self.product:
@@ -853,13 +862,16 @@ class OrderItem(models.Model):
 
     # --- Dimensions (in mm) ---
     width = models.DecimalField(
-        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='רוחב (מ"מ)'
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='רוחב'
+    )
+    width_bottom = models.DecimalField(
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='רוחב תחתון'
     )
     height = models.DecimalField(
-        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='גובה (מ"מ)'
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='גובה'
     )
     wall = models.DecimalField(
-        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='עובי קיר / פתח (מ"מ)'
+        max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='עובי קיר'
     )
 
     # --- Structure and Opening ---
@@ -976,6 +988,10 @@ class OrderItem(models.Model):
         return self.format_decimal(self.width)
 
     @property
+    def w_bottom_fmt(self):
+        return self.format_decimal(self.width_bottom)
+
+    @property
     def wall_fmt(self):
         return self.format_decimal(self.wall)
 
@@ -983,7 +999,7 @@ class OrderItem(models.Model):
 
         # Truncate all decimal fields to 1 decimal place
         decimal_fields = [
-            'width', 'height', 'wall', 'custom_lock_height',
+            'width', 'width_bottom', 'height', 'wall', 'custom_lock_height',
             'custom_hinge1', 'custom_hinge2', 'custom_hinge3',
             'custom_hinge4', 'custom_hinge5', 'bottom_correction'
         ]

@@ -14,7 +14,7 @@
         </div>
     </div>
     <div class="row">
-        <div class="col-12 col-xl-9 col-xxl-8">
+        <div class="col-12 col-xl-11 col-xxl-10">
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0 fs-6 fw-bold">מידע בסיסי על ההזמנה</h5>
@@ -101,14 +101,14 @@
                             <div class="row g-5">
                                 <!-- Покраска полотна -->
                                 <div class="col-md-6">
-                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
                                         <label class="form-label fw-bold mb-0" id="label-panel-outside">
                                             צבע כנף
-                                            (דו-צדדי)
+                                            (דו-צדדי):
                                         </label>
-                                        <div class="form-check form-switch m-0">
+                                        <div class="form-check form-switch sb-paint-switch m-0">
                                             {{ form.is_door_inside_different_color }}
-                                            <label class="form-check-label small"
+                                            <label class="form-check-label small mb-0"
                                                    for="{{ form.is_door_inside_different_color.id_for_label }}">
                                                 צדדים שונים
                                             </label>
@@ -139,17 +139,22 @@
                                 </div>
                                 <!-- Покраска коробок -->
                                 <div class="col-md-6 border-start">
-                                    <div class="form-check form-switch mb-1 pt-1">
-                                        {{ form.is_frames_to_paint }}
-                                        <label class="form-check-label fw-bold"
-                                               for="{{ form.is_frames_to_paint.id_for_label }}"
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="form-label fw-bold mb-0"
+                                               for="{{ form.color_frames.id_for_label }}"
                                                data-bs-toggle="tooltip"
                                                title="{{ form.is_frames_to_paint.help_text|default:'האם לצבוע את המשקופים' }}">
-                                            לצבוע משקופים <i class="bi bi-info-circle help-hint-icon"></i>
+                                            גוון צבע משקוף: <i class="bi bi-info-circle help-hint-icon"></i>
                                         </label>
+                                        <div class="form-check form-switch sb-paint-switch m-0">
+                                            {{ form.is_frames_to_paint }}
+                                            <label class="form-check-label small mb-0"
+                                                   for="{{ form.is_frames_to_paint.id_for_label }}">
+                                                לצבוע משקופים
+                                            </label>
+                                        </div>
                                     </div>
-                                    <div id="frame-color-wrapper" class="mt-2" style="display: none;">
-                                        <label class="form-label small text-muted mb-1">גוון צבע משקוף:</label>
+                                    <div id="frame-color-wrapper" style="display: none;">
                                         <div class="input-group input-group-sm">
                                             {{ form.color_frames }}
                                             <button class="btn btn-outline-secondary"
@@ -178,7 +183,7 @@
                             {{ form.comments }}
                         </div>
                         <!-- Кнопки управления (справа, по RTL-эргономике) -->
-                        <div class="mt-3 pt-3 border-top d-flex justify-content-start gap-2">
+                        <div class="mt-3 pt-2 border-top d-flex justify-content-start gap-2">
                             <button type="submit"
                                     class="btn btn-primary px-4 fw-semibold"
                                     data-bs-toggle="tooltip"
@@ -186,6 +191,10 @@
                                 {% if form.instance.pk %}שמור שינויים{% else %}צור הזמנה{% endif %}
                             </button>
                             <a href="
+
+
+
+
 
 
 

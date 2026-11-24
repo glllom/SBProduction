@@ -1505,13 +1505,15 @@ class ProductionDataService:
                     'counter': Counter(),
                 }
 
-            # 6. Press dimensions calculation
+            # 6. Press dimensions calculation (всегда по большей ширине)
             for p_dim in (_get(item, 'panel_dimensions', []) or []):
                 w, h = _get(p_dim, 'width'), _get(p_dim, 'height')
                 if w is None or h is None:
                     continue
 
-                w, h = float(w), float(h)
+                w_bottom = _get(p_dim, 'width_bottom')
+                w = max(float(w), float(w_bottom)) if w_bottom is not None else float(w)
+                h = float(h)
                 if has_edge and thickness > 0:
                     w -= thickness * 2
                     h -= thickness * ((sides > 2) + (sides > 3))

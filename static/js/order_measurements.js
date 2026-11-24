@@ -17,6 +17,11 @@ const formatNum = (val) => {
 function renderStaticRowContent(data) {
     const openingText = (data.opening === 'IN' ? 'פנימה' : (data.opening === 'OUT' ? 'החוצה' : ''));
     const directionText = (data.direction === 'L' ? 'L' : (data.direction === 'R' ? 'R' : ''));
+    const wTop = formatNum(data.width);
+    const wBottom = formatNum(data.widthBottom);
+    const widthHtml = wBottom
+        ? `<span title="רוחב עליון">${wTop}</span><span class="text-muted mx-1">\\</span><span class="text-accent" title="רוחב תחתון">${wBottom}</span>`
+        : wTop;
     let combinedText = '-';
     if (openingText || directionText) {
         combinedText = `${directionText} | ${openingText}`;
@@ -25,7 +30,7 @@ function renderStaticRowContent(data) {
     return `
         <td class="fw-bold meas-mark-cell">${data.mark || ''}</td>
         <td class="field-place small text-start">${data.place || ''}</td>
-        <td class="field-width fw-semibold">${formatNum(data.width)}</td>
+        <td class="field-width fw-semibold">${widthHtml}</td>
         <td class="field-height fw-semibold">${formatNum(data.height)}</td>
         <td class="field-wall">${formatNum(data.wall)}</td>
         <td class="field-opening small">${combinedText}</td>
@@ -132,6 +137,7 @@ function renderRowStatic($row) {
         mark: $row.attr('data-mark'),
         place: $row.attr('data-place'),
         width: $row.attr('data-width'),
+        widthBottom: $row.attr('data-width-bottom'),
         height: $row.attr('data-height'),
         wall: $row.attr('data-wall'),
         opening: $row.attr('data-opening'),
@@ -169,6 +175,7 @@ function openEditMode($row) {
     const mark = $row.attr('data-mark') || '';
     const place = $row.attr('data-place') || '';
     const width = $row.attr('data-width') || '';
+    const widthBottom = $row.attr('data-width-bottom') || '';
     const height = $row.attr('data-height') || '';
     const wall = $row.attr('data-wall') || '';
     const opening = $row.attr('data-opening') || '';
@@ -189,6 +196,20 @@ function openEditMode($row) {
 
     $row.addClass('edit-mode').attr('data-opened-at', Date.now());
     $(`#display-custom-${itemId}`).addClass('d-none');
+
+    const hasTrapezoid = hasDoor && Boolean(widthBottom);
+    const widthCellHtml = hasTrapezoid
+        ? `<div class="meas-split-width">
+               <input type="text" class="meas-excel-input fw-semibold numeric-input" name="width" value="${width}" placeholder="עליון" title="רוחב עליון">
+               <input type="text" class="meas-excel-input fw-semibold numeric-input" name="width_bottom" value="${widthBottom}" placeholder="תחתון" title="רוחב תחתון">
+           </div>`
+        : `<input type="text" class="meas-excel-input fw-semibold numeric-input" name="width" value="${width}" placeholder="רוחב">`;
+
+    const trapezoidBtnHtml = hasDoor
+        ? `<button type="button" class="btn btn-sm ${hasTrapezoid ? 'btn-outline-accent' : 'btn-outline-secondary'} meas-action-btn btn-toggle-trapezoid" data-bs-toggle="tooltip" title="רוחב תחתון (דלת טרפז)">
+               <i class="bi bi-distribute-horizontal"></i>
+           </button>`
+        : '';
 
     let openingOptions;
     if (allowedDirection === 'IN_ONLY') {
@@ -214,7 +235,7 @@ function openEditMode($row) {
     const html = `
         <td class="fw-bold meas-mark-cell">${mark}</td>
         <td class="meas-edit-td"><input type="text" class="meas-excel-input text-start" name="place" value="${place}" placeholder="מיקום"></td>
-        <td class="meas-edit-td"><input type="text" class="meas-excel-input fw-semibold numeric-input" name="width" value="${width}" placeholder="רוחב"></td>
+        <td class="meas-edit-td">${widthCellHtml}</td>
         <td class="meas-edit-td"><input type="text" class="meas-excel-input fw-semibold numeric-input" name="height" value="${height}" placeholder="גובה"></td>
         <td class="meas-edit-td"><input type="text" class="meas-excel-input numeric-input" name="wall" value="${wall}" ${hasFrame ? '' : 'disabled'} placeholder="משקוף"></td>
         <td class="meas-edit-td">
@@ -233,6 +254,7 @@ function openEditMode($row) {
                 <button type="button" class="btn btn-sm btn-outline-secondary meas-action-btn btn-duplicate" data-bs-toggle="tooltip" title="שכפל מידות לשאר הפריטים">
                     <i class="bi bi-files"></i>
                 </button>
+                ${trapezoidBtnHtml}
                 <button type="button" class="btn btn-sm btn-outline-secondary meas-action-btn btn-toggle-custom" data-bs-toggle="tooltip" title="גבהים חריגים">
                     <i class="bi bi-sliders"></i>
                 </button>
@@ -294,6 +316,10 @@ function saveRowAndClose($row, onComplete) {
         }
     });
 
+    if (!formData.has('width_bottom')) {
+        formData.append('width_bottom', '');
+    }
+
     if ($customRow.length) {
         $customRow.find('input').each(function () {
             if (this.name) formData.append(this.name, $(this).val());
@@ -314,6 +340,7 @@ function saveRowAndClose($row, onComplete) {
         success: function (response) {
             if (response.status === 'ok') {
                 $row.attr('data-width', formatNum(formData.get('width')));
+                $row.attr('data-width-bottom', formatNum(formData.get('width_bottom')));
                 $row.attr('data-height', formatNum(formData.get('height')));
                 $row.attr('data-wall', formatNum(formData.get('wall')));
                 $row.attr('data-opening', formData.get('opening') || '');
@@ -479,6 +506,10 @@ $(document).ready(function () {
             }
         });
 
+        if (!formData.has('width_bottom')) {
+            formData.append('width_bottom', '');
+        }
+
         if ($customRow.length) {
             $customRow.find('input').each(function () {
                 if (this.name) formData.append(this.name, $(this).val());
@@ -517,5 +548,34 @@ $(document).ready(function () {
             }
         });
     });
+
+    // Переключение второй ширины (трапеция: верх / низ)
+    $(document).on('click', '.btn-toggle-trapezoid', function (e) {
+        e.stopPropagation();
+        const $btn = $(this);
+        const $row = $btn.closest('tr');
+        const $widthTd = $row.find('input[name="width"]').closest('td');
+        const currentTop = $row.find('input[name="width"]').val() || '';
+        const $bottomInput = $row.find('input[name="width_bottom"]');
+
+        if ($bottomInput.length) {
+            // Сворачиваем обратно в одну ширину
+            $widthTd.html(`<input type="text" class="meas-excel-input fw-semibold numeric-input" name="width" value="${currentTop}" placeholder="רוחב">`);
+            $btn.removeClass('btn-outline-accent').addClass('btn-outline-secondary');
+            $widthTd.find('input[name="width"]').focus();
+        } else {
+            // Разделяем ячейку на верх и низ
+            const savedBottom = $row.attr('data-width-bottom') || '';
+            $widthTd.html(`
+             <div class="meas-split-width">
+                 <input type="text" class="meas-excel-input fw-semibold numeric-input" name="width" value="${currentTop}" placeholder="עליון" title="רוחב עליון">
+                 <input type="text" class="meas-excel-input fw-semibold numeric-input" name="width_bottom" value="${savedBottom}" placeholder="תחתון" title="רוחב תחתון">
+             </div>
+         `);
+            $btn.removeClass('btn-outline-secondary').addClass('btn-outline-accent');
+            $widthTd.find('input[name="width_bottom"]').focus();
+        }
+    });
+
 
 });

@@ -186,7 +186,7 @@ class OrderListView(LoginRequiredMixin, ListView):
         context['status_choices'] = OrderStatus.choices
         context['has_more'] = getattr(self, 'has_more', False)
         return context
-    
+
 
 class OrderCreateView(LoginRequiredMixin, CreateView):
     model = Order
@@ -494,7 +494,7 @@ def update_item_measurements(request, pk):
         return JsonResponse({'status': 'error', 'message': 'עריכת פריט זה נעולה'}, status=403)
 
     fields = [
-        'height', 'width', 'wall', 'direction', 'opening', 'mark',
+        'height', 'width', 'width_bottom', 'wall', 'direction', 'opening', 'mark',
         'place', 'bottom_correction', 'comment',
         'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
         'custom_hinge3', 'custom_hinge4', 'custom_hinge5'
@@ -575,7 +575,7 @@ def duplicate_item_measurements(request, pk):
     ).exclude(state=OrderItem.ItemState.CANCELED)
 
     numeric_fields = [
-        'height', 'width', 'wall', 'bottom_correction',
+        'height', 'width', 'width_bottom', 'wall', 'bottom_correction',
         'custom_lock_height', 'custom_hinge1', 'custom_hinge2',
         'custom_hinge3', 'custom_hinge4', 'custom_hinge5'
     ]
