@@ -1,74 +1,101 @@
 {% extends "base.html" %}
 {% block page_title %}
-    <span>הזמנה: {{ order.order_number }}</span>
-    <span class="sb-badge-soft {% if order.status == 'COMPLETED' %}sb-success{% elif order.status == 'CANCELED' %}sb-danger{% elif order.status != 'NEW' %}sb-accent{% endif %} ms-3"
-          data-bs-toggle="tooltip"
-          title="סטטוס נוכחי של ההזמנה: {{ order.get_status_display }}">{{ order.get_status_display }}</span>
+    <span class="d-inline-flex align-items-center gap-2">
+        <a href="{% url 'order-list' %}"
+           class="text-muted text-decoration-none fw-normal">הזמנות</a>
+        <span class="text-muted opacity-50 fw-normal">/</span>
+        <span>{{ order.order_number }}</span>
+    </span>
 {% endblock %}
 {% block content %}
-    <!-- Верхняя строка: Клиент и Dev Tools -->
-    <div class="sb-page-header align-items-center justify-content-between gap-3 mb-3">
-        <div class="d-flex align-items-center flex-wrap gap-2">
-            <span class="sb-stat-icon sb-accent flex-shrink-0">
-                <i class="bi bi-person-badge"></i>
-            </span>
-            <h2 class="sb-page-title ms-2 mb-0">{{ order.customer }}</h2>
-            {% if order.status != 'CANCELED' %}
-                <a href="{% url 'order-edit-header' order.pk %}"
-                   class="btn btn-sm btn-outline-secondary"
-                   data-bs-toggle="tooltip"
-                   title="עריכת פרטי הזמנה">
-                    <i class="bi bi-pencil"></i>
-                </a>
-            {% endif %}
-        </div>
-        <!-- Dev Tools (в верхней строке, без смещения по центру экрана) -->
-        {% if is_admin_user %}
-            <div class="dropdown">
-                <button class="btn btn-outline-warning btn-sm dropdown-toggle"
-                        type="button"
-                        data-bs-toggle="dropdown">
-                    <i class="bi bi-tools me-1"></i>Dev Tools
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <li>
-                        <a class="dropdown-item"
-                           href="{% url 'production:order-rebuild-batch-spec' order.pk %}">
-                            <i class="bi bi-cpu ms-2 text-warning"></i>Rebuild Spec
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item"
-                           href="{% url 'production:spec-json-preview' order.pk %}"
-                           target="_blank">
-                            <i class="bi bi-filetype-json ms-2 text-info"></i>צפייה ב-JSON Spec
-                        </a>
-                    </li>
-                    {% if order.status != 'NEW' %}
-                        <li>
-                            <hr class="dropdown-divider">
-                        </li>
-                        <li>
-                            <a class="dropdown-item text-warning"
-                               href="{% url 'order-reset-to-new' order.pk %}"
-                               onclick="return confirm('בטוח?')">
-                                <i class="bi bi-arrow-counterclockwise ms-2"></i>Reset to NEW
-                            </a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item text-danger"
-                               href="{% url 'order-cancel' order.pk %}"
-                               onclick="return confirm('בטוח?')">
-                                <i class="bi bi-x-circle ms-2"></i>ביטול הזמנה
-                            </a>
-                        </li>
+    <!-- Единый паспорт заказа: шапка -> параметры -> производственные действия -->
+    <div class="card mb-4 overflow-hidden">
+        <!-- 1. Шапка паспорта: номер заказа, клиент, статус и действия по заказу -->
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 px-3 py-3 border-bottom">
+            <div class="d-flex align-items-center flex-wrap gap-2">
+                <span class="sb-stat-icon sb-accent flex-shrink-0">
+                    <i class="bi bi-receipt"></i>
+                </span>
+                <div class="d-flex align-items-baseline flex-wrap gap-2 ms-1">
+                    <h2 class="h5 fw-bold mb-0">הזמנה {{ order.order_number }}</h2>
+                    {% if order.customer %}
+                        <span class="text-muted opacity-50">·</span>
+                        <span class="fs-5 fw-semibold text-body">{{ order.customer }}</span>
                     {% endif %}
-                </ul>
+                </div>
+                <span class="sb-badge-soft {% if order.status == 'COMPLETED' %}sb-success{% elif order.status == 'CANCELED' %}sb-danger{% elif order.status != 'NEW' %}sb-accent{% endif %} ms-1"
+                      data-bs-toggle="tooltip"
+                      title="סטטוס נוכחי של ההזמנה: {{ order.get_status_display }}">
+                    {{ order.get_status_display }}
+                </span>
             </div>
-        {% endif %}
-    </div>
-    <!-- Карточка параметров заказа -->
-    <div class="card mb-3">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                {% if order.status != 'NEW' and order.status != 'CANCELED' %}
+                    <a href="{% url 'production:order-tracking-detail' order.pk %}"
+                       class="btn btn-sm btn-outline-accent"
+                       data-bs-toggle="tooltip"
+                       title="מעקב אחר התקדמות ההזמנה בתחנות הייצור">
+                        <i class="bi bi-diagram-3 me-1"></i>מעקב ייצור
+                    </a>
+                {% endif %}
+                {% if order.status != 'CANCELED' %}
+                    <a href="{% url 'order-edit-header' order.pk %}"
+                       class="btn btn-sm btn-outline-secondary"
+                       data-bs-toggle="tooltip"
+                       title="עריכת פרטי הזמנה">
+                        <i class="bi bi-pencil me-1"></i>עריכת פרטים
+                    </a>
+                {% endif %}
+                {% if is_admin_user %}
+                    <div class="dropdown">
+                        <button class="btn btn-outline-warning btn-sm dropdown-toggle"
+                                type="button"
+                                data-bs-toggle="dropdown">
+                            <i class="bi bi-tools me-1"></i>Dev Tools
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{% url 'production:order-rebuild-batch-spec' order.pk %}">
+                                    <i class="bi bi-cpu ms-2 text-warning"></i>Rebuild Spec
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{% url 'production:spec-json-preview' order.pk %}"
+                                   target="_blank">
+                                    <i class="bi bi-filetype-json ms-2 text-info"></i>צפייה ב-JSON Spec
+                                </a>
+                            </li>
+                            {% if order.status != 'NEW' %}
+                                <li>
+                                    <hr class="dropdown-divider">
+                                </li>
+                                <li>
+                                    <a class="dropdown-item text-warning"
+                                       href="{% url 'order-reset-to-new' order.pk %}"
+                                       data-confirm="האם להחזיר את ההזמנה לסטטוס חדש?"
+                                       data-confirm-title="איפוס סטטוס הזמנה"
+                                       data-confirm-variant="warning">
+                                        <i class="bi bi-arrow-counterclockwise ms-2"></i>Reset to NEW
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item text-danger"
+                                       href="{% url 'order-cancel' order.pk %}"
+                                       data-confirm="האם לבטל את ההזמנה?"
+                                       data-confirm-title="ביטול הזמנה"
+                                       data-confirm-variant="danger">
+                                        <i class="bi bi-x-circle ms-2"></i>ביטול הזמנה
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        <!-- 2. Параметры заказа -->
         <div class="card-body py-2 px-3">
             <div class="row g-2">
                 <div class="col-6 col-md-4 col-xl-3"
@@ -126,73 +153,67 @@
                 </div>
             </div>
         </div>
-    </div>
-    <!-- Панель производственных действий (показывается только при наличии групп или активного статуса) -->
-    {% if groups or order.status != 'NEW' and order.status != 'CANCELED' %}
-        <div class="d-flex flex-wrap align-items-center justify-content-start gap-2 py-2 px-3 mb-3 rounded-3 border"
-             style="background-color: var(--sb-surface)">
-            {% if order.can_start_production %}
-                {% if order.status == 'PHASE1_READY' %}
-                    <a href="{% url 'production:order-transfer-to-production' order.pk %}"
-                       class="btn btn-accent fw-semibold">
-                        <i class="bi bi-arrow-right-circle me-1"></i>העבר לשלב ב'
+        <!-- 3. Футер паспорта: производственные действия -->
+        {% if groups or order.status != 'NEW' and order.status != 'CANCELED' %}
+            <div class="d-flex flex-wrap align-items-center justify-content-start gap-2 py-2 px-3 border-top"
+                 style="background-color: var(--sb-bg)">
+                {% if order.can_start_production %}
+                    {% if order.status == 'PHASE1_READY' %}
+                        <a href="{% url 'production:order-transfer-to-production' order.pk %}"
+                           class="btn btn-accent fw-semibold">
+                            <i class="bi bi-arrow-right-circle me-1"></i>העבר לשלב ב'
+                        </a>
+                    {% else %}
+                        <button type="button"
+                                class="btn btn-accent fw-semibold"
+                                onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
+                            <i class="bi bi-play-circle me-1"></i>העבר לייצור
+                        </button>
+                    {% endif %}
+                    <a href="{% url 'production:order-check-validation' order.pk %}"
+                       class="btn btn-outline-secondary"
+                       data-bs-toggle="tooltip"
+                       title="בדיקת תקינות הנתונים של ההזמנה">
+                        <i class="bi bi-list-task me-1"></i>בדיקת תקינות
                     </a>
-                {% else %}
+                {% endif %}
+                {% if not order.can_start_production %}
+                    {% if order.status == 'PHASE1_PRODUCTION' %}
+                        <a href="{% url 'production:order-complete-phase1' order.pk %}"
+                           class="btn btn-primary fw-semibold"
+                           data-bs-toggle="tooltip"
+                           title="סיום שלב א' של ההזמנה">
+                            <i class="bi bi-check-circle me-1"></i>סיום שלב א'
+                        </a>
+                    {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' or order.status == 'PARTIALLY_READY' %}
+                        <a href="{% url 'production:order-complete-production' order.pk %}"
+                           class="btn btn-primary fw-semibold"
+                           data-bs-toggle="tooltip"
+                           title="סיום תהליך הייצור והעברה למוכן למשלוח">
+                            <i class="bi bi-check-all me-1"></i>סיום ייצור
+                        </a>
+                    {% endif %}
+                {% endif %}
+                {% if groups %}
+                    <a href="{% url 'order-measurements' order.pk %}"
+                       class="btn btn-outline-primary"
+                       data-bs-toggle="tooltip"
+                       title="צפייה ועריכת מידות הפריטים">
+                        <i class="bi bi-rulers me-1"></i>טופס מידות
+                    </a>
+                {% endif %}
+                {% if order.status != 'NEW' and order.status != 'CANCELED' %}
                     <button type="button"
-                            class="btn btn-accent fw-semibold"
-                            onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
-                        <i class="bi bi-play-circle me-1"></i>העבר לייצור
+                            class="btn btn-outline-accent fw-semibold"
+                            data-bs-toggle="modal"
+                            data-bs-target="#reportsModal"
+                            title="הדפסת דוחות, מדבקות והורדת קבצי מכונה">
+                        <i class="bi bi-printer me-1"></i>דוחות וייצור קבצים
                     </button>
                 {% endif %}
-                <a href="{% url 'production:order-check-validation' order.pk %}"
-                   class="btn btn-outline-secondary"
-                   data-bs-toggle="tooltip"
-                   title="בדיקת תקינות הנתונים של ההזמנה">
-                    <i class="bi bi-list-task me-1"></i>בדיקת תקינות
-                </a>
-                {% if order.status != 'NEW' %}
-                    <a href="{% url 'production:order-tracking-detail' order.pk %}"
-                       class="btn btn-outline-accent">
-                        <i class="bi bi-diagram-3 me-1"></i>מעקב ייצור
-                    </a>
-                {% endif %}
-            {% endif %}
-            {% if not order.can_start_production %}
-                {% if order.status == 'PHASE1_PRODUCTION' %}
-                    <a href="{% url 'production:order-complete-phase1' order.pk %}"
-                       class="btn btn-primary fw-semibold"
-                       data-bs-toggle="tooltip"
-                       title="סיום שלב א' של ההזמנה">
-                        <i class="bi bi-check-circle me-1"></i>סיום שלב א'
-                    </a>
-                {% elif order.status == 'IN_PRODUCTION' or order.status == 'PHASE2_PRODUCTION' or order.status == 'COMPLETION_PRODUCTION' or order.status == 'PARTIALLY_READY' %}
-                    <a href="{% url 'production:order-complete-production' order.pk %}"
-                       class="btn btn-primary fw-semibold"
-                       data-bs-toggle="tooltip"
-                       title="סיום תהליך הייצור והעברה למוכן למשלוח">
-                        <i class="bi bi-check-all me-1"></i>סיום ייצור
-                    </a>
-                {% endif %}
-            {% endif %}
-            {% if groups %}
-                <a href="{% url 'order-measurements' order.pk %}"
-                   class="btn btn-outline-primary"
-                   data-bs-toggle="tooltip"
-                   title="צפייה ועריכת מידות הפריטים">
-                    <i class="bi bi-rulers me-1"></i>טופס מידות
-                </a>
-            {% endif %}
-            {% if order.status != 'NEW' and order.status != 'CANCELED' %}
-                <button type="button"
-                        class="btn btn-outline-accent fw-semibold"
-                        data-bs-toggle="modal"
-                        data-bs-target="#reportsModal"
-                        title="הדפסת דוחות, מדבקות והורדת קבצי מכונה">
-                    <i class="bi bi-printer me-1"></i>דוחות וייצור קבצים
-                </button>
-            {% endif %}
-        </div>
-    {% endif %}
+            </div>
+        {% endif %}
+    </div>
     <!-- Группы дверей или компактная заглушка без скроллбара -->
     {% if groups %}
         <div class="mb-4">
