@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -8,7 +8,7 @@ class SvgPuzzleBlock(BaseModel):
     y: float
     w: float
     h: float
-    fill_type: str = "SOLID"  # SOLID или PATTERN
+    fill_type: str = "SOLID"
     fill_color: str = "#fab005"
     pattern_name: Optional[str] = None
     border_color: str = "#000000"
@@ -29,15 +29,15 @@ class DoorPuzzleSpec(BaseModel):
 
 
 class SpecBOMItem(BaseModel):
-    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(from_attributes=True)
 
     type: str
     section: str
     item_name: str
+    sku: str = ""
     common_name: Optional[str] = None
     quantity: float
     tag: Optional[str] = None
-    # We might want to store the item ID or other details too
     item_id: Optional[int] = None
 
 
@@ -56,9 +56,6 @@ class SpecCustomizerReport(BaseModel):
 
 
 class OrderHeaderSpec(BaseModel):
-    """
-    General order information for the specification header.
-    """
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     number: str
@@ -71,8 +68,8 @@ class OrderHeaderSpec(BaseModel):
 
 class ProductionSpec(BaseModel):
     """
-    Full technical specification for a specific item in the order.
-    Used for generating reports, technical tasks, and transferring data to production.
+    Полная техническая спецификация одной позиции заказа.
+    Все линейные размеры, зазоры, толщины и высоты — строго в сантиметрах.
     """
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -81,6 +78,7 @@ class ProductionSpec(BaseModel):
     mark: str = Field(..., alias="number")
     place: str = ""
     comment: str = ""
+    sketch_url: str = ""
 
     # Catalog
     product_name: str = Field("", alias="model_name")
@@ -90,12 +88,14 @@ class ProductionSpec(BaseModel):
     has_door: bool = True
     has_frame: bool = True
     has_handle: bool = True
+    is_special_detail: bool = False
 
-    # Geometry
+    # Geometry (cm)
     height: float = 0.0
     width: float = 0.0
     width_bottom: Optional[float] = None
     wall: float = 0.0
+    leaf_thickness: float = 4.0
     inner_height: float = 0.0
     inner_width: float = 0.0
     frame_inner_height_reduction: float = 0.0
@@ -103,14 +103,22 @@ class ProductionSpec(BaseModel):
     leaf_top_clearance: float = 0.0
     addition_cut: Optional[float] = None
     panel_dimensions: List[Dict[str, Optional[float]]] = Field(default_factory=list)
+    press_dimensions: List[Dict[str, float]] = Field(default_factory=list)
 
     # Opening parameters
-    direction: str = ""  # L/R (localized)
-    opening: str = ""  # In/Out (localized)
-    direction_code: str = ""  # L/R
-    opening_code: str = ""  # IN/OUT
+    direction: str = ""
+    opening: str = ""
+    direction_code: str = ""
+    opening_code: str = ""
     is_double_door: bool = False
     edge_shape: bool = False
+
+    # Wood edge (thickness strictly in cm)
+    has_wood_edge: bool = False
+    is_hidden_wood_edge: bool = False
+    wood_edge_thickness: float = 0.0
+    wood_edge_sides: int = 4
+    wood_edge_type: str = ""
 
     # Appearance
     front_name: str = ""
@@ -123,15 +131,14 @@ class ProductionSpec(BaseModel):
     color_panel_inside: str = ""
     handle_name: str = ""
 
-    # Technical data
-    cnc_program: str = ""
-    tech_notes: str = ""
-    sketch_url: str = ""
+    # Cutting & BOM
     cut_coefficients: Dict[str, Any] = Field(default_factory=dict)
     cut_sheets: List[Dict[str, Any]] = Field(default_factory=list)
-    parts: Dict[str, Any] = Field(default_factory=dict)
+    frame: str = ""
+    bom_items: List[SpecBOMItem] = Field(default_factory=list)
+    profiles: List[str] = Field(default_factory=list)
 
-    # Hardware and machining
+    # Hardware & Machining (cm)
     lock_id: Optional[int] = None
     lock_name: str = Field("", alias="lock")
     lock_option_type: str = Field("", alias="lock option type")
@@ -140,72 +147,28 @@ class ProductionSpec(BaseModel):
     hinge_name: str = Field("", alias="hinges")
     hinge_heights: List[float] = Field(default_factory=list, alias="hinges height")
     hinge_heights_on_frame: List[float] = Field(default_factory=list)
-    handle_type: str = Field("", alias="handle type")
 
-    # Bill of Materials (BOM)
-    frame: str = ""  # Formerly 'frame' in TechnicalSpec dataclass
-    bom_items: List[SpecBOMItem] = Field(default_factory=list)
-    profiles: List[str] = Field(default_factory=list)
-
-    press_dimensions: List[Dict[str, float]] = Field(default_factory=list)
-    has_wood_edge: bool = False
-    is_hidden_wood_edge: bool = False
-    wood_edge_thickness: float = 0.0
-    wood_edge_sides: int = 4
-    wood_edge_type: str = ""  # 'outer' | 'hidden'
-
-    # Пресс и раскрой
+    # Visuals (press diagram)
     applied_presets: List[Dict[str, Any]] = Field(default_factory=list)
-    sandwich_spec: Optional[SandwichSpec] = None
-    frame_spec: Optional[FrameStructureSpec] = None
     puzzle_spec: Optional[DoorPuzzleSpec] = None
 
-    # Additional & Customizers
+    # Customizers & Engraving
     frames_report_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
     doors_report_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
     label_customizers: List[SpecCustomizerReport] = Field(default_factory=list)
     engraving_data: Dict[str, Any] = Field(default_factory=dict)
 
-    # Individual Item Routing & CNC Targets
+    # Routing & CNC
     route_station_ids: List[int] = Field(default_factory=list)
     route_station_codes: List[str] = Field(default_factory=list)
     cnc_targets: Dict[int, str] = Field(default_factory=dict)
 
-    # Context/Metadata
-    context: Dict[str, Any] = Field(default_factory=dict)
+    # Validation errors
     errors: List[str] = Field(default_factory=list)
 
 
 class OrderSpec(BaseModel):
-    """
-    Complete order specification containing order info and partitioned batches.
-    e.g. {"order": {...}, "batches": {"1": [...], "2": [...]}}
-    """
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     order: OrderHeaderSpec
     batches: Dict[str, List[ProductionSpec]] = Field(default_factory=dict)
-
-
-class SandwichLayerSpec(BaseModel):
-    name: str  # Отображаемое имя (MDF, פלקסבורד, עופרת)
-    common_name: str  # Базовый идентификатор без привязки к размеру листа
-    thickness: float  # Толщина в мм (6.0, 34.0, 0.5)
-    pattern_code: str = ""  # Код паттерна: 'tubular', 'foam', 'lead', 'solid'
-    bg_color: str = "#e0e0e0"  # Фоновый цвет для SVG
-
-
-class SandwichSpec(BaseModel):
-    title: str = ""  # Текстовое описание состава: "פלקסבורד 34 + כיסוי MDF 6"
-    total_thickness: float = 0.0
-    layers: List[SandwichLayerSpec] = Field(default_factory=list)
-
-
-class FrameStructureSpec(BaseModel):
-    title: str = "אורן סטנדרט"
-    is_double_perimeter: bool = False  # Двойная рамка
-    has_closer: bool = False  # Закладная под верхний доводчик
-    has_drop_seal: bool = False  # Скрытый порог снизу
-    has_handle_reinforcement: bool = False  # Усиление под ручку-скобу
-    lock_block: bool = True  # Закладная под замок (почти всегда True)
-    lock_height: float = 0.0  # Высота замка для позиционирования

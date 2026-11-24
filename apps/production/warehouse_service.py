@@ -5,7 +5,7 @@ from django.db import transaction
 
 from apps.catalog.models import Hardware
 from apps.orders.models import Order, OrderItemsGroup, OrderItem, OrderWarehouseItem
-from .pipeline import OrderSpecPipeline
+from apps.production.engine import OrderSpecEngine
 
 
 class WarehousePackingSlipService:
@@ -36,8 +36,8 @@ class WarehousePackingSlipService:
         if not rich_items:
             return {}
         try:
-            pipeline = OrderSpecPipeline()
-            spec_obj = pipeline.execute(order, items=rich_items, phase='phase2', save_labels=False)
+            engine = OrderSpecEngine()
+            spec_obj = engine.execute(order, items=rich_items, phase='phase2', save_labels=False)
             result = {}
             for b_items in spec_obj.batches.values():
                 for sp in b_items:
@@ -235,7 +235,7 @@ class WarehousePackingSlipService:
                 if item_sp is not None:
                     has_rebate = bool(getattr(item_sp, 'edge_shape', False))
                 else:
-                    from .models import PerimeterRoutingFile
+                    from apps.engineering.models import PerimeterRoutingFile
                     fam = getattr(group.product, 'product_family', None) if group.product else None
                     routing_obj = PerimeterRoutingFile.objects.filter(doors=fam).first() if fam else None
                     has_rebate = bool(routing_obj and routing_obj.edge_shape)

@@ -1,35 +1,54 @@
+"""
+Сервисы жизненного цикла производства и подготовки данных для отчётов (apps.production.services).
+
+Назначение модуля:
+    - OrderProductionService: запуск заказа/батчей в производство, завершение фаз A и B.
+    - ProductionDataService: фильтрация позиций по станциям и агрегация данных для
+      печатных отчётов (пресс, деревянные коробки, алюминиевые рамы/двери, замеры, ZIP).
+    - get_qr_base64: генерация SVG QR-кодов в Base64 для шапок печатных листов.
+
+Примечание:
+    Расчёт спецификаций, работа со снимками и валидация перенесены в пакет
+    apps.production.engine и реэкспортируются здесь для совместимости со слоем views.
+"""
+
+from __future__ import annotations
+
 import base64
 import io
-import math
 import os
 import shutil
 import zipfile
-from collections import Counter
-from dataclasses import dataclass, field
+from collections import Counter, defaultdict
 from datetime import date
 from io import BytesIO
-from typing import List, Optional
+from typing import Optional
 
 import qrcode
 from django.conf import settings
-from django.db import models
-from django.db import transaction
+from django.db import models, transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 from qrcode.image.svg import SvgPathImage
 
-from apps.orders.models import OrderItemsGroup, OrderItem, OrderChangeLog
-from apps.orders.models import OrderStatus
-from .models import (
-    ProductionStation, OrderSpecificationSnapshot, SvgPattern,
+from apps.catalog.models import Material
+from apps.engineering.models import ProductionRoute, ProductionStation, SvgPattern
+from apps.orders.models import OrderChangeLog, OrderItem, OrderItemsGroup, OrderStatus
+from apps.production.engine import (  # noqa: F401 — реэкспорт для views.py
+    OrderSpec,
+    OrderValidationError,
+    OrderValidationService,
+    TechnicalSpecService,
+    ValidationResult,
+    ValidationType,
 )
-from .pipeline import OrderSpecPipeline
-from .schemas import OrderSpec
+from apps.production.engine.calculators.geometry import round_press_dimension
+from .models import OrderStationNote
 from .tracking_services import StationTrackingService
 
 
 def get_qr_base64(data: str) -> str:
-    """Генерирует QR-код в формате Base64 SVG."""
+    """Генерирует QR-код в формате Base64 SVG для вставки в HTML-отчёты."""
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
@@ -46,367 +65,11 @@ def get_qr_base64(data: str) -> str:
     return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 
-def round_press_dimension(val: float | int) -> float:
-    # Add hardcoded tolerance +1
-    target = float(val) + 1.0
-    integer_part = math.floor(target)
-    fraction = round(target - integer_part, 4)
-
-    if fraction == 0:
-        return float(integer_part)
-    if fraction <= 0.5:
-        return integer_part + 0.5
-    return float(integer_part + 1)
-
-
-class OrderValidationError(Exception):
-    """Custom error for order validation failures."""
-
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors or []
-
-
-class ValidationType(models.TextChoices):
-    PARTIAL = 'PARTIAL', 'Partial validation (Phase A)'
-    FULL = 'FULL', 'Full validation (Phase B / Full production)'
-    COMPLETION = 'COMPLETION', 'Completion validation (Unfinished groups only)'
-
-
-@dataclass
-class ValidationResult:
-    """
-    Data validation result for an order.
-    """
-    is_valid: bool
-    errors: List[str] = field(default_factory=list)
-    validation_type: str = ValidationType.FULL
-
-    def __iter__(self):
-        return iter((self.is_valid, self.errors))
-
-    def raise_if_invalid(self):
-        if not self.is_valid:
-            error_details = "; ".join(self.errors)
-            raise ValueError(f"Data validation error ({self.validation_type}): {error_details}")
-
-
-class OrderValidationService:
-    """
-    Валидатор готовности заказа.
-    Использует Dry-run прогон OrderSpecPipeline для проверки технологической
-    корректности фурнитуры, высот, кастомизаторов и материалов без сохранения в БД.
-    """
-
-    @classmethod
-    def validate(cls, order, validation_type: str = ValidationType.FULL) -> ValidationResult:
-        if validation_type == ValidationType.PARTIAL:
-            return cls.validate_partial(order)
-        elif validation_type == ValidationType.COMPLETION:
-            return cls.validate_completion(order)
-        return cls.validate_full(order)
-
-    @classmethod
-    def validate_partial(cls, order) -> ValidationResult:
-        """Частичная проверка (Фаза А — коробки при раздельном монтаже)."""
-        errors = cls._run_validation(order, phase='phase1', is_full=False)
-        return ValidationResult(
-            is_valid=(len(errors) == 0),
-            errors=errors,
-            validation_type=ValidationType.PARTIAL
-        )
-
-    @classmethod
-    def validate_full(cls, order) -> ValidationResult:
-        """Полная проверка (Фаза Б / стандартный заказ)."""
-        errors = cls._run_validation(order, phase='phase2', is_full=True)
-        return ValidationResult(
-            is_valid=(len(errors) == 0),
-            errors=errors,
-            validation_type=ValidationType.FULL
-        )
-
-    @classmethod
-    def validate_completion(cls, order) -> ValidationResult:
-        """Проверка для дозаказов / незавершенных групп."""
-        errors = cls._run_validation(order, phase='phase2', is_full=True, completion_only=True)
-        return ValidationResult(
-            is_valid=(len(errors) == 0),
-            errors=errors,
-            validation_type=ValidationType.COMPLETION
-        )
-
-    @staticmethod
-    def validate_for_production(order, validation_type: Optional[str] = None):
-        if validation_type:
-            return OrderValidationService.validate(order, validation_type)
-        elif order.has_split_installation and order.status == OrderStatus.NEW:
-            return OrderValidationService.validate_partial(order)
-        return OrderValidationService.validate_full(order)
-
-    @classmethod
-    def validate_for_report(cls, order,
-                            report_type: Optional[str] = None,
-                            station: Optional[ProductionStation] = None) -> ValidationResult:
-        if order.status == OrderStatus.COMPLETION_PRODUCTION:
-            return cls.validate_completion(order)
-        if station and not station.has_specification:
-            return cls.validate_full(order)
-
-        if report_type in ['PHASE1_FRAMES', 'PHASE1_PRODUCTION'] or (station and getattr(station, 'is_phase1', False)):
-            return cls.validate_partial(order)
-        return cls.validate_full(order)
-
-    @classmethod
-    def validate_for_phase(cls, order, phase: str) -> ValidationResult:
-        if phase == 'phase1':
-            return cls.validate_partial(order)
-        elif phase == 'phase2_completion':
-            return cls.validate_completion(order)
-        return cls.validate_full(order)
-
-    @classmethod
-    def validate_for_zip(cls, order) -> ValidationResult:
-        if order.status == OrderStatus.COMPLETION_PRODUCTION:
-            return cls.validate_completion(order)
-        has_split = getattr(order, 'has_split_installation', False)
-        if has_split and getattr(order, 'status', None) == OrderStatus.PHASE1_PRODUCTION:
-            return cls.validate_partial(order)
-        return cls.validate_full(order)
-
-    @classmethod
-    def _run_validation(cls, order, phase: str = 'phase2', is_full: bool = True, completion_only: bool = False) -> List[
-        str]:
-        errors = []
-
-        if not getattr(order, 'order_number', None):
-            errors.append("חסר מספר הזמנה")
-        if not getattr(order, 'customer', None):
-            errors.append("חסר שם לקוח")
-
-        # 1. Выборка позиций
-        items = TechnicalSpecService.get_rich_order_items(order_id=order.id)
-        if completion_only:
-            items = [it for it in items if it.group.production_state != OrderItemsGroup.ProductionState.COMPLETED]
-        elif phase == 'phase1' and getattr(order, 'has_split_installation', False):
-            # В Фазе 1 проверяются только позиции групп раздельного монтажа
-            items = [it for it in items if it.group.is_split_installation]
-
-        if not items:
-            errors.append("אין פריטים פעילים בהזמנה לביצוע בדיקה")
-            return errors
-
-        # 2. Проверка шапки и групп
-        has_any_doors = False
-        target_groups = set(it.group for it in items)
-
-        for group in target_groups:
-            group_label = f"קבוצה #{group.id} ({group.product.name if group.product else 'ללא מוצר'})"
-
-            if not group.product:
-                errors.append(f"{group_label}: לא נבחר דגם מוצר")
-                continue
-
-            effective_series = group.series or getattr(order, 'series', None)
-            if not effective_series:
-                errors.append(f"{group_label}: לא נבחרה סדרה")
-
-            effective_front = group.front or getattr(order, 'front', None)
-            if not effective_front:
-                errors.append(f"{group_label}: לא נבחרה חזית")
-
-            if is_full:
-                if group.panel_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
-                    if not group.color_panel_outside and not getattr(order, 'color_panel_outside', None):
-                        errors.append(f"{group_label}: נבחר צבע מיוחד לכנף אך לא הוזן גוון")
-                if group.frame_paint_option == OrderItemsGroup.PaintOption.SPECIAL_COLOR:
-                    if not group.color_frames and not getattr(order, 'color_frames', None):
-                        errors.append(f"{group_label}: נבחר צבע מיוחד למשקוף אך לא הוזן גוון")
-
-            if group.product.has_door:
-                has_any_doors = True
-
-        if is_full and has_any_doors and not getattr(order, 'handle', None):
-            errors.append("חובה לבחור דגם ידית להזמנה")
-
-        if errors:
-            return errors
-
-        # 3. Холостой прогон через пайплайн
-        pipeline = OrderSpecPipeline()
-        spec_obj = pipeline.execute(order, items=items, phase=phase)
-
-        # 4. Сбор ошибок позиций
-        for b_items in spec_obj.batches.values():
-            for it in b_items:
-                if it.errors:
-                    mark_label = f"דלת מס' {it.mark}" if it.mark else f"פריט #{it.item_id}"
-                    for err in it.errors:
-                        errors.append(f"{mark_label}: {err}")
-
-        return errors
-
-
-class TechnicalSpecService:
-    """
-    Единый шлюз спецификаций заказа.
-    Отвечает за сборку среза позиций, запуск пайплайна, сохранение и чтение снимков.
-    Структура кэша в JSONField: {"order": {...}, "batches": {"1": [...], "2": [...]}}
-    """
-
-    @staticmethod
-    def get_rich_order_items(order_id: int, batch_number: Optional[int] = None):
-        """
-        Плоская выборка позиций с отсечением WAITING и CANCELED.
-        При указании batch_number возвращает только указанный батч.
-        """
-        qs = (
-            OrderItem.objects.filter(group__order_id=order_id)
-            .exclude(
-                group__production_state__in=[
-                    OrderItemsGroup.ProductionState.WAITING,
-                    OrderItemsGroup.ProductionState.CANCELED,
-                ]
-            )
-            .select_related(
-                'group',
-                'group__order',
-                'group__order__series',
-                'group__order__front',
-                'group__order__handle',
-                'group__order__handle__machining_feature',
-                'group__product',
-                'group__product__product_family',
-                'group__product__product_family__product_type',
-                'group__product__series',
-                'group__product__bom',
-                'group__product__bom__frame',
-                'group__product__bom__covering',
-                'group__product__bom__base',
-                'group__product__bom__filling',
-                'group__product__bom__lock',
-                'group__product__bom__hinges',
-                'group__front',
-                'group__series',
-                'group__basic_color_frames',
-            )
-            .prefetch_related(
-                'group__customizers__customizer__hardware__components',
-                'group__customizers__customizer__outward_replacement__hardware__components',
-                'group__product__bom__additional',
-            ).order_by('id')
-        )
-
-        if batch_number is not None:
-            qs = qs.filter(group__batch_number=batch_number)
-
-        return list(qs)
-
-    @staticmethod
-    def _snapshot_type(phase: str) -> str:
-        return (
-            OrderSpecificationSnapshot.SnapshotType.PHASE1
-            if phase == 'phase1'
-            else OrderSpecificationSnapshot.SnapshotType.PHASE2
-        )
-
-    @classmethod
-    def get_latest_snapshot(cls, order, phase: str = 'phase2') -> Optional[OrderSpecificationSnapshot]:
-        return (
-            OrderSpecificationSnapshot.objects.filter(
-                order=order,
-                snapshot_type=cls._snapshot_type(phase),
-            )
-            .order_by('-created_at', '-id')
-            .first()
-        )
-
-    @classmethod
-    def get_latest_spec_data(cls, order, phase: str = 'phase2') -> Optional[dict]:
-        snap = cls.get_latest_snapshot(order, phase=phase)
-        if snap and isinstance(snap.spec_data, dict):
-            return snap.spec_data
-        return None
-
-    @classmethod
-    def has_snapshot(cls, order, phase: str = 'phase2') -> bool:
-        return OrderSpecificationSnapshot.objects.filter(
-            order=order,
-            snapshot_type=cls._snapshot_type(phase),
-        ).exists()
-
-    @classmethod
-    def get_or_build_spec(
-            cls,
-            order,
-            phase: str = 'phase2',
-            batch_number: Optional[int] = None,
-            force_rebuild: bool = False,
-            user=None,
-    ) -> tuple[OrderSpec, dict]:
-        latest_data = cls.get_latest_spec_data(order, phase=phase)
-        existing_cache = (
-            {
-                'order': dict(latest_data.get('order', {})),
-                'batches': dict(latest_data.get('batches', {})),
-            }
-            if isinstance(latest_data, dict) and 'batches' in latest_data
-            else {'order': {}, 'batches': {}}
-        )
-
-        batch_str = str(batch_number) if batch_number is not None else None
-
-        if not force_rebuild:
-            if batch_str and batch_str in existing_cache['batches']:
-                return OrderSpec.model_validate(existing_cache), existing_cache
-            if batch_str is None and existing_cache['batches']:
-                return OrderSpec.model_validate(existing_cache), existing_cache
-
-        items = cls.get_rich_order_items(order_id=order.id, batch_number=batch_number)
-        if not items:
-            raise OrderValidationError(f"Нет активных позиций для формирования спецификации (batch={batch_number}).")
-
-        pipeline = OrderSpecPipeline()
-        spec_obj = pipeline.execute(
-            order,
-            items=items,
-            phase=phase,
-            save_labels=(phase == 'phase2'),
-        )
-
-        errors = []
-        for b_items in spec_obj.batches.values():
-            for it in b_items:
-                if it.errors:
-                    mark_label = f"Item {it.mark}" if it.mark else f"Item #{it.item_id}"
-                    errors.extend([f"{mark_label}: {err}" for err in it.errors])
-        if errors:
-            raise OrderValidationError(f"Ошибки при расчете спецификации: {'; '.join(errors)}", errors=errors)
-
-        spec_dict = spec_obj.model_dump()
-        existing_cache['order'] = spec_dict.get('order', {})
-        for b_key, b_items in spec_dict.get('batches', {}).items():
-            existing_cache['batches'][b_key] = b_items
-
-        OrderSpecificationSnapshot.objects.create(
-            order=order,
-            snapshot_type=cls._snapshot_type(phase),
-            spec_data=existing_cache,
-            created_by=user,
-        )
-
-        return OrderSpec.model_validate(existing_cache), existing_cache
-
-    @classmethod
-    def get_batch_items(cls, order, phase: str = 'phase1', batch_number: int = 1) -> List[dict]:
-        cache = cls.get_latest_spec_data(order, phase=phase)
-        if not isinstance(cache, dict):
-            return []
-        batches = cache.get('batches', {})
-        return batches.get(str(batch_number), []) if isinstance(batches, dict) else []
-
-
 class ProductionDataService:
+    """
+    Сервис подготовки и агрегации данных спецификации для производственных отчётов и экспорта.
+    """
+
     class ReportType(models.TextChoices):
         PHASE1_FRAMES = 'PHASE1_PRODUCTION', 'Phase A Frames'
         PHASE2_DOORS = 'PHASE2_DOORS', 'Phase B Doors'
@@ -418,11 +81,8 @@ class ProductionDataService:
     def __init__(self, order):
         self.order = order
 
-    def generate_production_zip(self):
-        """
-        Creates a ZIP archive of all production files (CNC XML) and technical reports.
-        Performs validation before creation.
-        """
+    def generate_production_zip(self) -> io.BytesIO:
+        """Формирует ZIP-архив с HTML-отчётами и файлами ЧПУ после валидации заказа."""
         val_res = OrderValidationService.validate_for_zip(self.order)
         val_res.raise_if_invalid()
 
@@ -431,33 +91,31 @@ class ProductionDataService:
 
         with zipfile.ZipFile(buffer, 'w') as zip_file:
             if has_split and self.order.status == OrderStatus.PHASE1_PRODUCTION:
-                # Only Phase 1 report
                 report_content = self.generate_report_html(self.ReportType.PHASE1_FRAMES, validate=False)
                 zip_file.writestr(f"Order_{self.order.order_number}_PhaseA_Frames.html", report_content)
-            elif self.order.status in [OrderStatus.IN_PRODUCTION, OrderStatus.PHASE1_READY]:
-                # Reports for doors, press and frames
-                for rt in [self.ReportType.PHASE2_DOORS, self.ReportType.PHASE2_PRESS, self.ReportType.PHASE2_FRAMES]:
+            elif self.order.status in (OrderStatus.IN_PRODUCTION, OrderStatus.PHASE1_READY):
+                for rt in (
+                        self.ReportType.PHASE2_DOORS,
+                        self.ReportType.PHASE2_PRESS,
+                        self.ReportType.PHASE2_FRAMES,
+                ):
                     report_content = self.generate_report_html(rt, validate=False)
                     zip_file.writestr(f"Order_{self.order.order_number}_{rt.name}.html", report_content)
             else:
                 report_content = self.generate_report_html(self.ReportType.FULL_PRODUCTION, validate=False)
                 zip_file.writestr(f"Order_{self.order.order_number}_Full.html", report_content)
 
-            # Generate CNC files into zip
             self._add_cnc_files_to_zip(zip_file)
 
         buffer.seek(0)
         return buffer
 
-    def _add_cnc_files_to_zip(self, zip_file):
+    def _add_cnc_files_to_zip(self, zip_file) -> None:
+        """Точка расширения для добавления ЧПУ-файлов в ZIP-архив."""
         pass
 
-    def generate_cnc_files(self, spec_items=None, batch_number=None):
-        """
-        Standalone method to generate CNC files on the server filesystem.
-        Creates folder structure cnc_files/mecal/<order_number>/ and fills it with XML files.
-        If batch_number is specified, generates only for that batch.
-        """
+    def generate_cnc_files(self, spec_items=None, batch_number=None) -> None:
+        """Генерирует структуру папок cnc_files/mecal/<order_number>/ на диске сервера."""
         is_phase_a = self.order.status == OrderStatus.PHASE1_PRODUCTION
         is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
         phase = 'phase1' if is_phase_a else 'phase2'
@@ -472,11 +130,11 @@ class ProductionDataService:
                 items_to_process = [it for b_items in order_spec.batches.values() for it in b_items]
 
             if is_completion:
-                active_item_ids = set(OrderItem.objects.filter(
-                    group__order=self.order
-                ).exclude(
-                    group__production_state=OrderItemsGroup.ProductionState.COMPLETED
-                ).values_list('id', flat=True))
+                active_item_ids = set(
+                    OrderItem.objects.filter(group__order=self.order)
+                    .exclude(group__production_state=OrderItemsGroup.ProductionState.COMPLETED)
+                    .values_list('id', flat=True)
+                )
                 items_to_process = [it for it in items_to_process if it.item_id in active_item_ids]
 
         cnc_root = os.path.join(settings.BASE_DIR, 'cnc_files')
@@ -484,7 +142,6 @@ class ProductionDataService:
         order_dir = os.path.join(mecal_dir, str(self.order.order_number))
 
         os.makedirs(mecal_dir, exist_ok=True)
-
         if os.path.exists(order_dir):
             shutil.rmtree(order_dir)
         os.makedirs(order_dir)
@@ -496,12 +153,10 @@ class ProductionDataService:
 
         for spec in items_to_process:
             mark = spec.mark
-
             if spec.has_frame:
                 item_frame_dir = os.path.join(frames_root, f"frame_{mark}")
                 os.makedirs(item_frame_dir, exist_ok=True)
                 self._write_xml_files(item_frame_dir, spec, "frame")
-
             if spec.has_door:
                 item_door_dir = os.path.join(doors_root, f"door_{mark}")
                 os.makedirs(item_door_dir, exist_ok=True)
@@ -510,44 +165,32 @@ class ProductionDataService:
     @staticmethod
     def extract_report_items(spec_obj, requested_batches: list = None):
         """
-        Универсальная строгая прослойка для отчетов.
-        Ожидает явный список номеров батчей (например: [1], или ['1', '3']).
-        Если список пуст или None — возвращает (None, None).
-        Извлекает данные из сохраненного снимка спецификации, дедуплицирует по item_id.
+        Извлекает плоский отсортированный по mark список позиций для запрошенных батчей.
+        Если requested_batches пуст или None — возвращает (None, None).
         """
         if not requested_batches:
             return None, None
 
         batches_dict = getattr(spec_obj, 'batches', {}) or {}
         if not isinstance(batches_dict, dict):
-            # Если передали обычный словарь вместо Pydantic модели
             batches_dict = spec_obj.get('batches', {}) if isinstance(spec_obj, dict) else {}
 
-        # Приводим запрошенные номера к строкам
-        requested_batches = [str(b) for b in requested_batches]
-
+        requested_strs = [str(b) for b in requested_batches]
         unique_items = {}
         applied_batches = []
 
-        # Извлекаем только те, которые явно запрошены в списке
-        for b_num in requested_batches:
+        for b_num in requested_strs:
             if b_num in batches_dict:
                 applied_batches.append(b_num)
                 for item in batches_dict[b_num]:
                     item_id = getattr(item, 'item_id', None) if hasattr(item, 'item_id') else item.get('item_id')
+                    unique_items[item_id or id(item)] = item
 
-                    if item_id:
-                        unique_items[item_id] = item
-                    else:
-                        unique_items[id(item)] = item
-
-        # Если батчи запросили, но в спецификации их не оказалось
         if not unique_items:
             return [], ",".join(applied_batches)
 
         flat_items = list(unique_items.values())
 
-        # Сортировка по номеру двери для отчета
         def parse_mark(it):
             mark = getattr(it, 'mark', None) if hasattr(it, 'mark') else it.get('mark')
             try:
@@ -556,59 +199,41 @@ class ProductionDataService:
                 return 999999
 
         flat_items.sort(key=parse_mark)
-
-        if len(getattr(spec_obj, 'batches', {}) or {}) == 1:
-            batches_label = ""
-        else:
-            batches_label = ", ".join(applied_batches)
-
+        batches_label = "" if len(batches_dict) == 1 else ", ".join(applied_batches)
         return flat_items, batches_label
 
     @staticmethod
-    def _extract_items(spec_or_items):
-        """Вспомогательный метод для распаковки позиций из OrderSpec или прямого списка."""
+    def _extract_items(spec_or_items) -> list:
+        """Распаковывает позиции из OrderSpec или возвращает переданный список."""
         if isinstance(spec_or_items, list):
             return spec_or_items
-        batches = getattr(spec_or_items, 'batches', {})
+        batches = getattr(spec_or_items, 'batches', {}) or {}
         return [it for b in batches.values() for it in b]
 
-    def generate_measurement_report_html(self, validate=True):
-        """
-        Генерация отчета замеров (דוח מדידה) для всех активных батчей первой фазы.
-        Строго отсекает группы без номера батча и со статусом CANCELED.
-        """
+    @staticmethod
+    def _get(obj, key: str, default=None):
+        """Унифицированное чтение поля из Pydantic-модели или словаря."""
+        return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
+    def generate_measurement_report_html(self, validate: bool = True) -> str:
+        """Генерирует HTML отчёта замеров (דוח מדידה) для активных батчей Фазы 1."""
         if validate:
             val_res = OrderValidationService.validate_for_report(self.order, report_type='PHASE1_FRAMES')
             val_res.raise_if_invalid()
 
-        # 1. Берем спецификацию первой фазы
         order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase='phase1')
 
-        # 2. Находим все батчи, которые реально принадлежат запущенным группам
-        # (исключая новые, ожидающие и отмененные)
         valid_groups = self.order.groups.filter(
             is_split_installation=True,
-            batch_number__isnull=False
-        ).exclude(
-            production_state=OrderItemsGroup.ProductionState.CANCELED
-        )
+            batch_number__isnull=False,
+        ).exclude(production_state=OrderItemsGroup.ProductionState.CANCELED)
 
         active_batch_numbers = list(valid_groups.values_list('batch_number', flat=True).distinct())
-
         if not active_batch_numbers:
-            return ""  # Нет запущенных батчей с раздельным монтажом
+            return ""
 
-        # 3. Извлекаем позиции только по этим валидным батчам через ваш метод-прослойку
-        flat_items, batches_label = self.extract_report_items(
-            order_spec,
-            requested_batches=active_batch_numbers
-        )
-
-        if not flat_items:
-            flat_items = []
-
-        # 4. Рендерим шаблон отчета
-        template = 'production/alum_frames_report.html'  # Или ваш шаблон замеров
+        flat_items, batches_label = self.extract_report_items(order_spec, requested_batches=active_batch_numbers)
+        flat_items = flat_items or []
 
         context = {
             'order': self.order,
@@ -618,69 +243,50 @@ class ProductionDataService:
             'groups_data': self.prepare_grouped_data(flat_items),
             'now': timezone.now(),
         }
-        return render_to_string(template, context)
+        return render_to_string('production/alum_frames_report.html', context)
 
     @classmethod
-    def get_wooden_frames_data(cls, spec_obj):
+    def get_wooden_frames_data(cls, spec_obj) -> list:
+        """Возвращает плоский список деревянных коробок из спецификации."""
         frames_items = []
         for item in cls._extract_items(spec_obj):
-            # Проверяем, является ли item словарем
-            is_dict = isinstance(item, dict)
-
-            has_frame = item.get('has_frame', True) if is_dict else getattr(item, 'has_frame', True)
-            is_hidden = item.get('is_hidden_frame', False) if is_dict else getattr(item, 'is_hidden_frame', False)
-
-            if not has_frame or is_hidden:
+            if not cls._get(item, 'has_frame', True) or cls._get(item, 'is_hidden_frame', False):
                 continue
 
             frames_items.append({
-                'mark': getattr(item, 'mark', '') if hasattr(item, 'mark') else item.get('mark', ''),
-                'place': getattr(item, 'place', '') if hasattr(item, 'place') else item.get('place', '') or '',
-                'opening_width': getattr(item, 'opening_width', None) if hasattr(item, 'opening_width') else item.get(
-                    'opening_width', None) or (getattr(item, 'width', '') if hasattr(item, 'width') else item.get(
-                    'width', '')),
-                'opening_height': getattr(item, 'opening_height', None) if hasattr(item,
-                                                                                   'opening_height') else item.get(
-                    'opening_height', None) or (getattr(item, 'height', '') if hasattr(item, 'height') else item.get(
-                    'height', '')),
-                'wall_thickness': getattr(item, 'wall', '') if hasattr(item, 'wall') else item.get('wall', '') or (
-                    getattr(item, 'wall_thickness', '') if hasattr(item, 'wall_thickness') else item.get(
-                        'wall_thickness', '')),
-                'direction': getattr(item, 'direction', '') if hasattr(item, 'direction') else item.get('direction',
-                                                                                                        ''),
-                'opening': getattr(item, 'opening', '') if hasattr(item, 'opening') else item.get('opening', ''),
-                'color_frames': getattr(item, 'color_frames', '') if hasattr(item, 'color_frames') else item.get(
-                    'color_frames', '') or (getattr(item, 'color', '') if hasattr(item, 'color') else item.get('color',
-                                                                                                               '')),
-                'lock_name': getattr(item, 'lock_name', '') if hasattr(item, 'lock_name') else item.get('lock_name',
-                                                                                                        ''),
-                'hinge_name': getattr(item, 'hinge_name', '') if hasattr(item, 'hinge_name') else item.get('hinge_name',
-                                                                                                           ''),
-                'comment': getattr(item, 'comment', '') if hasattr(item, 'comment') else item.get('comment', ''),
+                'mark': cls._get(item, 'mark', ''),
+                'place': cls._get(item, 'place', '') or '',
+                'opening_width': cls._get(item, 'opening_width') or cls._get(item, 'width', ''),
+                'opening_height': cls._get(item, 'opening_height') or cls._get(item, 'height', ''),
+                'wall_thickness': cls._get(item, 'wall') or cls._get(item, 'wall_thickness', ''),
+                'direction': cls._get(item, 'direction', ''),
+                'opening': cls._get(item, 'opening', ''),
+                'color_frames': cls._get(item, 'color_frames') or cls._get(item, 'color', ''),
+                'lock_name': cls._get(item, 'lock_name', ''),
+                'hinge_name': cls._get(item, 'hinge_name', ''),
+                'comment': cls._get(item, 'comment', ''),
             })
         return frames_items
 
     @classmethod
-    def get_warehouse_hardware_summary(cls, spec_obj):
-        from collections import defaultdict
-
+    def get_warehouse_hardware_summary(cls, spec_obj) -> list:
+        """Краткая сводка фурнитуры (замки, ручки, петли) для секции Master Print."""
         locks = defaultdict(int)
         handles = defaultdict(int)
         hinges = defaultdict(int)
 
-        for item in cls._extract_items(spec_obj):  # ИСПОЛЬЗУЕМ _extract_items
-            lock = getattr(item, 'lock_name', None) if hasattr(item, 'lock_name') else item.get('lock_name')
+        for item in cls._extract_items(spec_obj):
+            lock = cls._get(item, 'lock_name')
             if lock:
                 locks[lock] += 1
 
-            handle = getattr(item, 'handle_name', None) if hasattr(item, 'handle_name') else item.get('handle_name')
+            handle = cls._get(item, 'handle_name')
             if handle:
                 handles[handle] += 1
 
-            hinge = getattr(item, 'hinge_name', None) if hasattr(item, 'hinge_name') else item.get('hinge_name')
+            hinge = cls._get(item, 'hinge_name')
             if hinge:
-                raw_hinges = getattr(item, 'hinge_heights', []) if hasattr(item, 'hinge_heights') else item.get(
-                    'hinge_heights', [])
+                raw_hinges = cls._get(item, 'hinge_heights', []) or []
                 count = len([h for h in raw_hinges if h is not None])
                 hinges[hinge] += count if count > 0 else 3
 
@@ -695,37 +301,29 @@ class ProductionDataService:
         return summary_list
 
     @classmethod
-    def prepare_wood_frames_report_data(cls, spec_obj):
-        from apps.catalog.models import Material
-
-        def _get(obj, key, default=None):
-            return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
-
+    def prepare_wood_frames_report_data(cls, spec_obj) -> list:
+        """
+        Группирует деревянные коробки в 4-уровневую иерархию для печатного отчёта:
+        Страница (семейство + כפולה) -> Материал/наличник -> Фурнитура -> Строки размеров.
+        """
+        _get = cls._get
         raw_items = [it for it in cls._extract_items(spec_obj) if _get(it, 'has_frame', True)]
 
-        # Собираем ID материалов коробок из BOM, чтобы одним запросом получить их цвета
-        frame_mat_ids = set()
-        for it in raw_items:
-            for b in (_get(it, 'bom_items', []) or []):
-                if _get(b, 'tag', '') == 'frame' or _get(b, 'section', '') == 'frame':
-                    mat_id = _get(b, 'item_id')
-                    if mat_id:
-                        frame_mat_ids.add(mat_id)
-
+        frame_mat_ids = {
+            _get(b, 'item_id')
+            for it in raw_items
+            for b in (_get(it, 'bom_items', []) or [])
+            if (_get(b, 'tag', '') == 'frame' or _get(b, 'section', '') == 'frame') and _get(b, 'item_id')
+        }
         frame_materials_map = {
             m.id: m
             for m in Material.objects.filter(id__in=frame_mat_ids).select_related('color')
         } if frame_mat_ids else {}
 
-        # Уровень 1: Страницы (Модель + модификация כפולה), порядок сохранения без сортировки
         pages_map = {}
-
         for item in raw_items:
             is_double = bool(_get(item, 'is_double_door', False))
-            base_family = (
-                    _get(item, 'product_family', '')
-                    or _get(item, 'product_name', '')
-            ).strip()
+            base_family = (_get(item, 'product_family', '') or _get(item, 'product_name', '')).strip()
             page_title = f"{base_family} כפולה" if is_double else base_family
             page_key = (base_family, is_double)
 
@@ -744,17 +342,15 @@ class ProductionDataService:
                    or _get(b, 'section', '') in ('door_casing', 'casing', 'הלבשה', 'הלבשות')
             ]
 
-            # Название коробки: NO_PAINT -> common_name + цвет из BOM, иначе -> common_name + "צבע"
             paint_opt = str(_get(item, 'frame_paint_option', '') or '').upper()
             frame_bom = next(
                 (b for b in bom_items if _get(b, 'tag', '') == 'frame' or _get(b, 'section', '') == 'frame'),
-                None
+                None,
             )
 
             common_name = str(_get(frame_bom, 'common_name') or '').strip() if frame_bom else ''
             item_name = str(_get(frame_bom, 'item_name') or '').strip() if frame_bom else ''
-            mat_id = _get(frame_bom, 'item_id') if frame_bom else None
-            mat_obj = frame_materials_map.get(mat_id)
+            mat_obj = frame_materials_map.get(_get(frame_bom, 'item_id')) if frame_bom else None
 
             mat_color = ''
             if mat_obj and getattr(mat_obj, 'color', None):
@@ -773,7 +369,6 @@ class ProductionDataService:
 
             door_casing = " / ".join(dict.fromkeys(filter(None, casing_names))) or "ללא"
 
-            # Уровень 2: Подзаголовок материала и наличника (без разрыва страницы, без сортировки)
             mat_key = (
                 frames_caption,
                 door_casing,
@@ -788,7 +383,6 @@ class ProductionDataService:
                     'hardware_map': {},
                 }
 
-            # Кастомизаторы коробки (структурированно, с флагом нестандартного параметра)
             raw_cmz = _get(item, 'frames_report_customizers', []) or []
             parsed_cmz = []
             cmz_sig_parts = []
@@ -796,10 +390,9 @@ class ProductionDataService:
                 c_name = str(_get(c, 'name', '')).strip()
                 if not c_name:
                     continue
-                c_params = _get(c, 'params', []) or []
                 clean_params = []
                 p_sig = []
-                for p in c_params:
+                for p in (_get(c, 'params', []) or []):
                     p_val = _get(p, 'value', '')
                     if p_val in (None, ''):
                         continue
@@ -810,36 +403,21 @@ class ProductionDataService:
                         or _get(p, 'is_modified', False)
                         or (_get(p, 'is_default', None) is False)
                     )
-                    clean_params.append({
-                        'label': p_label,
-                        'value': p_val_str,
-                        'is_custom': is_custom,
-                    })
+                    clean_params.append({'label': p_label, 'value': p_val_str, 'is_custom': is_custom})
                     p_sig.append((p_label, p_val_str, is_custom))
 
                 sig = (c_name, tuple(p_sig))
                 if sig not in cmz_sig_parts:
                     cmz_sig_parts.append(sig)
-                    parsed_cmz.append({
-                        'name': c_name,
-                        'params': clean_params,
-                    })
+                    parsed_cmz.append({'name': c_name, 'params': clean_params})
 
             cmz_sig = tuple(cmz_sig_parts)
-
             raw_hinges = _get(item, 'hinge_heights', []) or []
             hinges_tuple = tuple(h for h in raw_hinges if h is not None)
-
             lock_name = '' if is_double else (_get(item, 'lock_name', '') or '')
             lock_height = None if is_double else _get(item, 'lock_height', None)
 
-            # Уровень 3: Подзаголовок фурнитуры (замки и петли)
-            hw_key = (
-                lock_name,
-                lock_height,
-                _get(item, 'hinge_name', '') or '',
-                hinges_tuple,
-            )
+            hw_key = (lock_name, lock_height, _get(item, 'hinge_name', '') or '', hinges_tuple)
             hardware_map = materials_map[mat_key]['hardware_map']
             if hw_key not in hardware_map:
                 hardware_map[hw_key] = {
@@ -850,16 +428,12 @@ class ProductionDataService:
                     'hinge_heights': list(hinges_tuple),
                     'items': [],
                 }
-
             hardware_map[hw_key]['items'].append((item, parsed_cmz, cmz_sig))
 
-        # Сборка финальной структуры с сортировками уровней 3 и 4
         pages = []
         for page_data in pages_map.values():
             material_groups = []
-
             for mat_data in page_data['materials_map'].values():
-                # Сортируем подгруппы фурнитуры по высоте замка по убыванию
                 sorted_hw_items = sorted(
                     mat_data['hardware_map'].values(),
                     key=lambda h: float(h['lock_height']) if h['lock_height'] is not None else float('-inf'),
@@ -889,7 +463,6 @@ class ProductionDataService:
                             }
                         row_groups[row_key]['qty'] += 1
 
-                    # Уровень 4: Сортируем по wall (возр.), затем по высоте (убыв.)
                     sorted_rows = sorted(
                         row_groups.values(),
                         key=lambda r: (
@@ -932,47 +505,31 @@ class ProductionDataService:
 
         return pages
 
-    def _write_xml_files(self, target_dir, spec, item_type):
-        """
-        Helper method for writing XML files to the specified directory.
-        Designed for future expansion of XML generation logic.
-        """
-        # Generate hinges.xml
-        hinges_content = self._generate_hinges_xml(spec, item_type)
+    def _write_xml_files(self, target_dir: str, spec, item_type: str) -> None:
+        """Записывает XML-файлы петель и замка для позиции (точка расширения для Mecal)."""
         with open(os.path.join(target_dir, 'hinges.xml'), 'w', encoding='utf-8') as f:
-            f.write(hinges_content)
-
-        # Generate lock.xml
-        lock_content = self._generate_lock_xml(spec, item_type)
+            f.write(self._generate_hinges_xml(spec, item_type))
         with open(os.path.join(target_dir, 'lock.xml'), 'w', encoding='utf-8') as f:
-            f.write(lock_content)
+            f.write(self._generate_lock_xml(spec, item_type))
 
     @staticmethod
-    def _generate_hinges_xml(spec, item_type):
-        """
-        Generates content for hinges.xml.
-        Currently, a placeholder, rules will be added in the future.
-        """
-        return '<?xml version="1.0" encoding="UTF-8"?>\n<hinges>\n  <status>placeholder</status>\n  <item_id>' + str(
-            spec.item_id) + str(item_type) + '</item_id>\n</hinges>'
+    def _generate_hinges_xml(spec, item_type: str) -> str:
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<hinges>\n  <status>placeholder</status>\n  <item_id>{spec.item_id}{item_type}</item_id>\n</hinges>'
+        )
 
     @staticmethod
-    def _generate_lock_xml(spec, item_type):
-        """
-        Generates content for lock.xml.
-        Currently, a placeholder, rules will be added in the future.
-        """
-        return '<?xml version="1.0" encoding="UTF-8"?>\n<lock>\n  <status>placeholder</status>\n  <item_id>' + str(
-            spec.item_id) + str(item_type) + '</item_id>\n</lock>'
+    def _generate_lock_xml(spec, item_type: str) -> str:
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<lock>\n  <status>placeholder</status>\n  <item_id>{spec.item_id}{item_type}</item_id>\n</lock>'
+        )
 
-    def generate_report_html(self, report_type=None, station_code=None, batch_number=None, validate=True):
-        """
-        Creates an HTML file for the requested technical report.
-        Builds report strictly for requested batch_number, or aggregates all batches if batch_number is None.
-        """
-        station = None
-        if station_code:
-            station = ProductionStation.objects.filter(code=station_code).first()
+    def generate_report_html(self, report_type=None, station_code=None, batch_number=None,
+                             validate: bool = True) -> str:
+        """Рендерит HTML-отчёт для запрошенной станции или типа отчёта."""
+        station = ProductionStation.objects.filter(code=station_code).first() if station_code else None
 
         if validate:
             val_res = OrderValidationService.validate_for_report(self.order, report_type, station=station)
@@ -987,68 +544,54 @@ class ProductionDataService:
             except ValueError:
                 label = str(report_type)
             template = 'production/alum_frames_report.html'
+            if not getattr(self.order, 'has_split_installation', False) and report_type == self.ReportType.PHASE2_DOORS:
+                label = 'Doors'
 
-            if not getattr(self.order, 'has_split_installation', False):
-                if report_type == self.ReportType.PHASE2_DOORS:
-                    label = 'Doors'
-
-        phase = 'phase1' if (
-                report_type == self.ReportType.PHASE1_FRAMES or (station and station.is_phase1)) else 'phase2'
-
-        # Получаем спецификацию заказа из единого шлюза
+        phase = (
+            'phase1'
+            if (report_type == self.ReportType.PHASE1_FRAMES or (station and station.is_phase1))
+            else 'phase2'
+        )
         order_spec, _ = TechnicalSpecService.get_or_build_spec(self.order, phase=phase)
 
-        # 1. Extract items: specific batch or all batches
         if batch_number is not None:
             raw_spec_items = order_spec.batches.get(str(batch_number), [])
         else:
             raw_spec_items = [it for b_items in order_spec.batches.values() for it in b_items]
 
-        # 2. Filter items by station/report type, respecting per-item station routing
         filtered_items = self.get_filtered_items(report_type, station=station)
         filtered_item_ids = {item.id for item in filtered_items}
 
         target_items = []
         for it in raw_spec_items:
-            it_id = getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')
+            it_id = self._get(it, 'item_id')
             if it_id not in filtered_item_ids:
                 continue
-
-            # If a specific station is requested and item has individual routing calculated
             if station:
-                it_station_ids = (
-                    getattr(it, 'route_station_ids', None)
-                    if hasattr(it, 'route_station_ids')
-                    else it.get('route_station_ids')
-                )
-                if it_station_ids:
-                    if station.id not in it_station_ids:
-                        continue
-
+                it_station_ids = self._get(it, 'route_station_ids')
+                if it_station_ids and station.id not in it_station_ids:
+                    continue
             target_items.append(it)
 
-        # 3. Клонирование структуры OrderSpec с выбранными позициями для рендера
         order_spec_for_report = order_spec.model_copy()
-        order_spec_for_report.batches = {
-            str(batch_number or "all"): target_items
-        }
+        order_spec_for_report.batches = {str(batch_number or "all"): target_items}
 
-        if self.order.status in [OrderStatus.PHASE1_PRODUCTION]:
+        if self.order.status == OrderStatus.PHASE1_PRODUCTION:
             stage_label = "שלב א'"
-        elif self.order.status in [OrderStatus.PHASE2_PRODUCTION, OrderStatus.PHASE1_READY]:
+        elif self.order.status in (OrderStatus.PHASE2_PRODUCTION, OrderStatus.PHASE1_READY):
             stage_label = "שלב ב'"
         elif self.order.status == OrderStatus.COMPLETION_PRODUCTION:
             stage_label = "השלמות"
         else:
             stage_label = "קומפלט"
 
-        from .models import OrderStationNote
         station_notes_by_code = dict(
             OrderStationNote.objects.filter(order=self.order)
             .select_related('station')
             .values_list('station__code', 'comment')
         )
         station_comment = station_notes_by_code.get(station.code, '') if station else ''
+
         context = {
             'order': self.order,
             'batch_number': batch_number,
@@ -1068,23 +611,17 @@ class ProductionDataService:
         }
         return render_to_string(template, context)
 
-    def get_filtered_items(self, report_type=None, station=None):
-        """
-        Returns a list of items that belong to the specified report or station.
-        Includes groups where the requested station is either a primary or an alternative station.
-        """
+    def get_filtered_items(self, report_type=None, station=None) -> list:
+        """Возвращает OrderItem заказа, чей маршрут включает указанную станцию (или её альтернативу)."""
         items = []
         is_completion = self.order.status == OrderStatus.COMPLETION_PRODUCTION
 
-        from .models import ProductionRoute
-
         for group in self.order.groups.all():
-            if group.production_state in [
-                OrderItemsGroup.ProductionState.WAITING,
-                OrderItemsGroup.ProductionState.CANCELED,
-            ]:
+            if group.production_state in (
+                    OrderItemsGroup.ProductionState.WAITING,
+                    OrderItemsGroup.ProductionState.CANCELED,
+            ):
                 continue
-
             if is_completion and group.production_state == OrderItemsGroup.ProductionState.COMPLETED:
                 continue
 
@@ -1098,157 +635,98 @@ class ProductionDataService:
                 )
             else:
                 rt = str(report_type).upper()
-                group_codes_upper = {c.upper() for c in group_station_codes}
+                codes_up = {c.upper() for c in group_station_codes}
 
-                if rt in ['PHASE1_FRAMES', 'PHASE1_PRODUCTION', 'PHASE2_FRAMES', 'FRAMES', 'ALUM_FRAMES', 'WOOD_FRAMES',
-                          '100']:
-                    is_valid = bool(
-                        group_codes_upper & {'FRAMES', 'ALUM_FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES', '100'})
-                elif rt in ['PHASE2_DOORS', 'DOORS', 'ALUM_DOORS']:
-                    is_valid = bool(group_codes_upper & {'DOORS', 'ALUM_DOORS'})
-                elif rt in ['PHASE2_PRESS', 'PRESS', 'CUTTING_PRESS', 'CUT_SHEETS']:
-                    is_valid = bool(group_codes_upper & {'PRESS', 'CUTTING_PRESS', 'CUT_SHEETS'})
-                elif rt in ['FACING', 'CLADDING', 'FACING_REPORT']:
-                    is_valid = bool(group_codes_upper & {'FACING', 'CLADDING', 'FACING_REPORT'})
+                if rt in ('PHASE1_FRAMES', 'PHASE1_PRODUCTION', 'PHASE2_FRAMES', 'FRAMES', 'ALUM_FRAMES', 'WOOD_FRAMES',
+                          '100'):
+                    is_valid = bool(codes_up & {'FRAMES', 'ALUM_FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES', '100'})
+                elif rt in ('PHASE2_DOORS', 'DOORS', 'ALUM_DOORS'):
+                    is_valid = bool(codes_up & {'DOORS', 'ALUM_DOORS'})
+                elif rt in ('PHASE2_PRESS', 'PRESS', 'CUTTING_PRESS', 'CUT_SHEETS'):
+                    is_valid = bool(codes_up & {'PRESS', 'CUTTING_PRESS', 'CUT_SHEETS'})
+                elif rt in ('FACING', 'CLADDING', 'FACING_REPORT'):
+                    is_valid = bool(codes_up & {'FACING', 'CLADDING', 'FACING_REPORT'})
                 else:
                     is_valid = True
 
             if is_valid:
-                for item in group.items.all():
-                    items.append(item)
+                items.extend(group.items.all())
 
         return items
 
-    @staticmethod
-    def prepare_grouped_data(items):
-        """
-        Converts a flat list of ProductionSpec items (or dicts) into a grouped structure.
-        """
-        # 1. Grouping logic (сразу перебираем переданный список items)
+    @classmethod
+    def prepare_grouped_data(cls, items) -> list:
+        """Группирует плоский список ProductionSpec (или словарей) для табличных отчётов."""
+        _get = cls._get
         grouped_specs = {}
         for spec in items:
             key = (
-                getattr(spec, 'product_family', '') if hasattr(spec, 'product_family') else spec.get('product_family',
-                                                                                                     ''),
-                getattr(spec, 'series', '') if hasattr(spec, 'series') else spec.get('series', ''),
-                getattr(spec, 'product_code', '') if hasattr(spec, 'product_code') else spec.get('product_code', ''),
-                getattr(spec, 'front_name', '') if hasattr(spec, 'front_name') else spec.get('front_name', ''),
-                getattr(spec, 'basic_color_frames', '') if hasattr(spec, 'basic_color_frames') else spec.get(
-                    'basic_color_frames', ''),
-                getattr(spec, 'frame_paint_option', '') if hasattr(spec, 'frame_paint_option') else spec.get(
-                    'frame_paint_option', ''),
-                getattr(spec, 'color_frames', '') if hasattr(spec, 'color_frames') else spec.get('color_frames', ''),
-                getattr(spec, 'color_panel_outside', '') if hasattr(spec, 'color_panel_outside') else spec.get(
-                    'color_panel_outside', ''),
-                tuple(getattr(spec, 'profiles', []) if hasattr(spec, 'profiles') else spec.get('profiles', [])),
+                _get(spec, 'product_family', ''),
+                _get(spec, 'series', ''),
+                _get(spec, 'product_code', ''),
+                _get(spec, 'front_name', ''),
+                _get(spec, 'basic_color_frames', ''),
+                _get(spec, 'frame_paint_option', ''),
+                _get(spec, 'color_frames', ''),
+                _get(spec, 'color_panel_outside', ''),
+                tuple(_get(spec, 'profiles', []) or []),
             )
-            if key not in grouped_specs:
-                grouped_specs[key] = []
-            grouped_specs[key].append(spec)
+            grouped_specs.setdefault(key, []).append(spec)
 
-        # 2. Form result structure
         groups_data = []
-        sorted_keys = sorted(grouped_specs.keys())
-
-        for key in sorted_keys:
+        for key in sorted(grouped_specs.keys()):
             items_specs = grouped_specs[key]
             first = items_specs[0]
 
-            common_front = getattr(first, 'front_name', '') if hasattr(first, 'front_name') else first.get('front_name',
-                                                                                                           '')
-            common_color_frames = getattr(first, 'color_frames', '') if hasattr(first, 'color_frames') else first.get(
-                'color_frames', '')
-            common_color_panels = getattr(first, 'color_panel_outside', '') if hasattr(first,
-                                                                                       'color_panel_outside') else first.get(
-                'color_panel_outside', '')
+            common_front = _get(first, 'front_name', '')
+            common_color_frames = _get(first, 'color_frames', '')
+            common_color_panels = _get(first, 'color_panel_outside', '')
 
             for s in items_specs[1:]:
-                s_front_name = getattr(s, 'front_name', '') if hasattr(s, 'front_name') else s.get('front_name', '')
-                s_color_frames = getattr(s, 'color_frames', '') if hasattr(s, 'color_frames') else s.get('color_frames',
-                                                                                                         '')
-                s_color_panel_outside = getattr(s, 'color_panel_outside', '') if hasattr(s,
-                                                                                         'color_panel_outside') else s.get(
-                    'color_panel_outside', '')
-
-                if s_front_name != common_front: common_front = "Various"
-                if s_color_frames != common_color_frames: common_color_frames = "Various"
-                if s_color_panel_outside != common_color_panels: common_color_panels = "Various"
+                if _get(s, 'front_name', '') != common_front:
+                    common_front = "Various"
+                if _get(s, 'color_frames', '') != common_color_frames:
+                    common_color_frames = "Various"
+                if _get(s, 'color_panel_outside', '') != common_color_panels:
+                    common_color_panels = "Various"
 
             group_spec = {
-                'product_name': getattr(first, 'product_name', '') if hasattr(first, 'product_name') else first.get(
-                    'product_name', ''),
-                'code': getattr(first, 'product_code', '') if hasattr(first, 'product_code') else first.get(
-                    'product_code', ''),
+                'product_name': _get(first, 'product_name', ''),
+                'code': _get(first, 'product_code', ''),
                 'front_name': common_front,
                 'color_frames': common_color_frames,
-                'basic_color_frames': getattr(first, 'basic_color_frames', '') if hasattr(first,
-                                                                                          'basic_color_frames') else first.get(
-                    'basic_color_frames', ''),
+                'basic_color_frames': _get(first, 'basic_color_frames', ''),
                 'color_panels': common_color_panels,
-                'lock_name': getattr(first, 'lock_name', '') if hasattr(first, 'lock_name') else first.get('lock_name',
-                                                                                                           ''),
-                'hinge_name': getattr(first, 'hinge_name', '') if hasattr(first, 'hinge_name') else first.get(
-                    'hinge_name', ''),
-                'common_lock_height': getattr(first, 'lock_height', '') if hasattr(first, 'lock_height') else first.get(
-                    'lock_height', ''),
-                'common_hinge_heights': getattr(first, 'hinge_heights', []) if hasattr(first,
-                                                                                       'hinge_heights') else first.get(
-                    'hinge_heights', []),
-                'profiles': getattr(first, 'profiles', []) if hasattr(first, 'profiles') else first.get('profiles', []),
-                'frame_paint_option': getattr(first, 'frame_paint_option', '') if hasattr(first,
-                                                                                          'frame_paint_option') else first.get(
-                    'frame_paint_option', ''),
-                'frame': getattr(first, 'frame', '') if hasattr(first, 'frame') else first.get('frame', ''),
-                'series': getattr(first, 'series', '') if hasattr(first, 'series') else first.get('series', ''),
-                'product_family': getattr(first, 'product_family', '') if hasattr(first,
-                                                                                  'product_family') else first.get(
-                    'product_family', ''),
-                'frames_report_customizers': getattr(first, 'frames_report_customizers', []) if hasattr(first,
-                                                                                                        'frames_report_customizers') else first.get(
-                    'frames_report_customizers', []),
+                'lock_name': _get(first, 'lock_name', ''),
+                'hinge_name': _get(first, 'hinge_name', ''),
+                'common_lock_height': _get(first, 'lock_height', ''),
+                'common_hinge_heights': _get(first, 'hinge_heights', []),
+                'profiles': _get(first, 'profiles', []),
+                'frame_paint_option': _get(first, 'frame_paint_option', ''),
+                'frame': _get(first, 'frame', ''),
+                'series': _get(first, 'series', ''),
+                'product_family': _get(first, 'product_family', ''),
+                'frames_report_customizers': _get(first, 'frames_report_customizers', []),
             }
+            groups_data.append({'group_spec': group_spec, 'items_specs': items_specs})
 
-            groups_data.append({
-                'group_spec': group_spec,
-                'items_specs': items_specs,
-            })
         return groups_data
 
-    @staticmethod
-    def prepare_press_groups_data(items):
+    @classmethod
+    def prepare_press_groups_data(cls, items) -> list:
         """
-        Groups door panels for press report from a list of ProductionSpec items (or dict snapshots).
-        Calculates press blank dimensions from net panel dimensions:
-        - Standard doors: W + 1, H + 1
-        - Wood edge doors:
-            W_press = W_panel - (2 * T) + 1
-            H_press = H_panel - T * ((sides > 2) + (sides > 3)) + 1
+        Группирует заготовки дверных полотен для отчёта на пресс.
+        Использует готовые press_dimensions из ядра (уже округлённые с шагом 0.5 см
+        и вычетом канта в см), с безопасным fallback на panel_dimensions для старых снимков.
         """
+        _get = cls._get
         groups_map = {}
-
-        def _get(obj, key, default=None):
-            return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
 
         for item in items:
             if not _get(item, 'has_door', True):
                 continue
 
-            # 1. Wood edge parameters
-            has_edge = _get(item, 'has_wood_edge', False)
-            is_hidden = _get(item, 'is_hidden_wood_edge', False)
-            thickness = float(_get(item, 'wood_edge_thickness', 0) or 0) / 10
-            sides = int(_get(item, 'wood_edge_sides', 4) or 4)
-
-            if not has_edge:
-                ctx = _get(item, 'context', {}) or {}
-                we = ctx.get('wood_edge') if isinstance(ctx, dict) else None
-                if we:
-                    has_edge = True
-                    is_hidden = we.get('is_hidden', False)
-                    thickness = float(we.get('thickness', 0) or 0)
-                    sides = int(we.get('sides', 4) or 4)
-
-            # 2. Base, filling & panel_frame layers from BOM
+            is_hidden = bool(_get(item, 'is_hidden_wood_edge', False))
             bom_items = _get(item, 'bom_items', []) or []
 
             def _bom_name(b):
@@ -1257,10 +735,8 @@ class ProductionDataService:
             base_names = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'base' and _bom_name(b)]
             filling_names = [_get(b, 'item_name') for b in bom_items if
                              _get(b, 'tag') == 'filling' and _get(b, 'item_name')]
-            panel_frame_names = [_bom_name(b) for b in bom_items if
-                                 _get(b, 'tag') == 'panel_frame' and _bom_name(b)]
+            panel_frame_names = [_bom_name(b) for b in bom_items if _get(b, 'tag') == 'panel_frame' and _bom_name(b)]
 
-            # 3. Covering layer (hidden edge vs FORMICA vs PAINT)
             finish_type = _get(item, 'finish_type', 'PAINT')
             covering_names = ''
             if not is_hidden:
@@ -1278,17 +754,16 @@ class ProductionDataService:
             raw_components = base_names + filling_names + panel_frame_names
             comp_title = "  |  ".join(dict.fromkeys(filter(None, raw_components))) or _get(item, 'product_name', '')
 
-            # 4. Customizer presets & signature
             applied = _get(item, 'applied_presets', []) or []
             customizer_presets, sig_parts = [], []
             for p in applied:
                 name = str(_get(p, 'name', '')).strip()
                 if not name:
                     continue
-                raw_labels = _get(p, 'labels', []) or []
                 labels = [
                     {'text': str(_get(l, 'text', '')).strip(), 'is_custom': bool(_get(l, 'is_custom', False))}
-                    for l in raw_labels if str(_get(l, 'text', '')).strip()
+                    for l in (_get(p, 'labels', []) or [])
+                    if str(_get(l, 'text', '')).strip()
                 ]
                 customizer_presets.append({'name': name, 'labels': labels})
                 lbl_suffix = f"({','.join(f'{l['text']}:{int(l['is_custom'])}' for l in labels)})" if labels else ""
@@ -1296,7 +771,6 @@ class ProductionDataService:
 
             presets_signature = " + ".join(dict.fromkeys(sig_parts))
 
-            # 5. Group registration
             puzzle = _get(item, 'puzzle_spec', None)
             face_blocks = _get(puzzle, 'face_blocks', []) if puzzle else []
             sandwich_blocks = _get(puzzle, 'sandwich_blocks', []) if puzzle else []
@@ -1328,22 +802,31 @@ class ProductionDataService:
                     'counter': Counter(),
                 }
 
-            # 6. Press dimensions calculation (всегда по большей ширине)
-            for p_dim in (_get(item, 'panel_dimensions', []) or []):
-                w, h = _get(p_dim, 'width'), _get(p_dim, 'height')
-                if w is None or h is None:
-                    continue
+            # Используем уже рассчитанные ядром press_dimensions; fallback только для старых снимков
+            press_dims = _get(item, 'press_dimensions', []) or []
+            if press_dims:
+                for pr in press_dims:
+                    pw, ph = _get(pr, 'width'), _get(pr, 'height')
+                    if pw is not None and ph is not None:
+                        groups_map[group_key]['counter'][(float(pw), float(ph))] += 1
+            else:
+                has_edge = bool(_get(item, 'has_wood_edge', False))
+                raw_t = float(_get(item, 'wood_edge_thickness', 0) or 0)
+                t_cm = (raw_t / 10.0) if raw_t >= 5.0 else raw_t
+                sides = int(_get(item, 'wood_edge_sides', 4) or 4)
 
-                w_bottom = _get(p_dim, 'width_bottom')
-                w = max(float(w), float(w_bottom)) if w_bottom is not None else float(w)
-                h = float(h)
-                if has_edge and thickness > 0:
-                    w -= thickness * 2
-                    h -= thickness * ((sides > 2) + (sides > 3))
+                for p_dim in (_get(item, 'panel_dimensions', []) or []):
+                    w, h = _get(p_dim, 'width'), _get(p_dim, 'height')
+                    if w is None or h is None:
+                        continue
+                    w_bottom = _get(p_dim, 'width_bottom')
+                    w = max(float(w), float(w_bottom)) if w_bottom is not None else float(w)
+                    h = float(h)
+                    if has_edge and t_cm > 0:
+                        w -= t_cm * 2
+                        h -= t_cm * ((sides > 2) + (sides > 3))
+                    groups_map[group_key]['counter'][(round_press_dimension(w), round_press_dimension(h))] += 1
 
-                groups_map[group_key]['counter'][(round_press_dimension(w), round_press_dimension(h))] += 1
-
-        # 7. Format output grouped list (сортировка по ширине, затем по высоте)
         panel_groups = []
         for grp in groups_map.values():
             counter = grp.pop('counter', Counter())
@@ -1357,107 +840,43 @@ class ProductionDataService:
 
         return panel_groups
 
-    @classmethod
-    def get_door_labels_data(cls, order, spec_obj, requested_batches: list = None):
-        flat_items, _ = cls.extract_report_items(spec_obj, requested_batches)
-        if not flat_items:
-            return []
-
-        labels_data = []
-        for it in flat_items:
-            if not (getattr(it, 'has_door', True) if hasattr(it, 'has_door') else it.get('has_door', True)):
-                continue
-
-            mark = getattr(it, 'mark', '') if hasattr(it, 'mark') else it.get('mark', '')
-            direction = getattr(it, 'direction', '') if hasattr(it, 'direction') else it.get('direction', '')
-
-            panel_dims = getattr(it, 'panel_dimensions', []) if hasattr(it, 'panel_dimensions') else it.get(
-                'panel_dimensions', [])
-            first_panel = panel_dims[0] if panel_dims else {}
-            width = first_panel.get('width', '') or (
-                getattr(it, 'width', '') if hasattr(it, 'width') else it.get('width', ''))
-            height = first_panel.get('height', '') or (
-                getattr(it, 'height', '') if hasattr(it, 'height') else it.get('height', ''))
-
-            text_data = f"Order: {order.order_number}, Door: {mark}, W: {width}, H: {height}, Dir: {direction}"
-            qr_base64 = get_qr_base64(text_data)
-
-            labels_data.append({
-                'order_number': order.order_number,
-                'mark': mark,
-                'width': width,
-                'height': height,
-                'direction': direction,
-                'qr_code': qr_base64,
-                'quantity': order.get_quantity(),
-                'product_name': it.product_name,
-            })
-        return labels_data
-
 
 class OrderProductionService:
-    """
-    Order production lifecycle management service.
-    Moves production start and status transition logic from orders app to production.
-    """
+    """Управление жизненным циклом заказа в производстве (старт, фазы A/B, завершение)."""
 
     @staticmethod
-    def recalculate_item_marks(order):
+    def recalculate_item_marks(order) -> None:
         from apps.orders.services import recalculate_item_marks
         recalculate_item_marks(order)
 
     @staticmethod
-    def cleanup_cnc_files(order):
-        """
-        Deletes the directory with CNC files for the order.
-        """
-        from django.conf import settings
-        import os
-        import shutil
-
-        cnc_root = os.path.join(settings.BASE_DIR, 'cnc_files')
-        mecal_dir = os.path.join(cnc_root, 'mecal')
-        order_dir = os.path.join(mecal_dir, str(order.order_number))
-
+    def cleanup_cnc_files(order) -> None:
+        """Удаляет папку ЧПУ-файлов заказа с диска сервера."""
+        order_dir = os.path.join(settings.BASE_DIR, 'cnc_files', 'mecal', str(order.order_number))
         if os.path.exists(order_dir):
             shutil.rmtree(order_dir)
 
     @staticmethod
     def validate_for_production(order, validation_type: Optional[str] = None):
-        """
-        Validates order readiness for production.
-        Returns (is_valid, errors).
-        """
-        if validation_type:
-            res = OrderValidationService.validate(order, validation_type)
-        elif order.has_split_installation and order.status == OrderStatus.NEW:
-            res = OrderValidationService.validate_partial(order)
-        else:
-            res = OrderValidationService.validate_full(order)
+        """Проверяет готовность заказа и возвращает кортеж (is_valid, errors)."""
+        res = OrderValidationService.validate_for_production(order, validation_type)
         return res.is_valid, res.errors
 
     @classmethod
     @transaction.atomic
-    def start_production(cls, order, user=None):
-        # 1. Validation
-        val_res = cls.validate_for_production(order)
-        if isinstance(val_res, tuple):
-            is_valid, errors = val_res
-            if not is_valid:
-                raise OrderValidationError("Data validation error", errors=errors)
-        else:
-            val_res.raise_if_invalid()
+    def start_production(cls, order, user=None) -> None:
+        """Переводит заказ или новые группы в производство с фиксацией батча и снимка."""
+        is_valid, errors = cls.validate_for_production(order)
+        if not is_valid:
+            raise OrderValidationError("Data validation error", errors=errors)
 
         if not order.production_start_date:
             order.production_start_date = timezone.now()
 
         released_batch = order.current_batch or 1
 
-        # -------------------------------------------------------------
-        # SCENARIO A: Launching Phase 2 (doors after on-site measurements)
-        # -------------------------------------------------------------
+        # Сценарий A: Запуск Фазы 2 (полотна после замеров Фазы 1)
         if order.status == OrderStatus.PHASE1_READY:
-            # Retrieve waiting door groups held back during Phase 1
             phase2_groups = list(
                 order.groups.filter(
                     production_state__in=[
@@ -1469,69 +888,50 @@ class OrderProductionService:
             if not phase2_groups:
                 raise OrderValidationError("Нет групп в ожидании (WAITING) для запуска второй фазы.")
 
-            # Update group states and assign batch
-            group_ids = [g.id for g in phase2_groups]
-            OrderItemsGroup.objects.filter(id__in=group_ids).update(
+            OrderItemsGroup.objects.filter(id__in=[g.id for g in phase2_groups]).update(
                 batch_number=released_batch,
                 production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
                 batch_date=date.today(),
             )
-
-            # Refresh local objects state
             for g in phase2_groups:
                 g.batch_number = released_batch
                 g.production_state = OrderItemsGroup.ProductionState.IN_PRODUCTION
                 g.batch_date = date.today()
 
-            # Update order state
             order.status = OrderStatus.PHASE2_PRODUCTION
             order.current_batch = released_batch + 1
             order.save(update_fields=['status', 'current_batch', 'production_start_date'])
 
-            # Build specification for Phase 2 batch FIRST
             TechnicalSpecService.get_or_build_spec(
                 order, phase='phase2', batch_number=released_batch, force_rebuild=True, user=user
             )
-
-            # Initialize granular station tracking AFTER spec is built
             for group in phase2_groups:
                 StationTrackingService.initialize_batch_progress(group)
             return
-        # -------------------------------------------------------------
-        # SCENARIO B: Standard launch or Phase 1 start (NEW groups)
-        # -------------------------------------------------------------
-        new_groups_qs = order.groups.filter(
-            production_state=OrderItemsGroup.ProductionState.NEW
-        )
+
+        # Сценарий B: Первичный запуск (полный комплект или Фаза 1 при раздельном монтаже)
+        new_groups_qs = order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW)
         if not new_groups_qs.exists():
             raise OrderValidationError("Нет новых групп для запуска в производство.")
 
         has_split = getattr(order, 'has_split_installation', False)
-
         if has_split:
-            # Move doors to WAITING until on-site measurements are ready
             new_groups_qs.filter(is_split_installation=False).update(
                 production_state=OrderItemsGroup.ProductionState.WAITING
             )
-            # Launch only frame groups in Phase 1
             groups_to_launch = list(new_groups_qs.filter(is_split_installation=True))
             if not groups_to_launch:
                 raise OrderValidationError("Нет подходящих групп с раздельным монтажом для запуска первой фазы.")
-
             order.status = OrderStatus.PHASE1_PRODUCTION
         else:
-            # Standard complete sets (both frames and doors together)
             groups_to_launch = list(new_groups_qs)
             order.status = OrderStatus.IN_PRODUCTION
 
-        # Update launched groups
-        launch_ids = [g.id for g in groups_to_launch]
-        OrderItemsGroup.objects.filter(id__in=launch_ids).update(
+        OrderItemsGroup.objects.filter(id__in=[g.id for g in groups_to_launch]).update(
             batch_number=released_batch,
             production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
             batch_date=date.today(),
         )
-
         for g in groups_to_launch:
             g.batch_number = released_batch
             g.production_state = OrderItemsGroup.ProductionState.IN_PRODUCTION
@@ -1540,71 +940,62 @@ class OrderProductionService:
         order.current_batch = released_batch + 1
         order.save(update_fields=['status', 'current_batch', 'production_start_date'])
 
-        # Build technical specification for the launched batch FIRST
         phase = 'phase1' if order.status == OrderStatus.PHASE1_PRODUCTION else 'phase2'
         TechnicalSpecService.get_or_build_spec(
             order, phase=phase, batch_number=released_batch, force_rebuild=True, user=user
         )
 
-        # Initialize station tracking only for full production sets AFTER spec is built
         if order.status == OrderStatus.IN_PRODUCTION:
             for group in groups_to_launch:
                 StationTrackingService.initialize_batch_progress(group)
 
     @staticmethod
     def complete_phase1(order, user=None):
-        """
-        Completes the first phase of production and transitions the order to PHASE1_READY status.
-        """
+        """Завершает Фазу 1 и переводит заказ в статус ожидания замеров (PHASE1_READY)."""
         if order.status != OrderStatus.PHASE1_PRODUCTION:
             raise ValueError("Phase A completion is only possible for orders in 'Phase A Production' status")
 
         old_status = order.status
         with transaction.atomic():
             order.status = OrderStatus.PHASE1_READY
-            order.save()
-
-            # Clean up CNC files when transitioning to Phase A readiness
+            order.save(update_fields=['status'])
             OrderProductionService.cleanup_cnc_files(order)
-
             OrderChangeLog.objects.create(
                 order=order,
                 user=user,
                 field_name='status',
                 old_value=old_status,
-                new_value=order.status
+                new_value=order.status,
             )
         return order
 
     @staticmethod
     def complete_production(order, user=None):
-        """
-        Completes order production and transitions it to READY status.
-        Marks all IN_PRODUCTION groups as COMPLETED.
-        """
-        if order.status not in [OrderStatus.IN_PRODUCTION, OrderStatus.PHASE2_PRODUCTION,
-                                OrderStatus.COMPLETION_PRODUCTION]:
+        """Завершает производство заказа и переводит активные группы в COMPLETED."""
+        if order.status not in (
+                OrderStatus.IN_PRODUCTION,
+                OrderStatus.PHASE2_PRODUCTION,
+                OrderStatus.COMPLETION_PRODUCTION,
+        ):
             raise ValueError(
-                "Production completion is only possible for orders in 'In Production', 'Phase B Production' or 'Completion Production' status")
+                "Production completion is only possible for orders in 'In Production', "
+                "'Phase B Production' or 'Completion Production' status"
+            )
 
         old_status = order.status
         with transaction.atomic():
             order.status = OrderStatus.COMPLETED
-            # Mark active groups as completed
             order.groups.filter(
                 production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION
             ).update(production_state=OrderItemsGroup.ProductionState.COMPLETED)
+            order.save(update_fields=['status'])
 
-            order.save()
-
-            # Clean up CNC files upon production completion
             OrderProductionService.cleanup_cnc_files(order)
-
             OrderChangeLog.objects.create(
                 order=order,
                 user=user,
                 field_name='status',
                 old_value=old_status,
-                new_value=order.status
+                new_value=order.status,
             )
         return order
