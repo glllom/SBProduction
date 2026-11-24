@@ -1,8 +1,19 @@
+from decimal import Decimal
+
 from django.db import models
 
 
+def _consumption_field(verbose_name: str) -> models.DecimalField:
+    return models.DecimalField(
+        verbose_name,
+        max_digits=7,
+        decimal_places=2,
+        default=Decimal('1.00'),
+    )
+
+
 class BOM(models.Model):
-    """Bill of Materials (BOM) with structured sections for materials and hardware."""
+    """Bill of Materials (BOM): только физические материалы, расход и базовая фурнитура."""
     product = models.OneToOneField(
         'catalog.ProductModel',
         on_delete=models.CASCADE,
@@ -12,19 +23,19 @@ class BOM(models.Model):
 
     covering = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                  verbose_name='כיסוי')
-    covering_consumption = models.CharField('צריכת כיסוי', max_length=255, default='1', blank=True)
+    covering_consumption = _consumption_field('צריכת כיסוי')
 
     base = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                              verbose_name='בסיס')
-    base_consumption = models.CharField('צריכת בסיס', max_length=255, default='1', blank=True)
+    base_consumption = _consumption_field('צריכת בסיס')
 
     filling = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                 verbose_name='מילוי')
-    filling_consumption = models.CharField('צריכת מילוי', max_length=255, default='1', blank=True)
+    filling_consumption = _consumption_field('צריכת מילוי')
 
     panel_frame = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True,
                                     related_name='+', verbose_name='מסגרת עץ')
-    panel_frame_consumption = models.CharField('צריכת מסגרת עץ', max_length=255, default='1', blank=True)
+    panel_frame_consumption = _consumption_field('צריכת מסגרת עץ')
 
     filling_preset = models.ForeignKey('engineering.PuzzlePreset', on_delete=models.SET_NULL, null=True, blank=True,
                                        related_name='+', verbose_name='פיקטוגרמה: מילוי')
@@ -37,58 +48,49 @@ class BOM(models.Model):
 
     casing = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                verbose_name='הלבשה')
-    casing_consumption = models.CharField('צריכת הלבשה', max_length=255, default='1', blank=True)
+    casing_consumption = _consumption_field('צריכת הלבשה')
 
     frame = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                               verbose_name='משקוף')
-    frame_consumption = models.CharField('צריכת משקוף', max_length=255, default='1', blank=True)
+    frame_consumption = _consumption_field('צריכת משקוף')
 
     profile1 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                  verbose_name='פרופיל 1')
-    profile1_consumption = models.CharField('צריכת פרופיל 1', max_length=255, default='1', blank=True)
+    profile1_consumption = _consumption_field('צריכת פרופיל 1')
 
     profile2 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                  verbose_name='פרופיל 2')
-    profile2_consumption = models.CharField('צריכת פרופיל 2', max_length=255, default='1', blank=True)
+    profile2_consumption = _consumption_field('צריכת פרופיל 2')
 
     profile3 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                  verbose_name='פרופיל 3')
-    profile3_consumption = models.CharField('צריכת פרופיל 3', max_length=255, default='1', blank=True)
+    profile3_consumption = _consumption_field('צריכת פרופיל 3')
 
     other1 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                verbose_name='אחר 1')
-    other1_consumption = models.CharField('צריכת אחר 1', max_length=255, default='1', blank=True)
+    other1_consumption = _consumption_field('צריכת אחר 1')
 
     other2 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                verbose_name='אחר 2')
-    other2_consumption = models.CharField('צריכת אחר 2', max_length=255, default='1', blank=True)
+    other2_consumption = _consumption_field('צריכת אחר 2')
 
     other3 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                verbose_name='אחר 3')
-    other3_consumption = models.CharField('צריכת אחר 3', max_length=255, default='1', blank=True)
+    other3_consumption = _consumption_field('צריכת אחר 3')
 
     other4 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                verbose_name='אחר 4')
-    other4_consumption = models.CharField('צריכת אחר 4', max_length=255, default='1', blank=True)
+    other4_consumption = _consumption_field('צריכת אחר 4')
 
     other5 = models.ForeignKey('catalog.Material', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                verbose_name='אחר 5')
-    other5_consumption = models.CharField('צריכת אחר 5', max_length=255, default='1', blank=True)
+    other5_consumption = _consumption_field('צריכת אחר 5')
 
     lock = models.ForeignKey('catalog.Hardware', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                              verbose_name='מנעול')
     hinges = models.ForeignKey('catalog.Hardware', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                verbose_name='צירים')
     additional = models.ManyToManyField('catalog.Hardware', blank=True, related_name='+', verbose_name='תוספות')
-    required_customizers = models.ManyToManyField('catalog.Customizer', blank=True, related_name='required_for_boms',
-                                                  verbose_name='התאמות אישיות חובה')
-
-    cut_coefficients = models.JSONField(
-        default=dict,
-        blank=True,
-        verbose_name='מקדמי חיתוך חלקים',
-        help_text='מילון מקדמי חיתוך חלקים במילימטרים (למשל {"transom_delta": 45})',
-    )
 
     class Meta:
         db_table = 'production_bom'

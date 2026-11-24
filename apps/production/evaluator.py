@@ -1,6 +1,7 @@
 import ast
 import operator
-from typing import Dict, Any, Union
+from decimal import Decimal
+from typing import Any, Dict, Union
 
 # Supported math operators
 _OPERATORS = {
@@ -37,8 +38,8 @@ class FormulaEvaluator:
     """
 
     @classmethod
-    def evaluate(cls, expression: Union[str, int, float], context: Dict[str, Any]) -> float:
-        if isinstance(expression, (int, float)):
+    def evaluate(cls, expression: Union[str, int, float, Decimal], context: Dict[str, Any]) -> float:
+        if isinstance(expression, (int, float, Decimal)) and not isinstance(expression, bool):
             return float(expression)
 
         if not expression or not isinstance(expression, str):
@@ -48,7 +49,6 @@ class FormulaEvaluator:
         if not expr_str:
             return 0.0
 
-        # Quick check for pure float string
         try:
             return float(expr_str)
         except ValueError:
@@ -58,21 +58,18 @@ class FormulaEvaluator:
             tree = ast.parse(expr_str, mode='eval')
             return float(cls._eval_node(tree.body, context))
         except (FormulaEvaluationError, ZeroDivisionError, OverflowError) as e:
-            raise FormulaEvaluationError(f"Error evaluating '{expression}': {str(e)}")
+            raise FormulaEvaluationError(f"Error evaluating '{expression}': {e}")
         except Exception as e:
-            raise FormulaEvaluationError(f"Syntax error in expression '{expression}': {str(e)}")
+            raise FormulaEvaluationError(f"Syntax error in expression '{expression}': {e}")
 
     @classmethod
     def _eval_node(cls, node: ast.AST, context: Dict[str, Any]) -> Any:
-        # Numbers: 120, 3.14
-        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
             return node.value
 
-        # Variables: H, W, p1, p2, ...
         if isinstance(node, ast.Name):
             if node.id in context:
                 val = context[node.id]
-                # If a nested param structure is passed, extract raw value
                 if isinstance(val, dict) and 'val' in val:
                     val = val['val']
                 try:
@@ -81,7 +78,6 @@ class FormulaEvaluator:
                     raise FormulaEvaluationError(f"Variable '{node.id}' is not a valid number: '{val}'")
             raise FormulaEvaluationError(f"Unknown variable: '{node.id}'")
 
-        # Binary operations: A + B, A - B, A * B, A / B
         if isinstance(node, ast.BinOp):
             op_type = type(node.op)
             if op_type in _OPERATORS:
@@ -90,7 +86,6 @@ class FormulaEvaluator:
                 return _OPERATORS[op_type](left, right)
             raise FormulaEvaluationError(f"Unsupported binary operator: {op_type.__name__}")
 
-        # Unary operations: -A, +A
         if isinstance(node, ast.UnaryOp):
             op_type = type(node.op)
             if op_type in _OPERATORS:
@@ -98,12 +93,12 @@ class FormulaEvaluator:
                 return _OPERATORS[op_type](operand)
             raise FormulaEvaluationError(f"Unsupported unary operator: {op_type.__name__}")
 
-        # Functions: round(H / 2), min(p1, 100)
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in _FUNCTIONS:
                 func = _FUNCTIONS[node.func.id]
                 args = [cls._eval_node(arg, context) for arg in node.args]
                 return func(*args)
-            raise FormulaEvaluationError(f"Unsupported function call")
+            func_name = getattr(node.func, 'id', type(node.func).__name__)
+            raise FormulaEvaluationError(f"Unsupported function call: '{func_name}'")
 
         raise FormulaEvaluationError(f"Unsupported expression element: {type(node).__name__}")

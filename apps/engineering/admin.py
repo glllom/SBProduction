@@ -51,7 +51,7 @@ class BOMAdmin(ModelAdmin):
         'product', 'covering', 'base', 'filling', 'casing', 'frame', 'panel_frame',
         'profile1', 'profile2', 'profile3',
         'other1', 'other2', 'other3', 'other4', 'other5',
-        'lock', 'hinges', 'additional', 'required_customizers',
+        'lock', 'hinges', 'additional',
         'panel_frame_preset', 'filling_preset', 'base_preset', 'covering_preset',
     )
     formfield_overrides = JSON_FORMFIELD_OVERRIDES
@@ -69,7 +69,7 @@ class BOMAdmin(ModelAdmin):
             )
         }),
         ('פרזול', {
-            'fields': ('lock', 'hinges', 'additional', 'required_customizers')
+            'fields': ('lock', 'hinges', 'additional')
         }),
         ('פריסטים של פאזל', {
             'classes': ('collapse',),
@@ -90,10 +90,6 @@ class BOMAdmin(ModelAdmin):
                 ('other4', 'other4_consumption'),
                 ('other5', 'other5_consumption'),
             )
-        }),
-        ('פרמטרים טכנולוגיים', {
-            'classes': ('collapse',),
-            'fields': ('cut_coefficients',)
         }),
     )
 
@@ -253,7 +249,6 @@ class PuzzlePresetAdmin(ModelAdmin):
     list_display = ('name', 'description')
     search_fields = ('name', 'description')
     save_as = True
-    formfield_overrides = JSON_FORMFIELD_OVERRIDES
     inlines = [CustomizerPuzzleMappingInline]
 
 

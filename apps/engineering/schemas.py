@@ -38,7 +38,7 @@ class EngineeringRulesConfig(BaseModel):
     leaf_top_clearance: float = Field(default=1.0, ge=0)
     leaf_bottom_clearance: float = Field(default=1.0, ge=0)
     leaf_side_clearance: float = Field(default=0.7, ge=0)
-    double_leaf_overlap: float = Field(default=0.7, ge=0)
+    double_leaf_overlap: float = Field(default=0.7)
     press_allowance: float = Field(default=1.0, ge=0)
 
     cut_coefficients: CutCoefficientsConfig = Field(default_factory=CutCoefficientsConfig)

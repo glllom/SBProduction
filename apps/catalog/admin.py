@@ -59,17 +59,7 @@ class ProductFamilyAdmin(ModelAdmin):
             )
         }),
         ('מבנה', {
-            'fields': ('has_door', 'has_frame')
-        }),
-        ('גיאומטריה ועובי', {
-            'fields': (
-                'thickness', 'default_value_for_frame',
-                'frame_inner_height_reduction', 'frame_inner_width_reduction',
-                'double_leaf_overlap',
-            )
-        }),
-        ('מרווחי כנף', {
-            'fields': ('leaf_top_clearance', 'leaf_bottom_clearance', 'leaf_side_clearance')
+            'fields': ('has_door', 'has_frame', 'default_value_for_frame')
         }),
     )
 
@@ -194,7 +184,7 @@ class BOMInline(StackedInline):
         'covering', 'base', 'filling', 'panel_frame', 'casing', 'frame',
         'profile1', 'profile2', 'profile3',
         'other1', 'other2', 'other3', 'other4', 'other5',
-        'lock', 'hinges', 'additional', 'required_customizers',
+        'lock', 'hinges', 'additional',
         'filling_preset', 'panel_frame_preset', 'base_preset', 'covering_preset',
     )
     fieldsets = (
@@ -209,7 +199,7 @@ class BOMInline(StackedInline):
             )
         }),
         ('פרזול', {
-            'fields': ('lock', 'hinges', 'additional', 'required_customizers')
+            'fields': ('lock', 'hinges', 'additional')
         }),
         ('פריסטים של פאזל', {
             'classes': ('collapse',),
@@ -218,19 +208,7 @@ class BOMInline(StackedInline):
                 ('base_preset', 'covering_preset'),
             )
         }),
-        ('פרופילים ואחרים', {
-            'classes': ('collapse',),
-            'fields': (
-                ('profile1', 'profile1_consumption'),
-                ('profile2', 'profile2_consumption'),
-                ('profile3', 'profile3_consumption'),
-                ('other1', 'other1_consumption'),
-                ('other2', 'other2_consumption'),
-                ('other3', 'other3_consumption'),
-                ('other4', 'other4_consumption'),
-                ('other5', 'other5_consumption'),
-            )
-        }),
+
         ('פרמטרים טכנולוגיים', {
             'classes': ('collapse',),
             'fields': ('cut_coefficients',)
@@ -276,11 +254,11 @@ class ProductAdmin(ModelAdmin):
 @admin.register(Customizer)
 class CustomizerAdmin(ModelAdmin):
     list_display = (
-        'id', 'code', 'name', 'tag', 'is_required', 'hidden_in_sales',
+        'id', 'code', 'name', 'tag', 'hidden_in_sales',
         'outward_replacement', 'active', 'hardware',
     )
     list_select_related = ('hardware', 'outward_replacement')
-    list_filter = ('active', 'is_required', 'hidden_in_sales', 'tag')
+    list_filter = ('active', 'hidden_in_sales', 'tag')
     search_fields = ('code', 'name', 'tag', 'description')
     autocomplete_fields = ('hardware', 'outward_replacement', 'product_models')
     filter_horizontal = ('product_types', 'product_families')
@@ -290,7 +268,7 @@ class CustomizerAdmin(ModelAdmin):
                     ('מידע כללי', {
                         'fields': (
                             'code', 'name', 'description',
-                            'active', 'is_required', 'hidden_in_sales',
+                            'active', 'hidden_in_sales',
                             'tag', 'outward_replacement',
                         )
                     }),

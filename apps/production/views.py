@@ -245,11 +245,11 @@ def order_transfer_to_production(request, pk):
                     mark = order_item.mark or str(item_id)
                     deltas = item_deltas.get(item_id, {'delta_w': 0.0, 'delta_h': 0.0})
 
+                    from apps.engineering.models import ProductEngineeringRule
                     top_clearance = 0.3
-                    if order_item.group and order_item.group.product and order_item.group.product.product_family:
-                        raw_cl = order_item.group.product.product_family.leaf_top_clearance
-                        if raw_cl is not None:
-                            top_clearance = abs(float(raw_cl))
+                    if order_item.group and order_item.group.product:
+                        top_clearance = ProductEngineeringRule.resolve_for_product(
+                            order_item.group.product).leaf_top_clearance
 
                     # Сохранение габаритов: к замеренному внутреннему размеру прибавляем дельту
                     for field in ['height', 'width', 'wall']:
