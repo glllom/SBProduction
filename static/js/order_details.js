@@ -1228,7 +1228,11 @@ $(document).ready(function () {
             }
 
             const descHtml = spec['description'] ? ('<p class="small text-muted mb-2">' + spec['description'] + '</p>') : '';
-            const panelColorHtml = spec['color_panels'] ? (' (' + spec['color_panels'] + ')') : '';
+            let panelColorText = spec['color_panel_outside'] || '';
+            if (spec['is_door_inside_different_color'] && spec['color_panel_inside']) {
+                panelColorText += ' / ' + spec['color_panel_inside'];
+            }
+            const panelColorHtml = panelColorText ? (' (' + panelColorText + ')') : '';
             const frameColorHtml = spec['color_frames'] ? (' (' + spec['color_frames'] + ')') : '';
             const createdByHtml = spec['created_by_name'] ? ('ע״י: ' + spec['created_by_name']) : '';
 

@@ -315,11 +315,6 @@ class OrderForm(TooltipFormMixin, forms.ModelForm):
                 cleaned_data['color_panel_inside'] = c_out
                 cleaned_data['is_door_inside_different_color'] = False
 
-        # Если тумблер выключен, дублируем наружный цвет внутрь
-        if not diff_sides:
-            cleaned_data['color_panel_inside'] = c_out
-            cleaned_data['is_door_inside_different_color'] = False
-
         # Если коробки не красятся, сбрасываем краску коробки
         if not cleaned_data.get('is_frames_to_paint'):
             cleaned_data['color_frames'] = ''
@@ -353,7 +348,8 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
             'panel_paint_option', 'is_door_inside_different_color',
             'color_panel_outside', 'color_panel_inside',
             'frame_paint_option', 'color_frames',
-            'is_split_installation', 'comments'
+            'is_split_installation', 'is_special_detail',
+            'comments'
         ]
         widgets = {
             'panel_paint_option': forms.Select(
@@ -378,6 +374,7 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
                 attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'הערות לקבוצה...'}
             ),
             'is_split_installation': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_special_detail': forms.CheckboxInput(attrs={'class': 'form-check-input'})
         }
 
     def __init__(self, *args, **kwargs):
@@ -499,7 +496,7 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
             if not can_edit:
                 locked_fields = [
                     'product_type', 'product_family', 'series', 'front',
-                    'basic_color_frames', 'quantity', 'product', 'is_split_installation'
+                    'basic_color_frames', 'quantity', 'product', 'is_split_installation', 'is_special_detail'
                 ]
                 for f in locked_fields:
                     field = self.fields.get(f)
@@ -559,6 +556,7 @@ class OrderItemsGroupForm(TooltipFormMixin, forms.ModelForm):
                 cleaned_data['quantity'] = self.instance.quantity
                 cleaned_data['basic_color_frames'] = self.instance.basic_color_frames
                 cleaned_data['is_split_installation'] = self.instance.is_split_installation
+                cleaned_data['is_special_detail'] = self.instance.is_special_detail
 
                 if not getattr(self.instance, 'is_panel_color_tbd', False):
                     cleaned_data['panel_paint_option'] = self.instance.panel_paint_option
