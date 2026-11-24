@@ -23,6 +23,7 @@ urlpatterns = [
     path('order/<int:pk>/compare-snapshots/', views.order_compare_snapshots, name='order-compare-snapshots'),
 
     # ЧПУ, файлы и выгрузки
+    path('sync-usb/', views.sync_usb_view, name='sync_usb'),
     path('order/<int:pk>/production-data/', views.order_production_data, name='order-production-data'),
     path('api/bartender/confirm-print/', views.bartender_confirm_print, name='bartender-confirm-print'),
     path('order/<int:pk>/warehouse-setup/', views.order_warehouse_setup, name='order-warehouse-setup'),

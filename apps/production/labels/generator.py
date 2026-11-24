@@ -23,14 +23,15 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from apps.production.engine.cache import OrderReferenceCache
 from django.db import transaction
 
 from apps.catalog.models import Hardware, MachiningFeature
 from apps.engineering.models import HardwareMacroFile, PerimeterRoutingFile
 from apps.orders.models import Order, OrderItemsGroup
+from apps.production.engine.cache import OrderReferenceCache
 from apps.production.engine.calculators.base import ItemRuntimeState
 from apps.production.models import DoorLabel
+from apps.production.cnc import MachineContext, MachineRegistry
 
 # Теги материалов в SpecBOMItem, которые нужно игнорировать при сборе MachiningFeature фурнитуры
 _MATERIAL_BOM_TAGS = frozenset({
@@ -357,64 +358,25 @@ class DoorLabelGenerator:
             spec,
             engraving_data: Dict[str, Any],
     ) -> str:
-        """Формирует строку QR-кода под целевой станок ЧПУ (ACCORD_CUSTOM / ESSEPIGI / ACCORD_STD)."""
-        order_num = draft.get('order_number') or ''
-        mark = draft.get('item_mark') or '1'
-
-        # 1. Accord Custom Project File (в том числе при включённом флаге פרט מיוחד на наклейке 2)
-        if machine == DoorLabel.TargetMachine.ACCORD_CUSTOM:
-            return f"C:\\Ww8\\PROJECTS\\{order_num}\\d{mark}.pgmx"
-
-        w_mm = cls._cm_to_mm(float(draft.get('width') or spec.width or 0))
-        h_mm = cls._cm_to_mm(float(draft.get('height') or spec.height or 0))
-        lock_h = spec.lock_height or 0
-        hinges = spec.hinge_heights or []
-        hinges_str = ",".join(str(h) for h in hinges)
-        edge = draft.get('edge_type') or spec.wood_edge_type or 'STANDARD'
-        cnc_prog = draft.get('cnc_program') or ''
-        edge_shape_flag = int(draft.get('edge_shape', False))
-
-        # 2. Essepigi Command Syntax
-        if machine == DoorLabel.TargetMachine.ESSEPIGI:
-            if label_type in (DoorLabel.LabelType.PRE_ROUGHING, DoorLabel.LabelType.ROUGHING):
-                return f"PRG={cnc_prog};EDGE_SHAPE={edge_shape_flag};L={h_mm:g};W={w_mm:g};EDGE={edge}"
-
-            payload = (
-                f"CMD=LOCKS;L={h_mm:g};W={w_mm:g};"
-                f"EDGE={edge};LOCK_H={lock_h:g};HINGES={hinges_str}"
-            )
-            if engraving_data.get('icon_filename'):
-                payload += f";ENGRAVE={engraving_data['icon_filename']}"
-                for i in range(1, 6):
-                    val = engraving_data.get(f'p{i}')
-                    if val is not None:
-                        payload += f";P{i}={val}"
-            return payload
-
-        # 3. Accord Standard Macro Syntax
-        prog_path = (
-            f"C:\\Ww8\\PRG\\ROUTING\\{cnc_prog}.pgmx"
-            if cnc_prog
-            else "C:\\Ww8\\PRG\\MODELS\\STD_DOOR.pgmx"
+        """Делегирует сборку QR-строки зарегистрированному драйверу станка ЧПУ."""
+        driver = MachineRegistry.get(machine)
+        ctx = MachineContext(
+            order_number=str(draft.get('order_number') or ''),
+            item_mark=str(draft.get('item_mark') or '1'),
+            label_type=int(label_type),
+            leaf_role=int(draft.get('leaf_role', DoorLabel.LeafRole.SINGLE)),
+            width_mm=cls._cm_to_mm(float(draft.get('width') or spec.width or 0)),
+            height_mm=cls._cm_to_mm(float(draft.get('height') or spec.height or 0)),
+            thickness_mm=float(draft.get('thickness') or 40.0),
+            edge_type=str(draft.get('edge_type') or spec.wood_edge_type or 'STANDARD'),
+            edge_shape=bool(draft.get('edge_shape', False)),
+            cnc_program=str(draft.get('cnc_program') or ''),
+            lock_height=spec.lock_height,
+            hinge_heights=list(spec.hinge_heights or []),
+            engraving_data=engraving_data or {},
+            spec=spec,
         )
-        payload_parts = [
-            prog_path,
-            f"OP={int(label_type)}",
-            f"EDGE_SHAPE={edge_shape_flag}",
-            f"L={h_mm:g}",
-            f"W={w_mm:g}",
-            f"lock={lock_h:g}",
-        ]
-        payload_parts.extend(f"h{i + 1}={h:g}" for i, h in enumerate(hinges))
-
-        if engraving_data.get('icon_filename'):
-            payload_parts.append(f"engrave={engraving_data['icon_filename']}")
-            for i in range(1, 6):
-                val = engraving_data.get(f'p{i}')
-                if val is not None:
-                    payload_parts.append(f"p{i}={val}")
-
-        return "|".join(payload_parts)
+        return driver.build_qr_payload(ctx)
 
     @staticmethod
     def _collect_active_machining_features(

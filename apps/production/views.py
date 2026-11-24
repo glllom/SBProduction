@@ -18,7 +18,6 @@ from apps.catalog.models import Hardware
 from apps.engineering.models import (
     ProductEngineeringRule,
     ProductionStation,
-    SvgPattern,
 )
 from apps.orders.models import (
     Order,
@@ -32,10 +31,8 @@ from .models import DoorLabel, OrderStationNote, StationProgressSource
 from .services import (
     OrderProductionService,
     OrderValidationError,
-    OrderValidationService,
     ProductionDataService,
     TechnicalSpecService,
-    get_qr_base64,
 )
 from .tracking_services import StationTrackingService
 from .usb_sync import run_usb_sync
@@ -61,136 +58,6 @@ def extract_items_from_batches(batches_dict: dict, batch_filter: str = None) -> 
             continue
         items.extend(b_items)
     return items
-
-
-def enrich_report_doors_spec(items):
-    """
-    Размечает элементы для вывода в таблице дверей:
-    1. Помечает элементы сменившейся фурнитуры или основной группы (show_hardware_subhead).
-    2. Вычисляет addons_rowspan для одинаковых идущих подряд кастомизаторов/комментариев.
-    """
-    if not items:
-        return []
-
-    def get_group_key(item_dict):
-        return (
-            item_dict.get('product_family'),
-            item_dict.get('series'),
-            item_dict.get('front_name'),
-        )
-
-    def get_hw_key(item_dict):
-        return (
-            item_dict.get('lock_name'),
-            item_dict.get('hinge_name'),
-        )
-
-    def get_addons_signature(item_dict):
-        cmz = item_dict.get('doors_report_customizers') or []
-        comment = (item_dict.get('comment') or '').strip()
-        return json.dumps({
-            'c': comment,
-            'cmz': cmz,
-        }, sort_keys=True, default=str)
-
-    items_data = [
-        item.model_dump() if hasattr(item, 'model_dump') else (dict(item) if isinstance(item, dict) else item.dict())
-        for item in items
-    ]
-
-    prev_key = None
-    for item in items_data:
-        curr_key = (get_group_key(item), get_hw_key(item))
-        item['show_hardware_subhead'] = (curr_key != prev_key)
-        prev_key = curr_key
-
-    n = len(items_data)
-    i = 0
-    while i < n:
-        curr_group = get_group_key(items_data[i])
-        curr_hw = get_hw_key(items_data[i])
-        curr_sig = get_addons_signature(items_data[i])
-
-        run_len = 1
-        while (
-                i + run_len < n
-                and get_group_key(items_data[i + run_len]) == curr_group
-                and get_hw_key(items_data[i + run_len]) == curr_hw
-                and get_addons_signature(items_data[i + run_len]) == curr_sig
-        ):
-            run_len += 1
-
-        items_data[i]['addons_rowspan'] = run_len
-        for j in range(1, run_len):
-            items_data[i + j]['addons_rowspan'] = 0
-
-        i += run_len
-
-    return items_data
-
-
-def enrich_report_frames_spec(items):
-    """
-    Размечает элементы для вывода в таблице коробок:
-    1. Помечает элементы сменившейся фурнитуры (show_hardware_subhead) внутри группы профиля.
-    2. Вычисляет addons_rowspan для одинаковых идущих подряд кастомизаторов/комментариев с учетом FRAMES_REPORT.
-    """
-
-    def get_addons_signature(item_dict):
-        cmz = item_dict.get('frames_report_customizers', []) or []
-        comment = item_dict.get('comment', '') or ''
-        return json.dumps({
-            'c': str(comment),
-            'cmz': cmz,
-        }, sort_keys=True, default=str)
-
-    items_data = [
-        item.model_dump() if hasattr(item, 'model_dump') else (item if isinstance(item, dict) else item.dict())
-        for item in items
-    ]
-    n = len(items_data)
-
-    current_key = None
-    for item in items_data:
-        group_key = (item.get('product_family'), item.get('series'), item.get('frame'))
-        hw_key = (item.get('lock_name'), item.get('hinge_name'))
-
-        if current_key is None or current_key[0] != group_key or current_key[1] != hw_key:
-            item['show_hardware_subhead'] = True
-            current_key = (group_key, hw_key)
-        else:
-            item['show_hardware_subhead'] = False
-
-    i = 0
-    while i < n:
-        sig = get_addons_signature(items_data[i])
-        curr_group = (items_data[i].get('product_family'), items_data[i].get('series'), items_data[i].get('frame'))
-        curr_hw = (items_data[i].get('lock_name'), items_data[i].get('hinge_name'))
-
-        run_len = 1
-        while i + run_len < n:
-            next_group = (
-                items_data[i + run_len].get('product_family'),
-                items_data[i + run_len].get('series'),
-                items_data[i + run_len].get('frame'),
-            )
-            next_hw = (items_data[i + run_len].get('lock_name'), items_data[i + run_len].get('hinge_name'))
-
-            if (
-                    next_group != curr_group
-                    or next_hw != curr_hw
-                    or get_addons_signature(items_data[i + run_len]) != sig
-            ):
-                break
-            run_len += 1
-
-        items_data[i]['addons_rowspan'] = run_len
-        for j in range(1, run_len):
-            items_data[i + j]['addons_rowspan'] = 0
-
-        i += run_len
-
-    return items_data
 
 
 # === 1. Production Lifecycle & Status Actions ===
@@ -637,353 +504,6 @@ def order_production_data(request, pk, **kwargs):
 
 
 @login_required
-def station_report(request, pk):
-    """
-    Single entry point for all station HTML reports.
-    Supports individual station reports (e.g. ?station=FRAMES) and master print (?station=ALL).
-    Uses 'batch' URL parameters to filter by production batch.
-    """
-    order = get_object_or_404(Order, pk=pk)
-    station_code = request.GET.get('station') or request.GET.get('type')
-    requested_batches = request.GET.getlist('batch')
-
-    if station_code and station_code.upper() in ['PRESS', 'CUTTING_PRESS']:
-        return report_cutting_press(request, pk)
-
-    if station_code and station_code.upper() in ['FACING', 'CLADDING', 'FACING_REPORT']:
-        return report_facing(request, pk)
-
-    if not station_code:
-        station_code = 'ALL'
-
-    if order.status in [OrderStatus.PHASE1_PRODUCTION]:
-        stage_label = "שלב א'"
-    elif order.status in [OrderStatus.PHASE2_PRODUCTION, OrderStatus.PHASE1_READY]:
-        stage_label = "שלב ב'"
-    else:
-        stage_label = "קומפלט"
-
-    service = ProductionDataService(order)
-    barcode_data = f"{order.order_number};{order.status}"
-
-    # ==========================================
-    # Master Print Mode (ALL stations)
-    # ==========================================
-    if station_code.upper() in ['ALL', 'IN_PRODUCTION', 'FULL', 'FULL_PRODUCTION']:
-        stations = order.get_production_stations()
-        if not stations:
-            stations = list(
-                ProductionStation.objects.exclude(
-                    specification_type=ProductionStation.SpecType.NONE
-                ).filter(active=True)
-            )
-
-        sections = []
-        for station in stations:
-            phase = 'phase1' if station.is_phase1 else 'phase2'
-            try:
-                val_res = OrderValidationService.validate_for_report(order, station=station)
-                val_res.raise_if_invalid()
-                spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
-            except Exception as e:
-                errors = getattr(e, 'errors', [str(e)])
-                return render(request, 'production/report_validation_error.html', {
-                    'order': order,
-                    'errors': errors,
-                    'validation_errors': errors,
-                    'validation_type': 'PARTIAL' if phase == 'phase1' else 'FULL',
-                    'phase': phase,
-                    'report_label': station.label or station.name or "דוחות ייצור",
-                })
-
-            filtered_items = service.get_filtered_items(station=station)
-            filtered_item_ids = {item.id for item in filtered_items}
-
-            res = ProductionDataService.extract_report_items(spec_obj, requested_batches)
-            if res[0] is None:
-                report_items = []
-                batches_label = "לא נבחרה אצווה"
-            else:
-                report_items, batches_label = res
-
-            station_items = [
-                it for it in report_items
-                if (getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')) in filtered_item_ids
-            ]
-
-            if station_items or not order.groups.exists():
-                include_template = None
-                code_lower = station.code.lower() if station.code else ''
-                tmpl_lower = (station.template_name or '').lower()
-
-                if 'report_wood_frames' in tmpl_lower or code_lower in ['wood_frames', 'wooden_frames']:
-                    include_template = 'production/includes/report_wood_frames.html'
-                elif 'report_press' in tmpl_lower or code_lower in ['press', 'cutting_press']:
-                    include_template = 'production/includes/report_press.html'
-                elif 'alum_doors' in tmpl_lower or code_lower in ['doors', 'alum_doors']:
-                    include_template = 'production/includes/report_alum_doors.html'
-                elif 'alum_frames' in tmpl_lower or code_lower in ['alum_frames', '100']:
-                    include_template = 'production/includes/report_alum_frames.html'
-                elif 'cut_sheets' in tmpl_lower or code_lower in ['cut_sheets', 'sheets']:
-                    include_template = 'production/includes/report_cut_sheets.html'
-                elif 'facing' in tmpl_lower or code_lower in ['facing', 'cladding', 'facing_report']:
-                    include_template = 'production/includes/report_facing.html'
-                elif 'warehouse' in tmpl_lower or 'hardware' in tmpl_lower or code_lower in [
-                    'warehouse', 'hardware', 'pick_list'
-                ]:
-                    include_template = 'production/includes/report_warehouse_hardware.html'
-                elif 'carpentry' in tmpl_lower or code_lower in ['carpentry']:
-                    include_template = 'production/includes/report_carpentry.html'
-                elif 'glazing' in tmpl_lower or code_lower in ['glazing']:
-                    include_template = 'production/includes/report_glazing.html'
-                elif code_lower in ['frames']:
-                    if 'wood' in tmpl_lower:
-                        include_template = 'production/includes/report_wood_frames.html'
-                    else:
-                        include_template = 'production/includes/report_alum_frames.html'
-                elif station.template_name:
-                    base_name = station.template_name.split('/')[-1].replace('_report.html', '').replace('.html', '')
-                    if not base_name.startswith('report_'):
-                        base_name = f'report_{base_name}'
-                    include_template = f'production/includes/{base_name}.html'
-
-                if not include_template:
-                    include_template = 'production/includes/report_alum_frames.html'
-
-                if include_template == 'production/includes/report_facing.html':
-                    item_ids = [
-                        it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id')
-                        for it in station_items
-                    ]
-                    db_items = OrderItem.objects.filter(id__in=item_ids)
-                    img_map = {}
-                    for db_it in db_items:
-                        url = None
-                        if getattr(db_it, 'sketch', None):
-                            try:
-                                url = db_it.sketch.url
-                            except ValueError:
-                                pass
-                        elif getattr(db_it, 'sketch_url', None):
-                            url = db_it.sketch_url
-                        img_map[db_it.id] = url
-
-                    for it in station_items:
-                        it_id = it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id')
-                        if isinstance(it, dict):
-                            it['image_url'] = img_map.get(it_id)
-                        else:
-                            it.image_url = img_map.get(it_id)
-
-                enriched_frames = enrich_report_frames_spec(station_items)
-                enriched_doors = enrich_report_doors_spec(station_items)
-                panel_groups = (
-                    service.prepare_press_groups_data(station_items)
-                    if ('report_press' in include_template or code_lower in ['press', 'cutting_press'])
-                    else []
-                )
-                frame_groups = (
-                    service.prepare_wood_frames_report_data(station_items)
-                    if ('report_wood_frames' in include_template or code_lower in ['wood_frames', 'wooden_frames'])
-                    else []
-                )
-                hardware_summary = (
-                    service.get_warehouse_hardware_summary(station_items)
-                    if ('warehouse' in include_template or code_lower in ['warehouse', 'hardware', 'pick_list'])
-                    else []
-                )
-
-                barcode_data = f"{order.order_number};{station.code}"
-                is_portrait = include_template in [
-                    'production/includes/report_press.html',
-                    'production/includes/report_wood_frames.html',
-                ] or code_lower in ['press', 'cutting_press', 'wood_frames', 'wooden_frames']
-
-                sections.append({
-                    'station': station,
-                    'station_code': station.code,
-                    'station_comment': get_station_comment(order, station),
-                    'report_label': station.label or station.name,
-                    'batches_label': batches_label,
-                    'order_spec': spec_obj,
-                    'groups_data': service.prepare_grouped_data(station_items),
-                    'enriched_frames_items': enriched_frames,
-                    'enriched_doors_items': enriched_doors,
-                    'spec_items': station_items,
-                    'panel_groups': panel_groups,
-                    'frame_groups': frame_groups,
-                    'hardware_summary': hardware_summary,
-                    'include_template': include_template,
-                    'order_qr': get_qr_base64(barcode_data),
-                    'is_portrait': is_portrait,
-                })
-
-        return render(request, 'production/reports/master_report.html', {
-            'order': order,
-            'sections': sections,
-            'stage_label': stage_label,
-            'now': timezone.now(),
-        })
-
-    # ==========================================
-    # Individual Station Report Mode
-    # ==========================================
-    station = ProductionStation.objects.filter(code=station_code).first()
-    if not station:
-        if station_code == 'PHASE1_FRAMES':
-            station = ProductionStation.objects.filter(is_phase1=True).first()
-        elif station_code == 'PHASE2_DOORS':
-            station = ProductionStation.objects.filter(code__in=['DOORS', 'PRESS']).first()
-
-    phase = 'phase1' if (station and station.is_phase1) or station_code == 'PHASE1_FRAMES' else 'phase2'
-
-    try:
-        val_res = OrderValidationService.validate_for_report(order, report_type=station_code, station=station)
-        val_res.raise_if_invalid()
-        spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
-    except Exception as e:
-        errors = getattr(e, 'errors', [str(e)])
-        return render(request, 'production/report_validation_error.html', {
-            'order': order,
-            'errors': errors,
-            'validation_errors': errors,
-            'validation_type': 'PARTIAL' if phase == 'phase1' else 'FULL',
-            'phase': phase,
-            'report_label': (station.label if station else (station.name if station else station_code)) or "דוח ייצור",
-        })
-
-    res = ProductionDataService.extract_report_items(spec_obj, requested_batches)
-    if res[0] is None:
-        report_items = []
-        batches_label = "לא נבחרה אצווה"
-    else:
-        report_items, batches_label = res
-
-    is_wood_frames_station = (
-            (station_code and station_code.upper() in ['FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES'])
-            or (station and 'report_wood_frames.html' in (station.template_name or ''))
-    )
-
-    if is_wood_frames_station:
-        if station:
-            filtered_items = service.get_filtered_items(station=station)
-        else:
-            filtered_items = service.get_filtered_items(report_type=station_code)
-
-        filtered_item_ids = {item.id for item in filtered_items}
-        station_items = [
-            it for it in report_items
-            if (getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')) in filtered_item_ids
-        ]
-
-        frame_groups = service.prepare_wood_frames_report_data(station_items)
-        template_name = (
-            station.template_name
-            if (station and station.template_name)
-            else 'production/reports/report_wood_frames.html'
-        )
-        report_label = (station.label if station else None) or 'דו"ח משקופי עץ'
-
-        return render(request, template_name, {
-            'order': order,
-            'order_spec': spec_obj,
-            'batches_label': batches_label,
-            'frame_groups': frame_groups,
-            'station': station,
-            'station_comment': get_station_comment(order, station),
-            'report_label': report_label,
-            'now': timezone.now(),
-            'order_qr': get_qr_base64(barcode_data),
-            'barcode_text': barcode_data,
-        })
-
-    if station_code and station_code.upper() in ['WAREHOUSE', 'HARDWARE', 'PICK_LIST']:
-        from .warehouse_service import WarehousePackingSlipService
-        sections, _ = WarehousePackingSlipService.get_grouped_items_for_ui(order)
-        return render(request, 'production/reports/report_warehouse_hardware.html', {
-            'order': order,
-            'sections': sections,
-            'report_label': 'דו"ח פירזולים / ליקוט מחסן',
-            'now': timezone.now(),
-            'order_qr': get_qr_base64(f"{order.order_number};WAREHOUSE"),
-        })
-
-    if station:
-        filtered_items = service.get_filtered_items(station=station)
-        template_name = station.template_name
-        report_label = station.label or station.name
-    else:
-        filtered_items = service.get_filtered_items(report_type=station_code)
-        template_name = 'production/reports/alum_frames_report.html'
-        report_label = station_code
-
-    filtered_item_ids = {item.id for item in filtered_items}
-
-    station_items = [
-        it for it in report_items
-        if (getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')) in filtered_item_ids
-    ]
-
-    enriched_doors_items = enrich_report_doors_spec(station_items)
-    enriched_frames_items = enrich_report_frames_spec(station_items)
-
-    return render(request, template_name, {
-        'order': order,
-        'order_spec': spec_obj,
-        'spec_json': spec_obj.model_dump(by_alias=True) if hasattr(spec_obj, 'model_dump') else spec_obj,
-        'station': station,
-        'station_comment': get_station_comment(order, station),
-        'report_label': report_label,
-        'batches_label': batches_label,
-        'groups_data': service.prepare_grouped_data(station_items),
-        'stage_label': stage_label,
-        'now': timezone.now(),
-        'enriched_doors_items': enriched_doors_items,
-        'enriched_frames_items': enriched_frames_items,
-        'order_qr': get_qr_base64(barcode_data),
-        'barcode_text': barcode_data,
-        'spec_items': station_items,
-        'panel_groups': service.prepare_press_groups_data(station_items),
-    })
-
-
-@login_required
-def report_cutting_press(request, pk):
-    order = get_object_or_404(Order, pk=pk)
-    order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
-
-    requested_batches = request.GET.getlist('batch')
-    res = ProductionDataService.extract_report_items(order_spec, requested_batches)
-    if res[0] is None:
-        report_items = []
-        batches_label = "לא נבחרה אצווה"
-    else:
-        report_items, batches_label = res
-
-    service = ProductionDataService(order)
-
-    station = ProductionStation.objects.filter(code__in=['PRESS', 'CUTTING_PRESS']).first()
-    if station:
-        filtered_items = service.get_filtered_items(station=station)
-        valid_ids = {item.id for item in filtered_items}
-        report_items = [
-            it for it in report_items
-            if (it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id')) in valid_ids
-        ]
-
-    panel_groups = service.prepare_press_groups_data(report_items)
-
-    return render(request, 'production/reports/report_press.html', {
-        'order': order,
-        'order_spec': order_spec,
-        'batches_label': batches_label,
-        'panel_groups': panel_groups,
-        'svg_patterns': SvgPattern.objects.all(),
-        'now': timezone.now(),
-    })
-
-
-@login_required
 def spec_json_preview(request, pk):
     """Direct inspection endpoint for the latest JSON specification snapshot."""
     order = get_object_or_404(Order, pk=pk)
@@ -1290,43 +810,6 @@ def bartender_confirm_print(request):
 
 
 @login_required
-def report_wood_frames(request, pk):
-    order = get_object_or_404(Order, pk=pk)
-    order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
-
-    requested_batches = request.GET.getlist('batch')
-    res = ProductionDataService.extract_report_items(order_spec, requested_batches)
-    report_items = res[0] if res[0] is not None else []
-
-    service = ProductionDataService(order)
-    station = ProductionStation.objects.filter(
-        code__in=['FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES']
-    ).first()
-    filtered_items = (
-        service.get_filtered_items(station=station)
-        if station
-        else service.get_filtered_items(report_type='WOOD_FRAMES')
-    )
-    filtered_item_ids = {item.id for item in filtered_items}
-    station_items = [
-        it for it in report_items
-        if (getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')) in filtered_item_ids
-    ]
-
-    frame_groups = service.prepare_wood_frames_report_data(station_items)
-    barcode_data = f"{order.order_number};FRAMES"
-
-    return render(request, 'production/reports/report_wood_frames.html', {
-        'order': order,
-        'order_spec': order_spec,
-        'batches_label': res[1] if res[0] is not None else "לא נבחרה אצווה",
-        'frame_groups': frame_groups,
-        'order_qr': get_qr_base64(barcode_data),
-        'now': timezone.now(),
-    })
-
-
-@login_required
 def order_warehouse_setup(request, pk):
     """
     Управление накладной склада:
@@ -1476,61 +959,6 @@ def order_warehouse_setup(request, pk):
         'is_locked': is_locked,
         'is_admin': is_admin,
         'categories': OrderWarehouseItem.Category.choices,
-    })
-
-
-@login_required
-def report_facing(request, pk):
-    """Специализированный отчет для облицовок (חיפויים) с выводом эскиза на всю страницу."""
-    order = get_object_or_404(Order, pk=pk)
-    station = ProductionStation.objects.filter(code__in=['FACING', 'CLADDING', 'FACING_REPORT']).first()
-
-    order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
-    requested_batches = request.GET.getlist('batch')
-    res = ProductionDataService.extract_report_items(order_spec, requested_batches)
-    report_items, batches_label = res if res[0] is not None else ([], "לא נבחרה אצווה")
-
-    report_item_ids = {
-        (it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id'))
-        for it in report_items
-    }
-
-    service = ProductionDataService(order)
-    filtered_items = service.get_filtered_items(station=station) if station else []
-
-    valid_items = [
-        item for item in filtered_items
-        if item.id in report_item_ids
-    ] if requested_batches else filtered_items
-
-    facings_data = []
-    for item in valid_items:
-        url = None
-        if hasattr(item, 'sketch') and item.sketch:
-            try:
-                url = item.sketch.url
-            except ValueError:
-                pass
-        elif hasattr(item, 'sketch_url') and item.sketch_url:
-            url = item.sketch_url
-
-        facings_data.append({
-            'item': item,
-            'group': item.group,
-            'image_url': url,
-        })
-
-    barcode_data = f"{order.order_number};FACING"
-
-    return render(request, 'production/reports/report_facing.html', {
-        'order': order,
-        'facings_data': facings_data,
-        'station': station,
-        'station_comment': get_station_comment(order, station),
-        'report_label': (station.label if station else "דוח חיפויים"),
-        'batches_label': batches_label,
-        'order_qr': get_qr_base64(barcode_data),
-        'now': timezone.now(),
     })
 
 
@@ -1747,6 +1175,189 @@ def save_station_note(request, order_id):
         'station_id': station.id,
         'comment': saved_comment,
     })
+
+
+def _build_station_report_context(order, station, station_code, spec_obj, service, requested_batches, stage_label,
+                                  is_master=False):
+    """Общий хелпер подготовки ReportContext для одной станции (автономно или в Master Print)."""
+    from apps.production.reports import ReportContext
+
+    filtered_db_items = (
+        service.get_filtered_items(station=station)
+        if station
+        else service.get_filtered_items(report_type=station_code)
+    )
+    filtered_item_ids = {item.id for item in filtered_db_items}
+
+    if spec_obj is not None:
+        res = ProductionDataService.extract_report_items(spec_obj, requested_batches)
+        report_items, batches_label = (res[0], res[1]) if res[0] is not None else ([], "לא נבחרה אצווה")
+        station_items = [
+            it for it in report_items
+            if (getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')) in filtered_item_ids
+        ]
+    else:
+        station_items, batches_label = [], ""
+
+    code_for_qr = station.code if station else (station_code or order.status)
+    barcode_data = f"{order.order_number};{code_for_qr}"
+
+    return ReportContext(
+        order=order,
+        order_spec=spec_obj,
+        station=station,
+        station_code=station_code or '',
+        station_items=station_items,
+        filtered_db_items=filtered_db_items,
+        batches_label=batches_label,
+        stage_label=stage_label,
+        station_comment=get_station_comment(order, station),
+        order_qr=get_qr_base64(barcode_data),
+        barcode_text=barcode_data,
+        requested_batches=requested_batches,
+        is_master=is_master,
+    )
+
+
+def _resolve_stage_label(order) -> str:
+    """Возвращает текстовую метку этапа производства для шапки отчёта."""
+    if order.status == OrderStatus.PHASE1_PRODUCTION:
+        return "שלב א'"
+    if order.status in (OrderStatus.PHASE2_PRODUCTION, OrderStatus.PHASE1_READY):
+        return "שלב ב'"
+    return "קומפלט"
+
+
+@login_required
+def station_report(request, pk):
+    """
+    Единая точка входа для всех печатных HTML-отчётов станций.
+    Поддерживает индивидуальный отчёт (?station=<CODE>) и сводный Master Print (?station=ALL).
+    Логика подготовки данных и выбор шаблона делегируются зарегистрированному ReportRegistry.
+    """
+    from apps.production.reports import ReportRegistry
+
+    order = get_object_or_404(Order, pk=pk)
+    station_code = request.GET.get('station') or request.GET.get('type') or 'ALL'
+    requested_batches = request.GET.getlist('batch')
+    stage_label = _resolve_stage_label(order)
+    service = ProductionDataService(order)
+
+    # 1. Master Print Mode (все активные станции заказа в одном документе)
+    if station_code.upper() in ('ALL', 'IN_PRODUCTION', 'FULL', 'FULL_PRODUCTION'):
+        stations = order.get_production_stations()
+        if not stations:
+            stations = list(
+                ProductionStation.objects.exclude(
+                    specification_type=ProductionStation.SpecType.NONE
+                ).filter(active=True)
+            )
+
+        sections = []
+        for station in stations:
+            phase = 'phase1' if station.is_phase1 else 'phase2'
+            try:
+                val_res = OrderValidationService.validate_for_report(order, station=station)
+                val_res.raise_if_invalid()
+                spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
+            except Exception as e:
+                errors = getattr(e, 'errors', [str(e)])
+                return render(request, 'production/report_validation_error.html', {
+                    'order': order,
+                    'errors': errors,
+                    'validation_errors': errors,
+                    'validation_type': 'PARTIAL' if phase == 'phase1' else 'FULL',
+                    'phase': phase,
+                    'report_label': station.label or station.name or "דוחות ייצור",
+                })
+
+            ctx = _build_station_report_context(
+                order, station, station.code, spec_obj, service, requested_batches, stage_label, is_master=True
+            )
+            if ctx.station_items or not order.groups.exists():
+                handler = ReportRegistry.resolve_for_station(station=station, station_code=station.code)
+                sections.append(handler.build_master_section(ctx))
+
+        return render(request, 'production/reports/master_report.html', {
+            'order': order,
+            'sections': sections,
+            'stage_label': stage_label,
+            'now': timezone.now(),
+        })
+
+    # 2. Individual Station Report Mode
+    station = ProductionStation.objects.filter(code__iexact=station_code).first()
+    if not station:
+        if station_code.upper() == 'PHASE1_FRAMES':
+            station = ProductionStation.objects.filter(is_phase1=True).first()
+        elif station_code.upper() == 'PHASE2_DOORS':
+            station = ProductionStation.objects.filter(code__in=['DOORS', 'PRESS']).first()
+
+    handler = ReportRegistry.resolve_for_station(station=station, station_code=station_code)
+    phase = 'phase1' if (station and station.is_phase1) or station_code.upper() == 'PHASE1_FRAMES' else 'phase2'
+
+    spec_obj = None
+    if handler.requires_spec:
+        try:
+            val_res = OrderValidationService.validate_for_report(order, report_type=station_code, station=station)
+            val_res.raise_if_invalid()
+            spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase=phase)
+        except Exception as e:
+            errors = getattr(e, 'errors', [str(e)])
+            return render(request, 'production/report_validation_error.html', {
+                'order': order,
+                'errors': errors,
+                'validation_errors': errors,
+                'validation_type': 'PARTIAL' if phase == 'phase1' else 'FULL',
+                'phase': phase,
+                'report_label': (station.label if station else station_code) or "דוח ייצור",
+            })
+
+    ctx = _build_station_report_context(
+        order, station, station_code, spec_obj, service, requested_batches, stage_label, is_master=False
+    )
+    return render(request, handler.resolve_template_name(ctx), handler.build_context(ctx))
+
+
+def _render_named_report(request, pk: int, default_code: str, fallback_codes: tuple[str, ...]):
+    """Тонкая обёртка для сохранения обратной совместимости именных URL (press, wood_frames, facing)."""
+    from apps.production.reports import ReportRegistry
+
+    order = get_object_or_404(Order, pk=pk)
+    station = ProductionStation.objects.filter(code__in=fallback_codes).first()
+    handler = ReportRegistry.resolve_for_station(station=station, station_code=default_code)
+    spec_obj, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase2')
+    service = ProductionDataService(order)
+
+    ctx = _build_station_report_context(
+        order=order,
+        station=station,
+        station_code=default_code,
+        spec_obj=spec_obj,
+        service=service,
+        requested_batches=request.GET.getlist('batch'),
+        stage_label=_resolve_stage_label(order),
+        is_master=False,
+    )
+    return render(request, handler.resolve_template_name(ctx), handler.build_context(ctx))
+
+
+@login_required
+def report_cutting_press(request, pk):
+    """Автономный отчёт участка пресса (делегирует в PressStationReport)."""
+    return _render_named_report(request, pk, 'PRESS', ('PRESS', 'CUTTING_PRESS'))
+
+
+@login_required
+def report_wood_frames(request, pk):
+    """Автономный отчёт деревянных коробок (делегирует в WoodFramesStationReport)."""
+    return _render_named_report(request, pk, 'WOOD_FRAMES', ('FRAMES', 'WOOD_FRAMES', 'WOODEN_FRAMES'))
+
+
+@login_required
+def report_facing(request, pk):
+    """Автономный отчёт облицовок с эскизами (делегирует в FacingStationReport)."""
+    return _render_named_report(request, pk, 'FACING', ('FACING', 'CLADDING', 'FACING_REPORT'))
 
 
 @login_required

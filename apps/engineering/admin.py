@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.db import models
 from django_json_widget.widgets import JSONEditorWidget
@@ -171,19 +172,61 @@ class HingeStandardHeightAdmin(ModelAdmin):
     display_heights.short_description = 'מידות גובה'
 
 
+class ProductionStationAdminForm(forms.ModelForm):
+    """
+    Форма админки станции с динамическими выпадающими списками из реестров
+    MachineRegistry и ReportRegistry (новые модули появляются без миграций).
+    """
+
+    target_machine = forms.ChoiceField(
+        label='מכונת CNC משויכת',
+        required=False,
+        help_text='דרייברים רשומים אוטומטית מתוך apps/production/cnc/',
+    )
+    report_handler = forms.ChoiceField(
+        label='מודול דו"ח (Handler)',
+        required=False,
+        help_text='מודולי דוחות רשומים אוטומטית מתוך apps/production/reports/',
+    )
+
+    class Meta:
+        model = ProductionStation
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.production.cnc import MachineRegistry
+        from apps.production.reports import ReportRegistry
+
+        machine_choices = list(MachineRegistry.choices(include_empty=True))
+        current_machine = getattr(self.instance, 'target_machine', '') or ''
+        if current_machine and current_machine not in {c[0] for c in machine_choices}:
+            machine_choices.append((current_machine, f"{current_machine} (לא רשום)"))
+        self.fields['target_machine'].choices = machine_choices
+
+        report_choices = list(ReportRegistry.choices(include_empty=True))
+        current_handler = getattr(self.instance, 'report_handler', '') or ''
+        if current_handler and current_handler not in {c[0] for c in report_choices}:
+            report_choices.append((current_handler, f"{current_handler} (לא רשום)"))
+        self.fields['report_handler'].choices = report_choices
+
+
 @admin.register(ProductionStation)
 class ProductionStationAdmin(ModelAdmin):
-    list_display = ('name', 'code', 'order', 'specification_type', 'target_machine', 'alternative_station', 'is_phase1',
-                    'active')
+    form = ProductionStationAdminForm
+    list_display = (
+        'name', 'code', 'order', 'specification_type', 'report_handler',
+        'target_machine', 'alternative_station', 'is_phase1', 'active',
+    )
     list_editable = ('order', 'active')
-    list_filter = ('active', 'specification_type', 'target_machine', 'is_phase1')
+    list_filter = ('active', 'specification_type', 'report_handler', 'target_machine', 'is_phase1')
     list_select_related = ('alternative_station',)
     search_fields = ('name', 'code', 'label', 'description')
     ordering = ('order', 'name')
     autocomplete_fields = ('alternative_station',)
     fieldsets = (
         ('מידע כללי', {'fields': (('name', 'code'), ('order', 'is_phase1', 'active'), 'description')}),
-        ('מפרט וסוג פלט', {'fields': ('specification_type', 'template_name')}),
+        ('מפרט וסוג פלט', {'fields': ('specification_type', 'report_handler', 'template_name')}),
         ('ניתוב וציוד CNC', {'fields': ('target_machine', 'alternative_station')}),
         ('כפתורים והגדרות ממשק', {'classes': ('collapse',), 'fields': ('label', 'hint')}),
     )

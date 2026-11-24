@@ -25,8 +25,7 @@ class ProductionStation(models.Model):
     target_machine = models.CharField(
         'מכונת CNC משויכת',
         max_length=32,
-        choices=TargetMachine.choices,
-        default=TargetMachine.NONE,
+        default='',
         blank=True,
         help_text='סוג המכונה ליצירת קוד QR ופקודות CNC',
     )
@@ -45,6 +44,15 @@ class ProductionStation(models.Model):
         default=SpecType.NONE,
         help_text='0 = ללא, 1-3 = מדבקות CNC, 10 = דו"ח מודפס',
     )
+
+    report_handler = models.CharField(
+        'מודול דו"ח (Handler)',
+        max_length=64,
+        blank=True,
+        default='',
+        help_text='מזהה מודול הדו"ח מתוך apps/production/reports (ריק = ברירת מחדל גנרית לפי תבנית)',
+    )
+
     template_name = models.CharField('שם תבנית HTML', max_length=255, blank=True,
                                      help_text='נתיב לקובץ ה-html של הדו"ח')
     is_phase1 = models.BooleanField('שלב א', default=False, help_text='האם תחנה זו שייכת לשלב א (ייצור מקדים/משקופים)')
