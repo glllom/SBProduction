@@ -279,7 +279,6 @@ class TechnicalSpecService:
                 'group__product__product_family',
                 'group__product__product_family__product_type',
                 'group__product__series',
-                'group__product__tech_data',
                 'group__product__bom',
                 'group__product__bom__frame',
                 'group__product__bom__covering',

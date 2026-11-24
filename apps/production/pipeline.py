@@ -1908,19 +1908,6 @@ class CustomizerPuzzleStep(SpecStep):
             })
 
 
-class TechnicalDataStep(SpecStep):
-    priority = 800
-
-    def process(self, context: SpecContext):
-        product = context.product
-        spec = context.spec
-        if product and hasattr(product, 'tech_data'):
-            tech_data = product.tech_data
-            if tech_data:
-                spec.cnc_program = tech_data.cnc_program_name or ""
-                spec.tech_notes = tech_data.technical_notes or ""
-
-
 class MediaStep(SpecStep):
     priority = 900
 
@@ -1957,8 +1944,7 @@ class SpecPipeline:
             CustomizerPuzzleStep(),
             MeasurerDataStep(),
             CustomizersFormattingStep(),  # <-- Priority 700
-            MachiningRoutingStep(),  # <-- Priority 750
-            TechnicalDataStep(),  # <-- Priority 800
+            MachiningRoutingStep(),
             MediaStep(),  # <-- Priority 900
             DoorLabelEnrichStep(),  # <-- Priority 1100
         ]
