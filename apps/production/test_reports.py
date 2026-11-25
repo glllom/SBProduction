@@ -1,11 +1,12 @@
-from django.test import TestCase, RequestFactory
-from django.contrib.auth import get_user_model
-from django.template.loader import render_to_string
-from django.urls import reverse
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
+from django.template.loader import render_to_string
+from django.test import TestCase
+from django.urls import reverse
+
+from apps.engineering.models import ProductionStation
 from apps.orders.models import Order, OrderStatus
-from apps.production.models import ProductionStation
 
 User = get_user_model()
 
@@ -158,19 +159,22 @@ class MasterReportTemplateTests(TestCase):
         mock_get_spec.return_value = (None, False)
 
         press_station = ProductionStation.objects.create(
-            name='פרס', code='PRESS', label='פרס', template_name='production/reports/report_press.html', active=True, has_specification=True
+            name='פרס', code='PRESS', label='פרס', template_name='production/reports/report_press.html', active=True,
+            has_specification=True
         )
         wood_frames_station = ProductionStation.objects.create(
-            name='משקופים', code='FRAMES', label='משקופים', template_name='production/reports/report_wood_frames.html', active=True, has_specification=True
+            name='משקופים', code='FRAMES', label='משקופים', template_name='production/reports/report_wood_frames.html',
+            active=True, has_specification=True
         )
         alum_doors_station = ProductionStation.objects.create(
-            name='דלתות', code='alum_doors', label='דלתות', template_name='production/reports/alum_doors_report.html', active=True, has_specification=True
+            name='דלתות', code='alum_doors', label='דלתות', template_name='production/reports/alum_doors_report.html',
+            active=True, has_specification=True
         )
 
         response = self.client.get(reverse('production:station-report', kwargs={'pk': self.order.id}) + "?station=ALL")
         self.assertEqual(response.status_code, 200)
         sections = response.context['sections']
-        
+
         sec_map = {s['station_code']: s for s in sections}
         if 'PRESS' in sec_map:
             self.assertTrue(sec_map['PRESS']['is_portrait'])

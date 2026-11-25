@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.db import transaction
 
 from catalog.models import ProductFamily, Hardware
-from production.models import HingeStandardHeight
+from apps.engineering.models import HingeStandardHeight
 
 
 def import_hinge_standards():

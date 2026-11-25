@@ -4,10 +4,10 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.engineering.models import ProductionStation
 from apps.orders.models import Order, OrderItem, OrderItemsGroup
 from apps.production.models import (
     ItemStationProgress,
-    ProductionStation,
     StationProgressSource,
     StationScanAuditLog,
     StationStatus,

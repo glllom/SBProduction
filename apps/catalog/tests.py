@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
-from apps.production.models import BOM
+from apps.engineering.models import BOM
 from .models import ProductType, ProductFamily, Series, Front, Color, ProductModel, Customizer, Material
 from .serializers import (
     SeriesSerializer, FrontSerializer, FrameColorSerializer, ProductFamilySerializer,

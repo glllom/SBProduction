@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from apps.catalog.models import ProductFamily, Hardware
-from apps.production.models import HingeStandardHeight
+from apps.engineering.models import HingeStandardHeight
 
 
 class Command(BaseCommand):
