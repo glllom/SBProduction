@@ -250,24 +250,3 @@ class StationScanAuditLog(models.Model):
     def __str__(self):
         status_flag = "OK" if self.is_success else "ERR"
         return f"[{status_flag}] {self.raw_payload} ({self.created_at:%d.%m %H:%M})"
-
-
-# --- Временные реэкспорты для обратной совместимости (уберём на Этапе 4-5) ---
-from apps.engineering.models import (  # noqa: E402, F401
-    BOM,
-    CustomizerMacroFile,
-    CustomizerProductionStation,
-    CustomizerPuzzleMapping,
-    FrontEngravingFile,
-    HardwareMacroFile,
-    HingeStandardHeight,
-    LockStandardHeight,
-    PerimeterRoutingFile,
-    ProductEngineeringRule,
-    ProductionRoute,
-    ProductionRouteStep,
-    ProductionStation,
-    PuzzleBlockPrototype,
-    PuzzlePreset,
-    SvgPattern,
-)

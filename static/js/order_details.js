@@ -196,6 +196,7 @@ $(document).ready(function () {
             $groupModal.find('input[name="quantity"]').val($btn.attr('data-quantity'));
             $groupModal.find('textarea[name="comments"]').val($btn.attr('data-comments'));
             $groupModal.find('input[name="is_split_installation"]').prop('checked', $btn.attr('data-is-split') === 'true');
+            $groupModal.find('input[name="is_special_detail"]').prop('checked', $btn.attr('data-is-special-detail') === 'true');
 
             const panelPaint = $btn.attr('data-panel-paint-option') || 'MAIN_COLOR';
             $groupModal.find('select[name="panel_paint_option"]').val(panelPaint).trigger('change');
@@ -235,7 +236,7 @@ $(document).ready(function () {
             const structuralSelectors =
                 'select[name="product_type"], select[name="product_family"], select[name="series"], ' +
                 'select[name="front"], select[name="basic_color_frames"], select[name="product"], ' +
-                'input[name="quantity"], input[name="is_split_installation"]';
+                'input[name="quantity"], input[name="is_split_installation"], input[name="is_special_detail"]';
 
             if (!canEditGroup) {
                 $groupModal.find(structuralSelectors).prop('disabled', true);
@@ -264,6 +265,7 @@ $(document).ready(function () {
             $form[0].reset();
 
             $groupModal.find('input, select, textarea').prop('disabled', false);
+            $groupModal.find('input[name="is_special_detail"]').prop('checked', false);
             $groupModal.find('.alert-grace-period').remove();
             $groupModal.find('select').removeAttr('data-initial-value');
             $groupModal.find('.product-info-display').html('<small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>');

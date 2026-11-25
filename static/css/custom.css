@@ -138,3 +138,7 @@
     padding-right: 0;
     padding-left: 0;
 }
+
+.group-card .table > tbody > tr:last-child > td {
+    border-bottom: 0;
+}

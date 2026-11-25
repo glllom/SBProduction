@@ -154,21 +154,6 @@
                             </div>
                         </div>
                         <!-- Row 5: התקנה מפוצלת והערות -->
-                        <div class="col-md-4 d-flex align-items-center">
-                            <div class="form-check form-switch m-0 pt-2 d-flex align-items-top gap-2"
-                                 data-bs-toggle="tooltip"
-                                 title="{{ group_form.is_split_installation.help_text|default:'התקנה מפוצלת: שלב א משקופים, שלב ב דלתות' }}">
-                                {{ group_form.is_split_installation }}
-                                <label class="form-check-label fw-bold mb-0"
-                                       for="{{ group_form.is_split_installation.id_for_label }}">
-                                    התקנה מפוצלת <i class="bi bi-info-circle help-hint-icon"></i>
-                                </label>
-                            </div>
-                        </div>
-                        <div class="col-md-8">
-                            <label class="form-label fw-semibold small text-muted mb-1">הערות לקבוצה:</label>
-                            {{ group_form.comments }}
-                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">

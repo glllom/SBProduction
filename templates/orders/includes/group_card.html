@@ -7,11 +7,6 @@
          data-family-id="{{ group.product.product_family.id }}"
          data-type-id="{{ group.product.product_family.product_type.id }}"
          data-group-details="{{ group.product.product_family.name }} / {{ group.series.name }}">
-        <style>
-            .group-card .table > tbody > tr:last-child > td {
-                border-bottom: 0;
-            }
-        </style>
         <!-- Единая шапка группы: диапазон дверей, модель и статус справа; меню и сворачивание слева -->
         <div class="card-header bg-body border-0 py-2 px-3 d-flex justify-content-between align-items-center gap-2">
             <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1 cursor-pointer sb-group-header-toggle rounded-2 px-1"
@@ -33,6 +28,15 @@
                 <h5 class="mb-0 fw-bold text-dark">{{ group.product.name|default:"דגם לא נבחר" }}</h5>
                 {% if group.is_split_installation %}
                     <span class="sb-badge-soft sb-info">התקנה מפוצלת (שלב א)</span>
+                {% endif %}
+                {% if group.is_special_detail %}
+                    <span class="sb-badge-soft"
+                          style="background-color: rgba(111, 66, 193, 0.12);
+                                 color: #6f42c1"
+                          data-bs-toggle="tooltip"
+                          title="פרט מיוחד — מדבקה 2 תופנה לפרויקט ידני ב-Accord">
+                        <i class="bi bi-wrench-adjustable me-1"></i>פרט מיוחד
+                    </span>
                 {% endif %}
                 {% if group.production_state == 'WAITING' %}
                     <span class="sb-badge-soft sb-warning">
@@ -89,6 +93,7 @@
                                         data-quantity="{{ group.quantity }}"
                                         data-comments="{{ group.comments|default:'' }}"
                                         data-is-split="{{ group.is_split_installation|yesno:'true,false' }}"
+                                        data-is-special-detail="{{ group.is_special_detail|yesno:'true,false' }}"
                                         data-panel-paint-option="{{ group.panel_paint_option }}"
                                         data-is-diff-sides="{{ group.is_door_inside_different_color|yesno:'true,false' }}"
                                         data-color-panel-outside="{{ group.color_panel_outside|default:'' }}"
