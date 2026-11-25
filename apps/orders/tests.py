@@ -400,7 +400,7 @@ class RequiredCustomizersOrderTests(TestCase):
 
     def test_product_get_required_customizers_sources(self):
         """Test ProductModel.get_required_customizers combines direct M2M, BOM M2M, and is_required=True."""
-        from apps.production.models import BOM
+        from apps.engineering.models import BOM
 
         # 1. Direct product required customizer
         c1 = Customizer.objects.create(code='CUST1', name='Cust 1', tag='tag1')

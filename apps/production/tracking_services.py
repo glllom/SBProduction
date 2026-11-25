@@ -356,7 +356,6 @@ class StationTrackingService:
         отсортированный по срочности (дате завершения).
         """
         from apps.orders.models import Order
-        from apps.production.models import ProductionStation, ItemStationProgress, StationStatus
 
         station = ProductionStation.objects.filter(code__iexact=station_code).first()
         if not station:
