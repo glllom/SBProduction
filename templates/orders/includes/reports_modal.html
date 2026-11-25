@@ -126,6 +126,8 @@
                                                     title="{% if station.note_text %}הערה קיימת:
 
 
+
+
 												        {{ station.note_text }}{% else %}הוסף הערה לדו&quot;ח {{ station.label|default:station.name }}{% endif %}">
                                                 <i class="bi bi-pencil"></i>
                                             </button>
@@ -213,21 +215,6 @@
                                             class="btn btn-primary btn-sm text-start btn-generate-action"
                                             data-url="{% url 'production:station-report' order.pk %}?station=ALL">
                                         <i class="bi bi-tag-fill me-1"></i><strong>כל המדבקות</strong>
-                                    </button>
-                                {% endif %}
-                                {% if order.has_split_installation and order.status == 'PHASE1_PRODUCTION' %}
-                                    <button type="button"
-                                            class="btn btn-outline-secondary btn-sm text-start btn-generate-action disabled opacity-50"
-                                            disabled
-                                            title="לא זמין בשלב א'"
-                                            data-url="{% url 'production:export-labels-html' order.id %}">
-                                        <i class="bi bi-filetype-csv me-1"></i>ייצוא CSV (CNC)
-                                    </button>
-                                {% else %}
-                                    <button type="button"
-                                            class="btn btn-outline-secondary btn-sm text-start btn-generate-action"
-                                            data-url="{% url 'production:export-labels-html' order.id %}">
-                                        <i class="bi bi-filetype-csv me-1"></i>ייצוא CSV (CNC)
                                     </button>
                                 {% endif %}
                                 <button type="button"

@@ -2,20 +2,14 @@ import csv
 import io
 
 from django.contrib import admin
-from django.db import models
 from django.http import HttpResponse
 from django.urls import reverse
 from django.utils.html import format_html
-from django_json_widget.widgets import JSONEditorWidget
 from unfold.admin import ModelAdmin, TabularInline, StackedInline
 
 from apps.production.models import DoorLabel, ItemStationProgress
-from .models import Order, OrderChangeLog, OrderItem, OrderComponentSelection
+from .models import Order, OrderChangeLog, OrderItem
 from .models import OrderItemsGroup, OrderItemsGroupCustomizer, GroupSpecification, GroupSpecificationCustomizer
-
-JSON_FORMFIELD_OVERRIDES = {
-    models.JSONField: {'widget': JSONEditorWidget},
-}
 
 
 @admin.action(description='ייצוא השורות שנבחרו לקובץ CSV')
@@ -97,7 +91,7 @@ class OrderItemsGroupInline(StackedInline):
                 ('product', 'quantity'),
                 ('production_state', 'batch_date', 'batch_number'),
                 ('series', 'front'),
-                ('basic_color_frames', 'is_split_installation'),
+                ('basic_color_frames', 'is_split_installation', 'is_special_detail'),
             )
         }),
         ('צביעת כנף', {
@@ -132,6 +126,7 @@ class OrderItemsGroupAdmin(ModelAdmin):
         "panel_paint_option",
         "frame_paint_option",
         "is_split_installation",
+        'is_special_detail'
     )
 
     list_display_links = ("id",)
@@ -143,6 +138,7 @@ class OrderItemsGroupAdmin(ModelAdmin):
         "panel_paint_option",
         "frame_paint_option",
         "is_split_installation",
+        'is_special_detail',
         "series",
         "product",
     )
@@ -252,12 +248,11 @@ class OrderAdmin(ModelAdmin):
     list_select_related = ("series", "front", "handle")
     date_hierarchy = "created_at"
 
-    search_fields = ("order_number", "customer", "comments", "press_notes", "frames_notes", "warehouse_notes")
+    search_fields = ("order_number", "customer", "comments", "warehouse_notes")
 
     ordering = ("-id",)
 
     readonly_fields = ("created_at", "current_batch")
-    formfield_overrides = JSON_FORMFIELD_OVERRIDES
     inlines = [OrderItemsGroupInline]
     actions = [export_selected_to_csv]
 
@@ -308,13 +303,6 @@ class OrderAdmin(ModelAdmin):
                     "frames_notes",
                     "warehouse_notes",
                 )
-            },
-        ),
-        (
-            "מטמון מפרטים (פנימי)",
-            {
-                "classes": ("collapse",),
-                "fields": ("phase1_spec_cache", "phase2_spec_cache"),
             },
         ),
     )
@@ -507,7 +495,7 @@ class GroupSpecificationAdmin(ModelAdmin):
         (
             "מבנה",
             {
-                "fields": ("series", "front", "basic_color_frames", "is_split_installation"),
+                "fields": ("series", "front", "basic_color_frames", "is_split_installation", "is_special_detail"),
             },
         ),
         (
@@ -515,7 +503,7 @@ class GroupSpecificationAdmin(ModelAdmin):
             {
                 "fields": (
                     "panel_paint_option",
-                    "color_panels",
+                    "is_door_inside_different_color", "color_panel_outside", "color_panel_inside",
                     "frame_paint_option",
                     "color_frames",
                 ),
@@ -529,14 +517,3 @@ class GroupSpecificationAdmin(ModelAdmin):
         ),
     )
     readonly_fields = ("created_at",)
-
-
-@admin.register(OrderComponentSelection)
-class OrderComponentSelectionAdmin(ModelAdmin):
-    list_display = ("id", "order", "common_name", "selected_hardware", "updated_at")
-    list_select_related = ("order", "selected_hardware")
-    list_filter = ("common_name",)
-    date_hierarchy = "updated_at"
-    search_fields = ("order__order_number", "common_name", "selected_hardware__name", "selected_hardware__sku")
-    autocomplete_fields = ("order", "selected_hardware")
-    readonly_fields = ("updated_at",)

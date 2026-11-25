@@ -1,5 +1,4 @@
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
-from django.core.validators import MaxValueValidator
 from django.db import models
 
 
@@ -75,51 +74,12 @@ class ProductFamily(models.Model):
     has_frame = models.BooleanField('יש משקוף', default=True)
 
     thickness = models.FloatField('עובי', default=0.0)
-    frame_inner_height_reduction = models.FloatField(
-        'הפחתת גובה פתח משקוף',
-        default=0.0,
-        validators=[MaxValueValidator(0)]
-    )
-    frame_inner_width_reduction = models.FloatField(
-        'הפחתת רוחב פתח משקוף',
-        default=0.0,
-        validators=[MaxValueValidator(0)]
-    )
-
-    # --- Технологические зазоры полотна (Clearance / Gaps) ---
-    leaf_top_clearance = models.FloatField(
-        'מרווח עליון כנף',
-        default=-1.0,
-        validators=[MaxValueValidator(0.0)],
-        help_text='מרווח הכנף בגובה, בצד העליון (במ"מ)'
-    )
-
-    leaf_bottom_clearance = models.FloatField(
-        'מרווח תחתון כנף',
-        default=-1.0,
-        validators=[MaxValueValidator(0.0)],
-        help_text='מרווח הכנף בגובה, בצד התחתון (במ"מ)'
-    )
-
-    leaf_side_clearance = models.FloatField(
-        'מרווח צדדי כנף (סך הכל משני הצדדים)',
-        default=-0.7,
-        validators=[MaxValueValidator(0.0)],
-        help_text='סך מרווח הכנף משני הצדדים (במ"מ)'
-    )
-
-    double_leaf_overlap = models.FloatField(
-        'תיקון מידה לדלת כפולה',
-        default=0.7,
-        validators=[MaxValueValidator(2)]
-    )
-
     allowed_direction = models.CharField(
         "כיוון פתיחה מותר",
         max_length=10,
         choices=AllowedDirection.choices,
         default=AllowedDirection.BOTH,
-        help_text="מגביל את כיוון הפתיחה המותר של הדלת למשפחה זו"
+        help_text="מגביל את כיוון הפתיחה המותר של הדלת למשפחה זו",
     )
 
     class Meta:
@@ -168,14 +128,6 @@ class Series(models.Model):
             return Material.objects.filter(id__in=material_ids).order_by('name')
         return Material.objects.none()
 
-    @property
-    def frame_colors(self):
-        """Deprecated: use available_frames instead"""
-        return Color.objects.filter(
-            id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(),
-            active=True
-        )
-
 
 class Front(models.Model):
     class FinishType(models.TextChoices):
@@ -219,7 +171,6 @@ class Color(models.Model):
     class Meta:
         verbose_name = 'צבע משקוף'
         verbose_name_plural = 'צבעי משקופים'
-        unique_together = ('id', 'name')
         ordering = ['id']
 
     def __str__(self):
@@ -495,23 +446,12 @@ class ProductModel(models.Model):
             return None
 
     @property
-    def cut_coefficients(self) -> dict:
-        """
-        Returns the cut_coefficients dictionary from the effective BOM.
-        Returns an empty dict if no coefficients are defined.
-        """
-        bom = self.effective_bom
-        if bom and hasattr(bom, 'cut_coefficients') and bom.cut_coefficients:
-            return bom.cut_coefficients
-        return {}
-
-    @property
     def all_production_stations(self):
         """
         Returns all production stations applicable to this product,
         considering inheritance: Type -> Family -> Series -> Model override.
         """
-        from apps.production.models import ProductionRoute
+        from apps.engineering.models import ProductionRoute;
         return ProductionRoute.get_stations_for_product(self)
 
     @property
@@ -531,49 +471,19 @@ class ProductModel(models.Model):
 
         return Material.objects.none()
 
-    @property
-    def frame_colors(self):
-        """Deprecated: use available_frames instead"""
-        return Color.objects.filter(
-            id__in=self.available_frames.filter(color__isnull=False).values_list('color_id', flat=True).distinct(),
-            active=True
-        )
-
     def get_required_customizers(self):
-        """
-        Returns QuerySet of required customizers for this product model.
-        Combines:
-        - ProductModel's own required_customizers
-        - Effective BOM's required_customizers
-        - Active Customizers with is_required=True that are scoped to this product or global
-        """
-        from django.db.models import Q
         direct_ids = set()
         if self.pk:
-            direct_ids.update(self.required_customizers.filter(active=True).values_list('id', flat=True))
-
-        bom = self.effective_bom
-        if bom and hasattr(bom, 'required_customizers'):
-            direct_ids.update(bom.required_customizers.filter(active=True).values_list('id', flat=True))
-
-        q_model = Q(product_models=self)
+            direct_ids.update(
+                self.required_customizers.filter(active=True).values_list('id', flat=True)
+            )
         if self.parent_model_id:
-            q_model |= Q(product_models_id=self.parent_model_id)
-
-        q_family = Q(product_families=self.product_family_id)
-        q_type = Q(product_types=self.product_family.product_type_id)
-        q_global = Q(product_models__isnull=True, product_families__isnull=True, product_types__isnull=True)
-
-        req_scoped = Customizer.objects.filter(
-            active=True,
-            hidden_in_sales=False,
-            is_required=True
-        ).filter(
-            q_model | q_family | q_type | q_global
-        ).values_list('id', flat=True)
-
-        all_ids = direct_ids.union(set(req_scoped))
-        return Customizer.objects.filter(id__in=all_ids, active=True).distinct()
+            direct_ids.update(
+                self.parent_model.required_customizers.filter(active=True).values_list('id', flat=True)
+            )
+        if not direct_ids:
+            return Customizer.objects.none()
+        return Customizer.objects.filter(id__in=direct_ids, active=True).distinct()
 
 
 class Customizer(models.Model):
@@ -592,11 +502,7 @@ class Customizer(models.Model):
     active = models.BooleanField(
         default=True, verbose_name="פעיל", db_index=True
     )
-    is_required = models.BooleanField(
-        default=False,
-        verbose_name="חובה (אוטומטי לקבוצה)",
-        help_text="אם מסומן, קסטומייזר זה יצורף אוטומטית לקבוצה ויידרש במעבר לייצור",
-    )
+
     hidden_in_sales = models.BooleanField(
         default=False,
         db_index=True,
@@ -650,6 +556,15 @@ class Customizer(models.Model):
         verbose_name="תג / אלגוריתם",
         help_text="מזהה אסטרטגיית עיבוד בקוד",
     )
+    plugin_code = models.CharField(
+        max_length=64,
+        blank=True,
+        default='',
+        db_index=True,
+        verbose_name="פלאגין עיבוד (Plugin)",
+        help_text="מזהה פלאגין מתוך apps/production/engine/plugins (ריק = לוגיקה סטנדרטית)",
+    )
+
     bom_overrides = models.JSONField(
         default=dict,
         blank=True,

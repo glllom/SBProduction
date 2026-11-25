@@ -85,7 +85,7 @@ class GroupDuplicationAndSpecificationTests(TestCase):
             front=self.front,
             basic_color_frames=self.material_frame,
             panel_paint_option=OrderItemsGroup.PaintOption.SPECIAL_COLOR,
-            color_panels='RAL 9005',
+            color_panel_outside='RAL 9005',
             frame_paint_option=OrderItemsGroup.PaintOption.MAIN_COLOR,
             color_frames='RAL 7016',
             is_split_installation=True,
@@ -186,7 +186,7 @@ class GroupDuplicationAndSpecificationTests(TestCase):
         self.assertEqual(spec.series, self.series)
         self.assertEqual(spec.front, self.front)
         self.assertEqual(spec.panel_paint_option, OrderItemsGroup.PaintOption.SPECIAL_COLOR)
-        self.assertEqual(spec.color_panels, 'RAL 9005')
+        self.assertEqual(spec.color_panel_outside, 'RAL 9005')
         self.assertEqual(spec.is_split_installation, True)
         self.assertEqual(spec.created_by, self.user)
 

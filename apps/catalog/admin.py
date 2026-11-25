@@ -1,20 +1,22 @@
+from django import forms
 from django.contrib import admin
 from django.db import models
 from django_json_widget.widgets import JSONEditorWidget
-from unfold.admin import ModelAdmin, TabularInline, StackedInline
+from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
-from apps.production.models import ProductTechnicalData, BOM
-from .models import (Customizer,
-                     ProductType,
-                     ProductFamily,
-                     Series,
-                     Front,
-                     Color,
-                     Material,
-                     ProductModel,
-                     Hardware,
-                     MachiningFeature,
-                     )
+from apps.engineering.models import BOM, ProductEngineeringRule
+from .models import (
+    Color,
+    Customizer,
+    Front,
+    Hardware,
+    MachiningFeature,
+    Material,
+    ProductFamily,
+    ProductModel,
+    ProductType,
+    Series,
+)
 
 JSON_FORMFIELD_OVERRIDES = {
     models.JSONField: {'widget': JSONEditorWidget},
@@ -33,12 +35,23 @@ class ProductTypeAdmin(ModelAdmin):
     )
 
 
+class FamilyEngineeringRuleInline(StackedInline):
+    model = ProductEngineeringRule
+    fk_name = 'product_family'
+    exclude = ('product_model',)
+    extra = 0
+    max_num = 1
+    verbose_name_plural = 'כללים הנדסיים למשפחה (JSON)'
+    formfield_overrides = JSON_FORMFIELD_OVERRIDES
+
+
 @admin.register(ProductFamily)
 class ProductFamilyAdmin(ModelAdmin):
     list_display = ('id', 'name', 'product_type', 'code', 'active', 'allowed_direction')
     list_select_related = ('product_type',)
     list_filter = ('product_type', 'active', 'supports_split_installation', 'allowed_direction')
     search_fields = ('name', 'code', 'description', 'product_type__code')
+    inlines = [FamilyEngineeringRuleInline]
     fieldsets = (
         ('מידע כללי', {
             'fields': (
@@ -47,17 +60,7 @@ class ProductFamilyAdmin(ModelAdmin):
             )
         }),
         ('מבנה', {
-            'fields': ('has_door', 'has_frame')
-        }),
-        ('גיאומטריה ועובי', {
-            'fields': (
-                'thickness', 'default_value_for_frame',
-                'frame_inner_height_reduction', 'frame_inner_width_reduction',
-                'double_leaf_overlap',
-            )
-        }),
-        ('מרווחי כנף', {
-            'fields': ('leaf_top_clearance', 'leaf_bottom_clearance', 'leaf_side_clearance')
+            'fields': ('has_door', 'has_frame', 'default_value_for_frame')
         }),
     )
 
@@ -66,12 +69,7 @@ class FrontInline(TabularInline):
     """Displays the list of fronts directly inside the series form."""
     model = Front
     extra = 1
-
-
-class FrameColorInline(TabularInline):
-    """Displays the list of frame colors directly inside the series form."""
-    model = Color
-    extra = 1
+    fields = ('name', 'code', 'finish_type', 'active')
 
 
 @admin.register(Series)
@@ -79,6 +77,7 @@ class SeriesAdmin(ModelAdmin):
     list_display = ('id', 'name', 'code', 'active')
     list_filter = ('active',)
     search_fields = ('name', 'code', 'description')
+    inlines = [FrontInline]
 
 
 @admin.register(Front)
@@ -124,12 +123,12 @@ class MaterialAdmin(ModelAdmin):
         }),
     )
 
+
 @admin.register(MachiningFeature)
 class MachiningFeatureAdmin(ModelAdmin):
     list_display = ('id', 'name', 'code', 'affects_role')
     list_filter = ('affects_role',)
     search_fields = ('name', 'code')
-
 
 
 @admin.register(Hardware)
@@ -142,7 +141,8 @@ class HardwareAdmin(ModelAdmin):
     list_editable = ('active',)
     list_filter = ('role', 'machining_feature', 'rule_tag', 'active', 'color')
     search_fields = ('name', 'sku', 'common_name', 'par1_value', 'description')
-    filter_horizontal = ('product_types', 'product_families', 'product_models', 'components')
+    autocomplete_fields = ('machining_feature', 'color', 'product_models', 'components')
+    filter_horizontal = ('product_types', 'product_families')
     save_as = True
     fieldsets = (
         ('מידע כללי', {
@@ -164,9 +164,11 @@ class HardwareAdmin(ModelAdmin):
             )
         }),
         ('תאימות למוצרים', {
+            'classes': ('collapse',),
             'fields': ('product_types', 'product_families', 'product_models')
         }),
         ('הרכב (רכיבים)', {
+            'classes': ('collapse',),
             'fields': ('components',)
         }),
     )
@@ -183,12 +185,11 @@ class BOMInline(StackedInline):
         'covering', 'base', 'filling', 'panel_frame', 'casing', 'frame',
         'profile1', 'profile2', 'profile3',
         'other1', 'other2', 'other3', 'other4', 'other5',
-        'lock', 'hinges',
+        'lock', 'hinges', 'additional',
         'filling_preset', 'panel_frame_preset', 'base_preset', 'covering_preset',
     )
-    filter_horizontal = ('additional', 'required_customizers')
     fieldsets = (
-        ('חומרים', {
+        ('חומרים עיקריים', {
             'fields': (
                 ('covering', 'covering_consumption'),
                 ('base', 'base_consumption'),
@@ -198,37 +199,27 @@ class BOMInline(StackedInline):
                 ('frame', 'frame_consumption'),
             )
         }),
+        ('פרזול', {
+            'fields': ('lock', 'hinges', 'additional')
+        }),
         ('פריסטים של פאזל', {
+            'classes': ('collapse',),
             'fields': (
                 ('panel_frame_preset', 'filling_preset'),
                 ('base_preset', 'covering_preset'),
             )
         }),
-        ('פרופילים ואחרים', {
-            'fields': (
-                ('profile1', 'profile1_consumption'),
-                ('profile2', 'profile2_consumption'),
-                ('profile3', 'profile3_consumption'),
-                ('other1', 'other1_consumption'),
-                ('other2', 'other2_consumption'),
-                ('other3', 'other3_consumption'),
-                ('other4', 'other4_consumption'),
-                ('other5', 'other5_consumption'),
-            )
-        }),
-        ('פרזול', {
-            'fields': ('lock', 'hinges', 'additional', 'required_customizers')
-        }),
-        ('פרמטרים טכנולוגיים', {
-            'fields': ('cut_coefficients',)
-        }),
     )
 
 
-class ProductTechnicalDataInline(StackedInline):
-    model = ProductTechnicalData
-    can_delete = False
-    verbose_name_plural = 'נתונים טכניים'
+class ModelEngineeringRuleInline(StackedInline):
+    model = ProductEngineeringRule
+    fk_name = 'product_model'
+    exclude = ('product_family',)
+    extra = 0
+    max_num = 1
+    verbose_name_plural = 'חריגות הנדסיות לדגם (JSON)'
+    formfield_overrides = JSON_FORMFIELD_OVERRIDES
 
 
 @admin.register(ProductModel)
@@ -240,8 +231,7 @@ class ProductAdmin(ModelAdmin):
     list_select_related = ('product_family__product_type', 'series', 'parent_model')
     list_filter = ('active', 'product_family__product_type', 'product_family', 'series')
     search_fields = ('code', 'name', 'description', 'product_family__code')
-    autocomplete_fields = ('parent_model',)
-    filter_horizontal = ('required_customizers',)
+    autocomplete_fields = ('parent_model', 'required_customizers')
     save_as = True
     fieldsets = (
         ('מידע כללי', {
@@ -254,29 +244,61 @@ class ProductAdmin(ModelAdmin):
             'fields': ('required_customizers',)
         }),
     )
-    inlines = [BOMInline, ProductTechnicalDataInline]
+    inlines = [BOMInline, ModelEngineeringRuleInline]
+
+
+class CustomizerAdminForm(forms.ModelForm):
+    """
+    Форма админки кастомизатора с динамическим выпадающим списком плагинов
+    из CustomizerPluginRegistry (новые плагины появляются без создания миграций).
+    """
+
+    plugin_code = forms.ChoiceField(
+        label='פלאגין עיבוד (Plugin)',
+        required=False,
+        help_text='פלאגינים רשומים אוטומטית מתוך apps/production/engine/plugins/',
+    )
+
+    class Meta:
+        model = Customizer
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.production.engine.plugins import CustomizerPluginRegistry
+
+        plugin_choices = list(CustomizerPluginRegistry.choices(include_empty=True))
+        current_plugin = getattr(self.instance, 'plugin_code', '') or ''
+        if current_plugin and current_plugin not in {c[0] for c in plugin_choices}:
+            plugin_choices.append((current_plugin, f"{current_plugin} (לא רשום)"))
+        self.fields['plugin_code'].choices = plugin_choices
 
 
 @admin.register(Customizer)
 class CustomizerAdmin(ModelAdmin):
-    list_display = ('id', 'code', 'name', 'tag', 'is_required', 'hidden_in_sales', 'outward_replacement', 'active',
-                    'hardware')
+    form = CustomizerAdminForm
+    list_display = (
+        'id', 'code', 'name', 'tag', 'plugin_code', 'hidden_in_sales',
+        'outward_replacement', 'active', 'hardware',
+    )
     list_select_related = ('hardware', 'outward_replacement')
-    list_filter = ('active', 'is_required', 'hidden_in_sales', 'tag')
-    search_fields = ('code', 'name', 'tag', 'description')
-    autocomplete_fields = ('hardware', 'outward_replacement')
-    filter_horizontal = ('product_types', 'product_families', 'product_models')
+    list_filter = ('active', 'hidden_in_sales', 'plugin_code', 'tag')
+    search_fields = ('code', 'name', 'tag', 'plugin_code', 'description')
+    autocomplete_fields = ('hardware', 'outward_replacement', 'product_models')
+    filter_horizontal = ('product_types', 'product_families')
     formfield_overrides = JSON_FORMFIELD_OVERRIDES
     save_as = True
     fieldsets = (
                     ('מידע כללי', {
                         'fields': (
                             'code', 'name', 'description',
-                            'active', 'is_required', 'hidden_in_sales',
-                            'tag', 'outward_replacement',
+                            'active', 'hidden_in_sales',
+                            ('tag', 'plugin_code'),
+                            'outward_replacement',
                         )
                     }),
                     ('שיוך לקטלוג (ריק = גלובלי)', {
+                        'classes': ('collapse',),
                         'fields': ('product_types', 'product_families', 'product_models')
                     }),
                     ('פרזול ו-BOM', {
@@ -285,6 +307,9 @@ class CustomizerAdmin(ModelAdmin):
                 ) + tuple(
         (f'פרמטר {i}', {
             'classes': ('collapse',),
-            'fields': (f'par{i}_label', f'par{i}_required', f'par{i}_value', f'par{i}_hint', f'par{i}_options'),
+            'fields': (
+                f'par{i}_label', f'par{i}_required', f'par{i}_value',
+                f'par{i}_hint', f'par{i}_options',
+            ),
         }) for i in range(1, 6)
     )

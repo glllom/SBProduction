@@ -4,14 +4,14 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
+from apps.engineering.models import ProductionRoute, ProductionStation
 from apps.orders.models import OrderItem, OrderItemsGroup
+from apps.production.engine.spec_gateway import TechnicalSpecService
 from .models import (
     ItemStationProgress,
     StationStatus,
     StationProgressSource,
     StationScanAuditLog,
-    ProductionStation,
-    ProductionRoute,
 )
 
 
@@ -42,10 +42,8 @@ class StationTrackingService:
             it.group.order for it in items
             if getattr(it, 'group', None) and getattr(it.group, 'order', None)
         }
-        cache_field = 'phase1_spec_cache' if phase == 'phase1' else 'phase2_spec_cache'
-
         for order in orders:
-            spec_cache = getattr(order, cache_field, None)
+            spec_cache = TechnicalSpecService.get_latest_spec_data(order, phase=phase)
             if isinstance(spec_cache, dict):
                 batches = spec_cache.get('batches', {})
                 if isinstance(batches, dict):
@@ -495,5 +493,3 @@ class StationTrackingService:
                 )
 
         return total_doors_completed
-
-    

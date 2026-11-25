@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'apps.production',
     'apps.orders',
     'apps.catalog',
+    'apps.engineering',
     'rest_framework',
 ]
 
@@ -284,6 +285,53 @@ UNFOLD = {
                         'title': 'סוגי מוצרים',
                         'icon': 'label',
                         'link': reverse_lazy('admin:catalog_producttype_changelist'),
+                    },
+                ],
+            },
+            {
+                'title': 'הנדסה ותקנים',
+                'separator': True,
+                'collapsible': True,
+                'items': [
+                    {
+                        'title': 'כללים הנדסיים (JSON)',
+                        'icon': 'architecture',
+                        'link': reverse_lazy('admin:engineering_productengineeringrule_changelist'),
+                    },
+                    {
+                        'title': 'עצי מוצר (BOM)',
+                        'icon': 'account_tree',
+                        'link': reverse_lazy('admin:engineering_bom_changelist'),
+                    },
+                    {
+                        'title': 'תחנות ייצור',
+                        'icon': 'precision_manufacturing',
+                        'link': reverse_lazy('admin:engineering_productionstation_changelist'),
+                    },
+                    {
+                        'title': 'מסלולי ייצור',
+                        'icon': 'route',
+                        'link': reverse_lazy('admin:engineering_productionroute_changelist'),
+                    },
+                    {
+                        'title': 'גבהי מנעול סטנדרטיים',
+                        'icon': 'lock',
+                        'link': reverse_lazy('admin:engineering_lockstandardheight_changelist'),
+                    },
+                    {
+                        'title': 'גבהי צירים סטנדרטיים',
+                        'icon': 'height',
+                        'link': reverse_lazy('admin:engineering_hingestandardheight_changelist'),
+                    },
+                    {
+                        'title': 'קבצי CNC ומאקרו',
+                        'icon': 'memory',
+                        'link': reverse_lazy('admin:engineering_hardwaremacrofile_changelist'),
+                    },
+                    {
+                        'title': 'פריסטים של פאזל (SVG)',
+                        'icon': 'grid_view',
+                        'link': reverse_lazy('admin:engineering_puzzlepreset_changelist'),
                     },
                 ],
             },
