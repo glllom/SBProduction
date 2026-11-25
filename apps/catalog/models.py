@@ -556,6 +556,15 @@ class Customizer(models.Model):
         verbose_name="תג / אלגוריתם",
         help_text="מזהה אסטרטגיית עיבוד בקוד",
     )
+    plugin_code = models.CharField(
+        max_length=64,
+        blank=True,
+        default='',
+        db_index=True,
+        verbose_name="פלאגין עיבוד (Plugin)",
+        help_text="מזהה פלאגין מתוך apps/production/engine/plugins (ריק = לוגיקה סטנדרטית)",
+    )
+
     bom_overrides = models.JSONField(
         default=dict,
         blank=True,

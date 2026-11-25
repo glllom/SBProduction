@@ -36,7 +36,6 @@ def calculate_bom(state: ItemRuntimeState, cache: OrderReferenceCache) -> None:
 
     _resolve_frame_material(state, cache)
     _apply_bom_overrides(state, cache)
-    _apply_casing_substitute(state)
 
     bom = state.effective_bom
     spec = state.spec
@@ -76,29 +75,6 @@ def calculate_bom(state: ItemRuntimeState, cache: OrderReferenceCache) -> None:
                     item_id=resolved_mat.id,
                 )
             )
-
-    # 2. Деревянный кант (если активен WOOD_EDGE)
-    if spec.has_wood_edge:
-        we_customizers = state.find_customizers('WOOD_EDGE')
-        we_hw = we_customizers[0].customizer.hardware if we_customizers else None
-        type_he = 'סמוי' if spec.is_hidden_wood_edge else 'חיצוני'
-        thickness_mm = round(spec.wood_edge_thickness * 10, 1)
-        thickness_disp = int(thickness_mm) if thickness_mm.is_integer() else thickness_mm
-        edge_label = (
-            f"קנט עץ {state.wood_edge_wood_type} "
-            f"({type_he}, {thickness_disp} מ\"מ, {spec.wood_edge_sides} צדדים)"
-        ).strip()
-        bom_items.append(
-            SpecBOMItem(
-                type='material',
-                section='קנט עץ',
-                item_name=edge_label,
-                sku=(we_hw.sku or "") if we_hw else "",
-                quantity=spec.wood_edge_sides,
-                tag='wood_edge',
-                item_id=we_hw.id if we_hw else None,
-            )
-        )
 
     # 3. Базовая фурнитура из BOM (lock / hinge / additional)
     spec.lock_id = None
@@ -236,20 +212,6 @@ def _apply_bom_overrides(state: ItemRuntimeState, cache: OrderReferenceCache) ->
         elif clean_name in cache.puzzle_presets_by_name:
             setattr(patched, slot_name, cache.puzzle_presets_by_name[clean_name])
 
-    state.effective_bom = patched
-
-
-def _apply_casing_substitute(state: ItemRuntimeState) -> None:
-    if not state.effective_bom:
-        return
-    current_casing = getattr(state.effective_bom, 'casing', None)
-    if not current_casing or not state.find_customizers('CASING'):
-        return
-    substitute = getattr(current_casing, 'outward_substitute', None)
-    if not substitute:
-        return
-    patched = copy.copy(state.effective_bom)
-    patched.casing = substitute
     state.effective_bom = patched
 
 

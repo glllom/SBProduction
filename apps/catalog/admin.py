@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.db import models
 from django_json_widget.widgets import JSONEditorWidget
@@ -208,11 +209,6 @@ class BOMInline(StackedInline):
                 ('base_preset', 'covering_preset'),
             )
         }),
-
-        ('פרמטרים טכנולוגיים', {
-            'classes': ('collapse',),
-            'fields': ('cut_coefficients',)
-        }),
     )
 
 
@@ -251,15 +247,43 @@ class ProductAdmin(ModelAdmin):
     inlines = [BOMInline, ModelEngineeringRuleInline]
 
 
+class CustomizerAdminForm(forms.ModelForm):
+    """
+    Форма админки кастомизатора с динамическим выпадающим списком плагинов
+    из CustomizerPluginRegistry (новые плагины появляются без создания миграций).
+    """
+
+    plugin_code = forms.ChoiceField(
+        label='פלאגין עיבוד (Plugin)',
+        required=False,
+        help_text='פלאגינים רשומים אוטומטית מתוך apps/production/engine/plugins/',
+    )
+
+    class Meta:
+        model = Customizer
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.production.engine.plugins import CustomizerPluginRegistry
+
+        plugin_choices = list(CustomizerPluginRegistry.choices(include_empty=True))
+        current_plugin = getattr(self.instance, 'plugin_code', '') or ''
+        if current_plugin and current_plugin not in {c[0] for c in plugin_choices}:
+            plugin_choices.append((current_plugin, f"{current_plugin} (לא רשום)"))
+        self.fields['plugin_code'].choices = plugin_choices
+
+
 @admin.register(Customizer)
 class CustomizerAdmin(ModelAdmin):
+    form = CustomizerAdminForm
     list_display = (
-        'id', 'code', 'name', 'tag', 'hidden_in_sales',
+        'id', 'code', 'name', 'tag', 'plugin_code', 'hidden_in_sales',
         'outward_replacement', 'active', 'hardware',
     )
     list_select_related = ('hardware', 'outward_replacement')
-    list_filter = ('active', 'hidden_in_sales', 'tag')
-    search_fields = ('code', 'name', 'tag', 'description')
+    list_filter = ('active', 'hidden_in_sales', 'plugin_code', 'tag')
+    search_fields = ('code', 'name', 'tag', 'plugin_code', 'description')
     autocomplete_fields = ('hardware', 'outward_replacement', 'product_models')
     filter_horizontal = ('product_types', 'product_families')
     formfield_overrides = JSON_FORMFIELD_OVERRIDES
@@ -269,7 +293,8 @@ class CustomizerAdmin(ModelAdmin):
                         'fields': (
                             'code', 'name', 'description',
                             'active', 'hidden_in_sales',
-                            'tag', 'outward_replacement',
+                            ('tag', 'plugin_code'),
+                            'outward_replacement',
                         )
                     }),
                     ('שיוך לקטלוג (ריק = גלובלי)', {

@@ -20,3 +20,6 @@ class ProductionConfig(AppConfig):
 
         autodiscover_package('apps.production.cnc')
         autodiscover_package('apps.production.reports')
+        autodiscover_package('apps.production.cnc')
+        autodiscover_package('apps.production.reports')
+        autodiscover_package('apps.production.engine.plugins')

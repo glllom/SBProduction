@@ -98,11 +98,6 @@ def calculate_geometry(state: ItemRuntimeState) -> None:
         pw = max(float(p['width'] or 0), float(p.get('width_bottom') or 0))
         ph = float(p['height'] or 0)
 
-        if spec.has_wood_edge and spec.wood_edge_thickness > 0:
-            t_cm = spec.wood_edge_thickness
-            sides = spec.wood_edge_sides
-            pw -= t_cm * 2
-            ph -= t_cm * ((1 if sides > 2 else 0) + (1 if sides > 3 else 0))
 
         press_dims.append({
             'width': round_press_dimension(pw, rules.press_allowance),

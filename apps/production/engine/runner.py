@@ -135,32 +135,56 @@ class OrderSpecEngine:
         return order_spec
 
     @staticmethod
+    def _run_plugin_hook(
+            hook_name: str,
+            active_plugins: list,
+            state: ItemRuntimeState,
+            cache: OrderReferenceCache,
+    ) -> None:
+        """Выполняет указанный хук (on_init, on_geometry, ...) у всех активных плагинов двери."""
+        for plugin, gc in active_plugins:
+            try:
+                getattr(plugin, hook_name)(state, gc, cache)
+            except Exception as exc:
+                state.add_error(f"Unexpected error in plugin '{plugin.code}' ({hook_name}): {exc}")
+
+    @classmethod
     def _calculate_single_item(
+            cls,
             item: OrderItem,
             cache: OrderReferenceCache,
             phase: str,
     ) -> ItemRuntimeState:
         """
-        Прогоняет одну позицию заказа через все 6 калькуляторов в строгом порядке зависимостей.
-        Непредвиденные исключения перехватываются и записываются в spec.errors,
-        чтобы отчёт валидации мог показать пользователю все проблемные двери за один раз.
+        Прогоняет одну позицию через 6 базовых калькуляторов и подключённые плагины
+        кастомизаторов в строгом порядке зависимостей.
         """
-        state = init_item_state(item=item, cache=cache, phase=phase)
+        from production.engine.plugins import CustomizerPluginRegistry
 
-        # Строгий порядок: геометрия -> BOM (подбор листов по полотнам) -> фурнитура -> маршруты -> SVG
+        state = init_item_state(item=item, cache=cache, phase=phase)
+        active_plugins = CustomizerPluginRegistry.resolve_for_item(state.customizers)
+
+        # Хук 1: инициализация плагинов (DOUBLE_DOOR, WOOD_EDGE и др.)
+        cls._run_plugin_hook('on_init', active_plugins, state, cache)
+
+        # Строгий порядок этапов ядра и соответствующих хуков плагинов
         stages = (
-            ("geometry", lambda: calculate_geometry(state)),
-            ("bom", lambda: calculate_bom(state, cache)),
-            ("hardware", lambda: calculate_hardware(state, cache)),
-            ("routing", lambda: calculate_routing(state, cache)),
-            ("visuals", lambda: calculate_visuals(state, cache)),
+            ("geometry", lambda: calculate_geometry(state), None, 'on_geometry'),
+            ("bom", lambda: calculate_bom(state, cache), 'on_before_bom', 'on_bom'),
+            ("hardware", lambda: calculate_hardware(state, cache), None, 'on_hardware'),
+            ("routing", lambda: calculate_routing(state, cache), None, 'on_routing'),
+            ("visuals", lambda: calculate_visuals(state, cache), None, 'on_visuals'),
         )
 
-        for stage_name, stage_fn in stages:
+        for stage_name, stage_fn, pre_hook, post_hook in stages:
+            if pre_hook:
+                cls._run_plugin_hook(pre_hook, active_plugins, state, cache)
             try:
                 stage_fn()
             except Exception as exc:
                 state.add_error(f"Unexpected error in {stage_name}: {exc}")
+            if post_hook:
+                cls._run_plugin_hook(post_hook, active_plugins, state, cache)
 
         return state
 

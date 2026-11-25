@@ -144,8 +144,6 @@ def init_item_state(
     )
 
     _populate_base_and_validate(state, cache)
-    _populate_double_door(state)
-    _populate_wood_edge(state)
     _populate_appearance(state)
     _format_report_customizers(state)
 
@@ -235,79 +233,6 @@ def _populate_base_and_validate(state: ItemRuntimeState, cache: OrderReferenceCa
                 if val is None or not str(val).strip():
                     p_label = getattr(c, f'par{i}_label') or f"פרמטר {i}"
                     state.add_error(f"בקסטומייזר '{c.name}' חסר ערך לשדה חובה '{p_label}'")
-
-
-def _populate_double_door(state: ItemRuntimeState) -> None:
-    found = state.find_customizers('DOUBLE_DOOR')
-    if not found:
-        return
-
-    gc = found[0]
-    c = gc.customizer
-    state.spec.is_double_door = True
-    state.is_double = True
-
-    try:
-        par1_str = gc.par1 if gc.par1 not in (None, '') else c.par1_value
-        state.double_door_par1 = float(par1_str) if par1_str else 0.5
-    except (ValueError, TypeError):
-        state.double_door_par1 = 0.5
-
-    try:
-        par2_str = gc.par2 if gc.par2 not in (None, '') else c.par2_value
-        state.double_door_par2 = float(par2_str) if par2_str else 0.0
-    except (ValueError, TypeError):
-        state.double_door_par2 = 0.0
-
-
-def _populate_wood_edge(state: ItemRuntimeState) -> None:
-    """Параметры деревянного канта — строго в сантиметрах (2.0 / 1.7 / 1.0 см)."""
-    spec = state.spec
-    if state.phase == 'phase1' or not spec.has_door:
-        return
-
-    found = state.find_customizers('WOOD_EDGE')
-    if not found:
-        return
-
-    gc = found[0]
-    c = gc.customizer
-
-    state.wood_edge_wood_type = (gc.par1 if gc.par1 not in (None, '') else c.par1_value or '').strip()
-
-    edge_type_raw = str(gc.par2 if gc.par2 not in (None, '') else c.par2_value or '').strip().lower()
-    is_hidden = any(k in edge_type_raw for k in ('hidden', 'סמוי', 'פנימי'))
-
-    thickness_raw = gc.par3 if gc.par3 not in (None, '') else c.par3_value
-    custom_thickness_cm = None
-    if thickness_raw:
-        try:
-            val = float(thickness_raw)
-            if val > 0:
-                custom_thickness_cm = val
-        except (ValueError, TypeError):
-            pass
-
-    if custom_thickness_cm is not None:
-        thickness_cm = custom_thickness_cm
-    elif not is_hidden:
-        thickness_cm = 2.0
-    else:
-        thickness_cm = 1.7 if state.is_double else 1.0
-
-    sides_raw = gc.par4 if gc.par4 not in (None, '') else c.par4_value
-    try:
-        sides_count = int(sides_raw) if sides_raw else 4
-    except (ValueError, TypeError):
-        sides_count = 4
-    if sides_count not in (2, 3, 4):
-        sides_count = 4
-
-    spec.has_wood_edge = True
-    spec.is_hidden_wood_edge = is_hidden
-    spec.wood_edge_thickness = thickness_cm
-    spec.wood_edge_sides = sides_count
-    spec.wood_edge_type = 'hidden' if is_hidden else 'outer'
 
 
 def _populate_appearance(state: ItemRuntimeState) -> None:
