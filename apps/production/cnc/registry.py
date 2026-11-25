@@ -21,7 +21,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Iterator
+
+if TYPE_CHECKING:
+    from apps.production.library import LibraryBuildScope
 
 from apps.production.registry_utils import autodiscover_package
 
@@ -67,6 +70,8 @@ class BaseMachineDriver(ABC):
 
     code: str = ''
     label: str = ''
+    # Включите True в подклассе, если драйвер реализует build_library()
+    supports_library: bool = False
 
     @abstractmethod
     def build_qr_payload(self, ctx: MachineContext) -> str:
@@ -95,6 +100,20 @@ class BaseMachineDriver(ABC):
             По умолчанию пустой словарь (станок работает только по QR-кодам).
         """
         return {}
+
+    def build_library(self, scope: LibraryBuildScope) -> Iterator[Tuple[str, bytes]]:
+        """
+        Опциональный потоковый генератор библиотеки макросов / исполняемых файлов станка.
+
+        Использует yield (относительный_путь, байты), чтобы пересборка тысяч файлов
+        не требовала хранения всей библиотеки в оперативной памяти.
+
+        Пример:
+            yield "DoorModel/LockA/HingeB/Front01.pgmx", rendered_text.encode('utf-8')
+        """
+        raise NotImplementedError(
+            f"Драйвер '{self.code}' не реализует генерацию библиотеки (build_library)."
+        )
 
 
 class MachineRegistry:
@@ -163,6 +182,17 @@ class MachineRegistry:
         if include_empty:
             return [('', empty_label)] + items
         return items
+
+    @classmethod
+    def library_drivers(cls) -> List[BaseMachineDriver]:
+        """Возвращает только драйверы, поддерживающие генерацию библиотеки макросов."""
+        cls.ensure_discovered()
+        return [drv for drv in cls._drivers.values() if getattr(drv, 'supports_library', False)]
+
+    @classmethod
+    def library_choices(cls) -> List[Tuple[str, str]]:
+        """Список (code, label) для выбора станка в конструкторе библиотек."""
+        return [(drv.code, drv.label) for drv in cls.library_drivers()]
 
 
 def register_machine(code: str, label: str):

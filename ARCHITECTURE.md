@@ -1,35 +1,45 @@
 # SBProduction — Архитектура и справочник проекта
 
-**Домен:** ERP / MES-система для производства дверей (Израиль, RTL-интерфейс на иврите).  
+**Домен:** ERP / MES-система для производства дверей (Израиль, RTL-интерфейс на иврите).
+
 **Стек:** Django 6.x, Django REST Framework, django-unfold (админка), Pydantic v2, Bootstrap 5 + Vanilla JS, BarTender (печать наклеек из БД), ЧПУ-станки Essepigi / SCM Accord (WoodWOP / `.pgmx`) / Mecal.
+
+**Связанная документация:**
+* `DATABASE.md` — ER-диаграммы, таблицы БД и инварианты хранения данных.
+* `CNC_GENERATORS.md` — полное руководство по разработке драйверов станков ЧПУ, генераторов файлов заказа и сборщиков библиотек макросов.
 
 ---
 
 ## 1. Архитектурные инварианты
 
 1. **Строгое направление зависимостей (без циклических импортов):**
+
    ```text
    accounts
    catalog  <--  engineering  <--  orders  <--  production
    ```
+
    * `catalog` — чистые коммерческие справочники и `Customizer` (с полем `plugin_code`).
    * `engineering` — инженерные правила `ProductEngineeringRule`, `BOM`, стандарты высот, `ProductionStation` (с полями `report_handler` и `target_machine`), `ProductionRoute`, ЧПУ-макросы, SVG-пазлы.
    * `orders` — заказы, группы (вкл. `is_special_detail`), позиции, шаблоны групп, накладная склада, сервис нумерации `apps/orders/services.py`. Импортировать `apps.production.services` из `apps.orders` **запрещено**.
-   * `production` — расчётное ядро (`engine/`), плагины (`engine/plugins/`), наклейки (`labels/`), ЧПУ-драйверы (`cnc/`), отчёты (`reports/`), склад, трекинг станций.
+   * `production` — расчётное ядро (`engine/`), плагины (`engine/plugins/`), наклейки (`labels/`), ЧПУ-драйверы и генератор библиотек (`cnc/`), отчёты (`reports/`), склад, трекинг станций.
 
 2. **Единая система единиц измерения:**
+
    * Всё внутри БД, `ProductEngineeringRule` и `ProductionSpec` хранится **строго в положительных сантиметрах (см)**: габариты проёма (`width`, `height`, `width_bottom`, `wall`), зазоры (`leaf_top_clearance`, `leaf_bottom_clearance`, `leaf_side_clearance`), вычеты коробки (`frame_inner_*_reduction`), толщина полотна и деревянного канта (`2.0 / 1.7 / 1.0 см`), припуск на пресс (`press_allowance`), лимиты станка Essepigi, высоты замка и петель.
    * Отрицательное значение допускается только для `lock_height` (привязка от **низа** двери вместо верха) и `double_leaf_overlap`.
    * **Единственная точка перевода `см × 10 → мм`** — `DoorLabelGenerator._cm_to_mm()` в `apps/production/labels/generator.py` при сборке данных для BarTender и ЧПУ.
    * Высота на коробке (`lock_height_on_frame`, `hinge_heights_on_frame`) = высота на полотне **`+ leaf_top_clearance`** (если замок от верха).
 
 3. **Единые источники правды:**
+
    * **Геометрия и допуски модели:** `engineering.ProductEngineeringRule` (JSON, валидация через `EngineeringRulesConfig`). Иерархия слияния: `ProductFamily` → `parent_model` → `ProductModel`.
    * **Обязательные кастомизаторы:** `catalog.ProductModel.required_customizers` (с наследованием от `parent_model`). Поля `Customizer.is_required` и `BOM.required_customizers` удалены.
-   * **Снимки спецификаций:** только `production.OrderSpecificationSnapshot` через `TechnicalSpecService` (`apps/production/engine/spec_gateway.py`). Поля `Order.phase1_spec_cache` и `Order.phase2_spec_cache` удалены.
-   * **Цвета полотна:** везде пара полей `color_panel_outside`, `color_panel_inside` и флаг `is_door_inside_different_color` (включая `Order`, `OrderItemsGroup` и `GroupSpecification`). Поле `color_panels` удалено.
+   * **Снимки спецификаций:** только `production.OrderSpecificationSnapshot` через `TechnicalSpecService` (`apps/production/engine/spec_gateway.py`).
+   * **Цвета полотна:** везде пара полей `color_panel_outside`, `color_panel_inside` и флаг `is_door_inside_different_color` (включая `Order`, `OrderItemsGroup` и `GroupSpecification`).
 
 4. **Ключевые производственные правила:**
+
    * **Раздельный монтаж (`is_split_installation`):** заказ проходит `PHASE1_PRODUCTION` (коробки) → `PHASE1_READY` (замер на объекте, ввод внутренних проёмов и высот от верха коробки) → `PHASE2_PRODUCTION` (полотна).
    * **Батчи (волны запуска):** группы запускаются волнами (`batch_number = 1, 2, ...`, дата фиксации `batch_date`). Редактирование группы менеджером разрешено в статусах `NEW`/`WAITING` или в день запуска (`batch_date == today`).
    * **Трапеция (`OrderItem.width_bottom`):** пресс, раскрой листов, подбор листов в BOM и проверка лимитов Essepigi всегда считают по `max(width, width_bottom)`.
@@ -41,7 +51,9 @@
 
 ---
 
-## 2. Поток данных (Production Flow)
+## 2. Потоки данных (Runtime и Build-time)
+
+### A. Производственный поток заказа (Runtime)
 
 ```text
 Order + OrderItemsGroup + OrderItem
@@ -67,30 +79,40 @@ OrderSpecificationSnapshot (JSON)  ──► ReportRegistry (HTML-отчёты �
                                    ──► StationTrackingService (очереди станков)
                                    ──► WarehousePackingSlipService (накладная склада)
 DoorLabel (SQL таблица)            ──► BarTender (печать наклеек + write-back print_count)
+MachineRegistry.generate_files()   ──► Управляющие файлы заказа (напр., Mecal XML)
+```
+
+### B. Поток генерации библиотек ЧПУ (Build-time)
+
+```text
+Справочники БД (catalog + engineering) + LibraryBuildScope (полный или частичный фильтр)
+          │
+          ▼
+CLI (manage.py build_cnc_library)  ИЛИ  Web UI (/production/cnc-library/, только is_staff)
+          │
+          ▼
+MachineLibraryService  ──► driver.build_library(scope)  [потоковый yield (rel_path, bytes)]
+          │
+          ├─► Dry-Run (подсчёт файлов, объём и примеры путей)
+          ├─► Дерево папок на диске / сетевом диске станка
+          └─► Потоковый ZIP-архив (SpooledTemporaryFile -> FileResponse)
 ```
 
 ---
 
 ## 3. Модульная архитектура (3 автообнаруживаемых реестра)
 
-При старте Django (`apps/production/apps.py → ready()`) функция `autodiscover_package()` из `apps/production/registry_utils.py` автоматически сканирует 3 пакета и регистрирует все модули. Выпадающие списки в админке подтягиваются из реестров динамически — **добавление нового модуля не требует миграций БД и правок ядра**.
+При старте Django (`apps/production/apps.py → ready()`) функция `autodiscover_package()` из `apps/production/registry_utils.py` автоматически сканирует 3 пакета и регистрирует все модули (как одиночные `.py` файлы, так и подпакеты с `__init__.py`). Выпадающие списки в админке подтягиваются из реестров динамически — **добавление нового модуля не требует миграций БД и правок ядра**.
 
-### Рецепт 1: Добавить новый станок ЧПУ
-1. Создайте файл `apps/production/cnc/<machine_name>.py`.
+### Рецепт 1: Добавить новый станок ЧПУ (и генератор его библиотеки)
+1. Создайте файл `apps/production/cnc/<machine_name>.py` (или папку-пакет `apps/production/cnc/<machine_name>/` со своими шаблонами).
 2. Унаследуйте `BaseMachineDriver` и повесьте декоратор `@register_machine`:
-   ```python
-   from .registry import BaseMachineDriver, MachineContext, register_machine
+   * `build_qr_payload(ctx)` — обязательная «Инструкция» (QR-код для наклейки);
+   * `generate_files(order, specs)` — опциональные файлы под конкретный заказ;
+   * `supports_library = True` + `build_library(scope)` — опциональный потоковый генератор библиотеки макросов из БД.
+3. Перезапустите сервер и выберите станок в поле **מכונת CNC משויכת (`target_machine`)** нужной `ProductionStation` в админке. Если включён `supports_library = True`, станок автоматически появится в `build_cnc_library` и на странице `/production/cnc-library/`.
 
-   @register_machine('BIESSE', label='Biesse Rover')
-   class BiesseDriver(BaseMachineDriver):
-       def build_qr_payload(self, ctx: MachineContext) -> str:
-           return f"BIESSE;L={ctx.height_mm:g};W={ctx.width_mm:g}"
-
-       # Опционально, если станок работает по файлам (XML, PGMX, MPR и т.д.):
-       def generate_files(self, order, specs) -> dict[str, bytes]:
-           return {}
-   ```
-3. Перезапустите сервер и выберите `Biesse Rover` в поле **מכונת CNC משויכת (`target_machine`)** нужной `ProductionStation` в админке.
+*(Подробные примеры, API и оба паттерна сборки библиотек см. в `CNC_GENERATORS.md`.)*
 
 ### Рецепт 2: Добавить новую станцию и печатный отчёт
 * **Если нужен обычный табличный отчёт (0 строк Python):**
@@ -140,44 +162,46 @@ DoorLabel (SQL таблица)            ──► BarTender (печать на
 ### `apps/catalog/` — Коммерческий каталог
 | Файл | Назначение |
 | :--- | :--- |
-| `models.py` | `ProductType`, `ProductFamily` (`has_door`, `has_frame`, `has_handle`, `allowed_direction`, `supports_split_installation`), `Series`, `Front` (`finish_type`), `ProductModel` (`required_customizers`, `parent_model`, `effective_bom`), `Color`, `Material` (`common_name`, `outward_substitute`, `length`/`width`), `Hardware` (`role`, `rule_tag`, `common_name`, `components`, `machining_feature`), `MachiningFeature`, `Customizer` (`tag`, `plugin_code`, `bom_overrides`, `outward_replacement`, параметры `par1..par5`). |
+| `models.py` | `ProductType`, `ProductFamily`, `Series`, `Front` (`finish_type`), `ProductModel` (`required_customizers`, `parent_model`, `effective_bom`), `Color`, `Material`, `Hardware`, `MachiningFeature`, `Customizer` (`tag`, `plugin_code`, `bom_overrides`, `outward_replacement`, `par1..par5`). |
 | `admin.py` | Админка каталога (`django-unfold`), инлайны `BOMInline` / `ProductEngineeringRule`, динамический выбор `plugin_code` из `CustomizerPluginRegistry`. |
-| `serializers.py` | DRF-сериализаторы каталога для динамических форм заказа. |
-| `views.py`, `urls.py` | API-эндпоинты каталога (серии, фронты, рамки, доступные кастомизаторы). |
+| `serializers.py`, `views.py`, `urls.py` | DRF-сериализаторы и API каталога для динамических форм заказа. |
 
 ### `apps/engineering/` — Инженерные правила, BOM, маршруты, ЧПУ и SVG
 | Файл | Назначение |
 | :--- | :--- |
 | `schemas.py` | Pydantic-схемы `EngineeringRulesConfig`, `CncLimitsConfig`, `CutCoefficientsConfig` + функция глубокого слияния `deep_merge_rules`. |
-| `models/rules.py` | `ProductEngineeringRule` (`engineering_product_rules`) — JSON-правила геометрии/допусков на уровне `ProductFamily` и `ProductModel` + `resolve_for_product()`. |
-| `models/bom.py` | `BOM` (`production_bom`) — 14 слотов материалов с `DecimalField` расхода (`*_consumption`), базовая фурнитура (`lock`, `hinges`, `additional`) и пресеты SVG-пиктограмм. |
+| `models/rules.py` | `ProductEngineeringRule` (`engineering_product_rules`) — JSON-правила геометрии/допусков + `resolve_for_product()`. |
+| `models/bom.py` | `BOM` (`production_bom`) — 14 слотов материалов с `DecimalField` расхода (`*_consumption`), базовая фурнитура и пресеты SVG-пазлов. |
 | `models/standards.py` | `LockStandardHeight` (с `alignment_tolerance`) и `HingeStandardHeight`. |
 | `models/routing.py` | `ProductionStation` (`target_machine`, `report_handler`, `specification_type`, `alternative_station`, `is_phase1`), `ProductionRoute`, `ProductionRouteStep`, `CustomizerProductionStation`. |
-| `models/cnc.py` | `PerimeterRoutingFile` (`edge_shape`), `HardwareMacroFile` (`machining_feature`, `label_name`), `CustomizerMacroFile`, `FrontEngravingFile`. |
+| `models/cnc.py` | `PerimeterRoutingFile` (`edge_shape`), `HardwareMacroFile`, `CustomizerMacroFile`, `FrontEngravingFile`. |
 | `models/puzzles.py` | `SvgPattern`, `PuzzleBlockPrototype`, `PuzzlePreset`, `CustomizerPuzzleMapping`. |
 | `admin.py` | Админка инженерных моделей, JSON-редактор, динамические списки `target_machine` (`MachineRegistry`) и `report_handler` (`ReportRegistry`) на `ProductionStation`. |
 
 ### `apps/orders/` — Заказы, группы, позиции и складская накладная
 | Файл | Назначение |
 | :--- | :--- |
-| `models.py` | `Order`, `OrderChangeLog`, `OrderItemsGroup` (`production_state`, `batch_number`, `batch_date`, цвета, `is_split_installation`, `is_special_detail`), `OrderItemsGroupCustomizer`, `OrderItem` (размеры в см, `width_bottom`, ручные высоты, `sketch`), `GroupSpecification` + `GroupSpecificationCustomizer`, `OrderWarehouseItem`. |
-| `services.py` | `recalculate_item_marks(order)` и `sync_group_items(group)` (вынесены из `production` для разрыва циклических зависимостей). |
-| `forms.py` | `OrderForm`, `OrderItemsGroupForm` (вкл. `is_special_detail` и RBAC-блокировки), `OrderItemForm`, `OrderItemsGroupCustomizerForm`. |
-| `serializers.py` | DRF-сериализаторы кастомизаторов группы и `GroupSpecification`. |
-| `admin.py`, `views.py`, `urls.py`, `utils.py` | Карточка заказа, CRUD групп/позиций, API спецификаций, расчёт рабочих дней Израиля (`add_israeli_working_days`). |
+| `models.py` | `Order`, `OrderChangeLog`, `OrderItemsGroup` (вкл. `is_split_installation`, `is_special_detail`), `OrderItemsGroupCustomizer`, `OrderItem`, `GroupSpecification` + `GroupSpecificationCustomizer`, `OrderWarehouseItem`. |
+| `services.py` | `recalculate_item_marks(order)` и `sync_group_items(group)`. |
+| `forms.py`, `serializers.py`, `admin.py`, `views.py`, `urls.py`, `utils.py` | Карточка заказа, CRUD групп/позиций, API спецификаций, расчёт рабочих дней Израиля. |
 
 ### `apps/production/` — Производство, ядро, плагины, ЧПУ, наклейки и отчёты
+
 ```text
 apps/production/
 ├── apps.py                          # автозагрузка cnc, reports и engine.plugins при старте
-├── registry_utils.py                # autodiscover_package() на базе pkgutil
+├── registry_utils.py                # autodiscover_package() на базе pkgutil (пропускает registry, base, common, library)
 ├── models.py                        # OrderSpecificationSnapshot, DoorLabel, ItemStationProgress, StationScanAuditLog, OrderStationNote, StationDailySheetLog
 ├── services.py                      # OrderProductionService (жизненный цикл) и ProductionDataService (ZIP, фильтрация, делегирование в reports/)
-├── views.py / urls.py               # запуск фаз, замеры, station_report (через ReportRegistry), трекинг, склад, BarTender write-back, sync_usb
+├── views.py / urls.py               # запуск фаз, замеры, station_report (ReportRegistry), трекинг, склад, BarTender write-back, sync_usb, cnc-library
+├── cnc_views.py                     # веб-интерфейс конструктора библиотек ЧПУ (/production/cnc-library/, только is_staff)
 ├── warehouse_service.py             # WarehousePackingSlipService (накладная склада через dry-run OrderSpecEngine)
 ├── tracking_services.py             # StationTrackingService (очереди станков, обработка сканов)
 ├── order_tracking_service.py        # OrderTrackingService (обзор заказа, аномалии, действия диспетчера)
 ├── usb_sync.py                      # синхронизация файлов ЧПУ на USB
+├── management/
+│   └── commands/
+│       └── build_cnc_library.py     # CLI-команда пересборки библиотек ЧПУ (dry-run / dir / zip / фильтры)
 ├── engine/
 │   ├── __init__.py                  # публичный фасад ядра
 │   ├── schemas.py                   # ProductionSpec, OrderSpec, SpecBOMItem (с sku), DoorPuzzleSpec
@@ -201,11 +225,13 @@ apps/production/
 ├── labels/
 │   └── generator.py                 # DoorLabelGenerator (однопроходная сборка, см -> мм, делегирует QR в MachineRegistry)
 ├── cnc/
+│   ├── __init__.py                  # экспорт реестра и инструментов библиотек
 │   ├── registry.py                  # MachineContext, BaseMachineDriver, MachineRegistry, @register_machine
+│   ├── library.py                   # LibraryBuildScope, LibraryBuildResult, MachineLibraryService, render_cnc_template, safe_path_segment
 │   ├── essepigi.py                  # ESSEPIGI
 │   ├── accord_std.py                # ACCORD_STD
 │   ├── accord_custom.py             # ACCORD_CUSTOM
-│   └── mecal.py                     # MECAL (XML-файлы)
+│   └── mecal.py                     # MECAL (XML-файлы заказа)
 └── reports/
     ├── registry.py                  # ReportContext, BaseStationReport, ReportRegistry, @register_report
     ├── common.py                    # prepare_grouped_data, enrich_report_doors_spec, enrich_report_frames_spec
@@ -222,22 +248,23 @@ apps/production/
 ### `templates/` и `static/`
 | Путь | Назначение |
 | :--- | :--- |
-| `static/js/order_details.js` | Интерактив карточки заказа, каскадные селекты, покраска (`color_panel_outside`/`inside`), переключатель `is_special_detail`, сохранённые спецификации. |
+| `static/js/order_details.js` | Интерактив карточки заказа, каскадные селекты, покраска, переключатель `is_special_detail`, сохранённые спецификации. |
 | `templates/orders/includes/group_modal.html`, `group_card.html` | Форма создания/редактирования группы и карточка группы (вкл. `פרט מיוחד` и `התקנה מפוצלת`). |
 | `templates/orders/includes/reports_modal.html` | Модалка печати отчётов по батчам и станциям + USB-синхронизация. |
-| `templates/production/reports/` | Автономные печатные отчёты (`master_report.html`, `report_press.html`, `report_wood_frames.html`, `report_facing.html`, `report_warehouse_hardware.html`, `split_measurer_report.html`, `daily_stations_sheets.html`). |
-| `templates/production/includes/` | Подключаемые секции отчётов для Master Print (`report_alum_doors.html`, `report_alum_frames.html`, `report_cut_sheets.html`, `report_press.html`, `report_wood_frames.html`, `report_facing.html`, `report_warehouse_hardware.html`). |
+| `templates/production/cnc_library_builder.html` | Веб-интерфейс генерации, Dry-Run предпросмотра и скачивания ZIP-библиотек ЧПУ. |
+| `templates/production/reports/` и `includes/` | Автономные печатные отчёты и подключаемые секции Master Print. |
 
 ---
 
 ## 5. Статус рефакторинга (Завершён)
 
-- [x] **Этап 1:** Подготовка и зачистка базовых артефактов.
-- [x] **Этап 2:** Выделение приложения `apps/engineering` без потери данных + `ProductEngineeringRule`.
-- [x] **Этап 3А:** Миграция конструктива/допусков (в положительные см), `DecimalField` в BOM, чистка `catalog` и `engineering`.
-- [x] **Этап 3Б:** Чистка `orders`, переход на `OrderSpecificationSnapshot`, добавление `is_special_detail`, вынос `apps/orders/services.py`.
-- [x] **Этап 4:** Замена 27-шагового пайплайна на линейный `OrderSpecEngine`, `OrderReferenceCache` (0 N+1) и однопроходный `DoorLabelGenerator`.
-- [x] **Этап 5А:** Модульный реестр станков ЧПУ `apps/production/cnc/` (`MachineRegistry`).
-- [x] **Этап 5Б:** Модульный реестр отчётов станций `apps/production/reports/` (`ReportRegistry`) + динамические списки в админке.
-- [x] **Этап 5В:** Модульный реестр плагинов кастомизаторов `apps/production/engine/plugins/` (`CustomizerPluginRegistry`) + `Customizer.plugin_code`.
-- [x] **Этап 5Г:** UI для `פרט מיוחד`, удаление временных реэкспортов из `apps/production/models.py`, финальная документация.
+* [x] **Этап 1:** Подготовка и зачистка базовых артефактов.
+* [x] **Этап 2:** Выделение приложения `apps/engineering` без потери данных + `ProductEngineeringRule`.
+* [x] **Этап 3А:** Миграция конструктива/допусков (в положительные см), `DecimalField` в BOM, чистка `catalog` и `engineering`.
+* [x] **Этап 3Б:** Чистка `orders`, переход на `OrderSpecificationSnapshot`, добавление `is_special_detail`, вынос `apps/orders/services.py`.
+* [x] **Этап 4:** Замена 27-шагового пайплайна на линейный `OrderSpecEngine`, `OrderReferenceCache` (0 N+1) и однопроходный `DoorLabelGenerator`.
+* [x] **Этап 5А:** Модульный реестр станков ЧПУ `apps/production/cnc/` (`MachineRegistry`).
+* [x] **Этап 5Б:** Модульный реестр отчётов станций `apps/production/reports/` (`ReportRegistry`) + динамические списки в админке.
+* [x] **Этап 5В:** Модульный реестр плагинов кастомизаторов `apps/production/engine/plugins/` (`CustomizerPluginRegistry`) + `Customizer.plugin_code`.
+* [x] **Этап 5Г:** UI для `פרט מיוחד`, удаление временных реэкспортов из `apps/production/models.py`, финальная документация.
+* [x] **Этап 5Д:** Каркас потокового генератора библиотек ЧПУ (`cnc/library.py`, CLI `build_cnc_library`, Web UI `/production/cnc-library/`).

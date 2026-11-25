@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, cnc_views
 
 app_name = 'production'
 
@@ -43,5 +43,7 @@ urlpatterns = [
     path('tracking/orders/search-api/', views.order_tracking_search_ajax, name='order-tracking-search-api'),
     path('tracking/orders/<int:pk>/', views.order_tracking_detail, name='order-tracking-detail'),
     path('tracking/orders/<int:pk>/action/', views.order_tracking_station_action, name='order-tracking-action'),
+
+    path('cnc-library/', cnc_views.cnc_library_builder_view, name='cnc-library-builder'),
 
 ]

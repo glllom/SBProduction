@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block page_title %}בניית ספריית מקרו CNC{% endblock %}
+{% block content %}
+    <div class="card mb-4">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2 py-3">
+            <div class="d-flex align-items-center gap-2">
+                <span class="sb-stat-icon sb-accent">
+                    <i class="bi bi-cpu"></i>
+                </span>
+                <div>
+                    <h4 class="h5 fw-bold mb-0">מחולל ספריות CNC</h4>
+                    <small class="text-muted">בנייה מלאה או חלקית של קבצי מקרו מהקטלוג והורדה כ-ZIP</small>
+                </div>
+            </div>
+            <span class="sb-badge-soft sb-info">דרייברים עם ספרייה: {{ library_drivers|length }} / {{ all_drivers|length }}</span>
+        </div>
+        <div class="card-body">
+            {% if not library_drivers %}
+                <div class="alert alert-warning mb-0">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>אין עדיין דרייבר CNC שמממש בניית ספרייה.</strong>
+                    כדי להפעיל בניית ספרייה למכונה, הגדר <code>supports_library = True</code> וממש את המתודה
+                    <code>build_library(self, scope)</code> בדרייבר תחת <code>apps/production/cnc/</code>.
+                </div>
+            {% else %}
+                <form method="post" class="row g-3">
+                    {% csrf_token %}
+                    <div class="col-12 col-md-6">
+                        <label class="form-label fw-semibold" for="machine_code">מכונת CNC</label>
+                        <select class="form-select" id="machine_code" name="machine_code" required>
+                            {% for drv in library_drivers %}
+                                <option value="{{ drv.code }}"
+                                        {% if drv.code == selected_machine %}selected{% endif %}>
+                                    {{ drv.label }} ({{ drv.code }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <div class="small text-muted mb-2">
+                            <i class="bi bi-funnel me-1"></i>
+                            סינון אופציונלי לבנייה חלקית (השאר ריק לבנייה מלאה של כל הקטלוג):
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-12 col-md-6 col-xl-3">
+                                <label class="form-label small fw-semibold" for="family_ids">משפחות דלתות</label>
+                                <select class="form-select form-select-sm"
+                                        id="family_ids"
+                                        name="family_ids"
+                                        multiple
+                                        size="7">
+                                    {% for fam in families %}
+                                        <option value="{{ fam.id }}"
+                                                {% if fam.id|stringformat:"s" in selected_families %}selected{% endif %}>
+                                            {{ fam.name }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12 col-md-6 col-xl-3">
+                                <label class="form-label small fw-semibold" for="lock_ids">מנעולים</label>
+                                <select class="form-select form-select-sm"
+                                        id="lock_ids"
+                                        name="lock_ids"
+                                        multiple
+                                        size="7">
+                                    {% for item in locks %}
+                                        <option value="{{ item.id }}"
+                                                {% if item.id|stringformat:"s" in selected_locks %}selected{% endif %}>
+                                            {{ item.name }} ({{ item.sku }})
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12 col-md-6 col-xl-3">
+                                <label class="form-label small fw-semibold" for="hinge_ids">צירים</label>
+                                <select class="form-select form-select-sm"
+                                        id="hinge_ids"
+                                        name="hinge_ids"
+                                        multiple
+                                        size="7">
+                                    {% for item in hinges %}
+                                        <option value="{{ item.id }}"
+                                                {% if item.id|stringformat:"s" in selected_hinges %}selected{% endif %}>
+                                            {{ item.name }} ({{ item.sku }})
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12 col-md-6 col-xl-3">
+                                <label class="form-label small fw-semibold" for="front_ids">חזיתות / גימורים</label>
+                                <select class="form-select form-select-sm"
+                                        id="front_ids"
+                                        name="front_ids"
+                                        multiple
+                                        size="7">
+                                    {% for f in fronts %}
+                                        <option value="{{ f.id }}"
+                                                {% if f.id|stringformat:"s" in selected_fronts %}selected{% endif %}>
+                                            {{ f.series.name }} / {{ f.name }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 d-flex flex-wrap gap-2 pt-2 border-top">
+                        <button type="submit"
+                                name="action"
+                                value="preview"
+                                class="btn btn-outline-primary">
+                            <i class="bi bi-eye me-1"></i>תצוגה מקדימה (Dry-Run)
+                        </button>
+                        <button type="submit"
+                                name="action"
+                                value="download_zip"
+                                class="btn btn-primary fw-semibold">
+                            <i class="bi bi-file-earmark-zip me-1"></i>בנה והורד ZIP
+                        </button>
+                    </div>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+    {% if preview_result %}
+        <div class="card">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span class="fw-bold">
+                    <i class="bi bi-folder2-open me-1 text-primary"></i>
+                    תוצאת תצוגה מקדימה — {{ preview_result.machine_label }}
+                </span>
+                <div class="d-flex gap-2">
+                    <span class="sb-badge-soft sb-accent">קבצים: {{ preview_result.files_count }}</span>
+                    <span class="sb-badge-soft sb-info">נפח משוער: {{ preview_result.total_kb }} KB ({{ preview_result.total_mb }} MB)</span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if preview_result.sample_paths %}
+                    <div class="small text-muted mb-2">דוגמאות לנתיבי קבצים (עד 50 ראשונים):</div>
+                    <pre class="bg-body-tertiary border rounded p-3 mb-0 small" dir="ltr">{% for path in preview_result.sample_paths %}{{ path }}
+{% endfor %}
+</pre>
+                {% else %}
+                    <div class="text-muted small">לא נוצרו קבצים עבור הסינון שנבחר.</div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

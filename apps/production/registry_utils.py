@@ -24,7 +24,7 @@ from typing import Set
 _DISCOVERED_PACKAGES: Set[str] = set()
 
 # Имена служебных модулей, которые не являются плагинами
-_SKIP_MODULE_NAMES = frozenset({'registry', 'base', 'common'})
+_SKIP_MODULE_NAMES = frozenset({'registry', 'base', 'common', 'library'})
 
 
 def autodiscover_package(package_path: str) -> None:
