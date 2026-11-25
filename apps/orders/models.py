@@ -90,7 +90,8 @@ class Order(models.Model):
     )
 
     series = models.ForeignKey('catalog.Series', on_delete=models.SET_NULL, blank=True, null=True, verbose_name="סדרה")
-    front = models.ForeignKey('catalog.Front', on_delete=models.SET_NULL, blank=True, null=True, verbose_name="חזית / גימור")
+    front = models.ForeignKey('catalog.Front', on_delete=models.SET_NULL, blank=True, null=True,
+                              verbose_name="חזית / גימור")
     handle = models.ForeignKey(
         'catalog.Hardware',
         on_delete=models.SET_NULL,
@@ -149,7 +150,10 @@ class Order(models.Model):
     @property
     def has_split_installation(self):
         return self.groups.filter(is_split_installation=True).exclude(
-            production_state=OrderItemsGroup.ProductionState.CANCELED
+            production_state__in=[
+                OrderItemsGroup.ProductionState.WAITING,
+                OrderItemsGroup.ProductionState.CANCELED,
+            ]
         ).exists()
 
     def get_production_stations(self):
@@ -162,7 +166,15 @@ class Order(models.Model):
         notes_map = dict(
             OrderStationNote.objects.filter(order=self).values_list('station_id', 'comment')
         )
-        groups = self.groups.all().prefetch_related('customizers__customizer', 'product__product_family__product_type')
+        groups = (
+            self.groups.exclude(
+                production_state__in=[
+                    OrderItemsGroup.ProductionState.WAITING,
+                    OrderItemsGroup.ProductionState.CANCELED,
+                ]
+            )
+            .prefetch_related('customizers__customizer', 'product__product_family__product_type')
+        )
 
         for group in groups:
             for s in ProductionRoute.get_stations_for_group(group):
@@ -191,16 +203,25 @@ class Order(models.Model):
         if self.status == OrderStatus.CANCELED:
             return False
         if self.status == OrderStatus.PHASE1_READY:
-            return True
+            return self.groups.filter(
+                production_state__in=[
+                    OrderItemsGroup.ProductionState.NEW,
+                    OrderItemsGroup.ProductionState.IN_PRODUCTION,
+                ]
+            ).exists()
         return self.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW).exists()
 
     @property
     def production_action_label(self) -> str:
         if self.status == OrderStatus.NEW:
             return "העבר לייצור"
+        if self.status == OrderStatus.PHASE1_PRODUCTION:
+            return "העבר אצווה לשלב א'"
         if self.status == OrderStatus.PHASE1_READY:
-            return "העברה לשלב ב"
-        return "העבר לייצור השלמות"
+            return "העבר לשלב ב'"
+        if self.status in (OrderStatus.COMPLETED, OrderStatus.PARTIALLY_READY):
+            return "העבר לייצור השלמות"
+        return "העבר אצווה לייצור"
 
     def get_quantity(self):
         return sum(gr.quantity for gr in self.groups.all())
@@ -382,7 +403,11 @@ class OrderItemsGroup(models.Model):
         return getattr(self.order, 'color_frames', None)
 
     def is_editable_by(self, user=None) -> bool:
-        if user and (getattr(user, 'is_admin_user', False) or getattr(user, 'role', None) == 'ADMIN'):
+        if user and (
+                getattr(user, 'is_superuser', False)
+                or getattr(user, 'is_admin_user', False)
+                or getattr(user, 'role', None) == 'ADMIN'
+        ):
             return True
         if self.production_state in (self.ProductionState.NEW, self.ProductionState.WAITING):
             return True
@@ -394,6 +419,13 @@ class OrderItemsGroup(models.Model):
         from apps.orders.services import sync_group_items
 
         is_new = not self.pk
+        update_fields = kwargs.get('update_fields')
+        should_sync_items = (
+                update_fields is None
+                or 'product' in update_fields
+                or 'product_id' in update_fields
+                or 'quantity' in update_fields
+        )
 
         if self.order_id:
             if not self.series and getattr(self.order, "series", None):
@@ -411,16 +443,7 @@ class OrderItemsGroup(models.Model):
         if self.frame_paint_option != self.PaintOption.SPECIAL_COLOR:
             self.color_frames = None
 
-        if is_new and self.order_id and self.order.status == OrderStatus.PHASE1_PRODUCTION:
-            if not self.is_split_installation:
-                self.production_state = self.ProductionState.WAITING
-
-        if self.order_id and self.order.status == OrderStatus.PHASE1_READY:
-            if self.is_split_installation and self.production_state == self.ProductionState.NEW:
-                self.order.status = OrderStatus.PHASE1_PRODUCTION
-                self.order.save(update_fields=['status'])
-
-        if self.product_id:
+        if self.product_id and should_sync_items:
             product_changed = is_new
             if not is_new:
                 old_product_id = (
@@ -436,11 +459,24 @@ class OrderItemsGroup(models.Model):
                     self.has_handle = fam.has_handle
 
         with transaction.atomic():
+            # Сценарий 2: добавление/активация NEW split-группы на PHASE1_READY откатывает заказ в PHASE1_PRODUCTION
+            if self.order_id and self.order.status == OrderStatus.PHASE1_READY:
+                if self.is_split_installation and self.production_state == self.ProductionState.NEW:
+                    self.order.status = OrderStatus.PHASE1_PRODUCTION
+                    self.order.save(update_fields=['status'])
+                    OrderChangeLog.objects.create(
+                        order=self.order,
+                        user=None,
+                        field_name='status',
+                        old_value=OrderStatus.PHASE1_READY,
+                        new_value=OrderStatus.PHASE1_PRODUCTION,
+                    )
+
             super().save(*args, **kwargs)
-            if self.product:
+            if self.product and should_sync_items:
                 self.auto_populate_required_customizers()
                 sync_group_items(self)
-
+                
     def delete(self, *args, **kwargs):
         from apps.orders.services import recalculate_item_marks
 
@@ -588,12 +624,15 @@ class OrderItem(models.Model):
 
     # Dimensions (in cm)
     width = models.DecimalField(max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='רוחב')
-    width_bottom = models.DecimalField(max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='רוחב תחתון')
+    width_bottom = models.DecimalField(max_digits=10, decimal_places=1, blank=True, null=True,
+                                       verbose_name='רוחב תחתון')
     height = models.DecimalField(max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='גובה')
     wall = models.DecimalField(max_digits=10, decimal_places=1, blank=True, null=True, verbose_name='עובי קיר')
 
-    direction = models.CharField(max_length=10, choices=OpeningSide.choices, blank=True, null=True, verbose_name="כיוון פתיחה")
-    opening = models.CharField(max_length=10, choices=OpeningType.choices, blank=True, null=True, verbose_name="צד פתיחה")
+    direction = models.CharField(max_length=10, choices=OpeningSide.choices, blank=True, null=True,
+                                 verbose_name="כיוון פתיחה")
+    opening = models.CharField(max_length=10, choices=OpeningType.choices, blank=True, null=True,
+                               verbose_name="צד פתיחה")
     bottom_correction = models.DecimalField(
         max_digits=5, decimal_places=1, blank=True, null=True, default=0, verbose_name="חיתוך / קיצור נוסף",
     )
@@ -601,12 +640,18 @@ class OrderItem(models.Model):
     place = models.CharField(max_length=255, blank=True, null=True, verbose_name="מיקום התקנה (קומה / ציר / חדר)")
     comment = models.TextField(blank=True, null=True, verbose_name="הערה למוצר")
 
-    custom_lock_height = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True, verbose_name='גובה מנעול מותאם (ס"מ)')
-    custom_hinge1 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True, verbose_name='גובה ציר 1 (ס"מ)')
-    custom_hinge2 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True, verbose_name='גובה ציר 2 (ס"מ)')
-    custom_hinge3 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True, verbose_name='גובה ציר 3 (ס"מ)')
-    custom_hinge4 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True, verbose_name='גובה ציר 4 (ס"מ)')
-    custom_hinge5 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True, verbose_name='גובה ציר 5 (ס"מ)')
+    custom_lock_height = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True,
+                                             verbose_name='גובה מנעול מותאם (ס"מ)')
+    custom_hinge1 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True,
+                                        verbose_name='גובה ציר 1 (ס"מ)')
+    custom_hinge2 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True,
+                                        verbose_name='גובה ציר 2 (ס"מ)')
+    custom_hinge3 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True,
+                                        verbose_name='גובה ציר 3 (ס"מ)')
+    custom_hinge4 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True,
+                                        verbose_name='גובה ציר 4 (ס"מ)')
+    custom_hinge5 = models.DecimalField(max_digits=7, decimal_places=1, blank=True, null=True,
+                                        verbose_name='גובה ציר 5 (ס"מ)')
 
     sketch = models.FileField(
         upload_to='order_sketches/%Y/%m/', blank=True, null=True,
@@ -676,7 +721,8 @@ class GroupSpecification(models.Model):
         related_name="saved_specifications", verbose_name="דגם מוצר",
     )
     series = models.ForeignKey('catalog.Series', on_delete=models.SET_NULL, blank=True, null=True, verbose_name="סדרה")
-    front = models.ForeignKey('catalog.Front', on_delete=models.SET_NULL, blank=True, null=True, verbose_name="חזית / גימור")
+    front = models.ForeignKey('catalog.Front', on_delete=models.SET_NULL, blank=True, null=True,
+                              verbose_name="חזית / גימור")
     basic_color_frames = models.ForeignKey(
         'catalog.Material', on_delete=models.SET_NULL, blank=True, null=True, verbose_name="צבע משקוף בסיסי",
     )
@@ -838,10 +884,13 @@ class OrderWarehouseItem(models.Model):
         HINGES = 'HINGES', 'צירים'
         OTHER = 'OTHER', 'תוספות'
 
-    order = models.ForeignKey('orders.Order', on_delete=models.CASCADE, related_name='warehouse_items', verbose_name='הזמנה')
+    order = models.ForeignKey('orders.Order', on_delete=models.CASCADE, related_name='warehouse_items',
+                              verbose_name='הזמנה')
     category = models.CharField(max_length=20, choices=Category.choices, default=Category.OTHER, verbose_name='קטגוריה')
-    common_name = models.CharField(max_length=255, blank=True, default='', db_index=True, verbose_name='שם קבוצה (לזיהוי גוונים)')
-    hardware = models.ForeignKey('catalog.Hardware', on_delete=models.SET_NULL, null=True, blank=True, verbose_name='פריט קטלוג')
+    common_name = models.CharField(max_length=255, blank=True, default='', db_index=True,
+                                   verbose_name='שם קבוצה (לזיהוי גוונים)')
+    hardware = models.ForeignKey('catalog.Hardware', on_delete=models.SET_NULL, null=True, blank=True,
+                                 verbose_name='פריט קטלוג')
     name = models.CharField(max_length=255, verbose_name='שם פריט')
     sku = models.CharField(max_length=100, blank=True, default='', verbose_name='מק"ט')
     color_name = models.CharField(max_length=100, blank=True, default='', verbose_name='גוון')

@@ -167,7 +167,7 @@
                         <button type="button"
                                 class="btn btn-accent fw-semibold"
                                 onclick="transferOrderToProduction(this, '{% url 'production:order-transfer-to-production' order.pk %}')">
-                            <i class="bi bi-play-circle me-1"></i>העבר לייצור
+                            <i class="bi bi-play-circle me-1"></i>{{ order.production_action_label }}
                         </button>
                     {% endif %}
                     <a href="{% url 'production:order-check-validation' order.pk %}"
@@ -220,7 +220,7 @@
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 px-1">
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <span class="text-muted small fw-semibold me-1">קבוצות דלתות בהזמנה [{{ groups|length }}]</span>
-                    {% if can_edit_order %}
+                    {% if can_add_groups %}
                         <button class="btn btn-sm btn-primary"
                                 data-bs-toggle="modal"
                                 data-bs-target="#groupModal"
@@ -264,7 +264,7 @@
                 <i class="bi bi-layers fs-2 text-muted d-block mb-2 opacity-50"></i>
                 <h6 class="fw-bold text-muted mb-1">אין עדיין קבוצות דלתות בהזמנה</h6>
                 <p class="text-muted small mb-3">הוסף קבוצה כדי להתחיל בהגדרת הדלתות או טען מפרט שמור</p>
-                {% if can_edit_order %}
+                {% if can_add_groups %}
                     <div class="d-flex justify-content-center flex-wrap gap-2">
                         <button class="btn btn-primary"
                                 data-bs-toggle="modal"
@@ -290,7 +290,7 @@
     <script>
         window.OrderDetailConfig = {
             orderId: "{{ order.pk }}",
-            canEdit: "{% if can_edit_order %}true{% else %}false{% endif %}" === "true",
+            canEdit: "{% if can_add_groups %}true{% else %}false{% endif %}" === "true",
             orderSeriesId: "{{ order.series_id|default:'' }}",
             orderFrontId: "{{ order.front_id|default:'' }}",
             orderIsFramesToPaint: "{% if order.is_frames_to_paint %}true{% else %}false{% endif %}" === "true",

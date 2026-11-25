@@ -165,6 +165,14 @@ $(document).ready(function () {
         }
     });
 
+    // Запоминаем ручное переключение is_split_installation пользователем,
+    // чтобы асинхронный updateProductModel не перетирал выбор
+    $groupModal.on('change', 'input[name="is_split_installation"]', function (e) {
+        if (e.originalEvent) {
+            $(this).attr('data-initial-split', this.checked ? 'true' : 'false');
+        }
+    });
+
     function getGroupFormState($form) {
         const $disabled = $form.find(':disabled');
         $disabled.prop('disabled', false);
@@ -195,8 +203,16 @@ $(document).ready(function () {
 
             $groupModal.find('input[name="quantity"]').val($btn.attr('data-quantity'));
             $groupModal.find('textarea[name="comments"]').val($btn.attr('data-comments'));
-            $groupModal.find('input[name="is_split_installation"]').prop('checked', $btn.attr('data-is-split') === 'true');
-            $groupModal.find('input[name="is_special_detail"]').prop('checked', $btn.attr('data-is-special-detail') === 'true');
+
+            const isSplit = $btn.attr('data-is-split') === 'true';
+            $groupModal.find('input[name="is_split_installation"]')
+                .attr('data-initial-split', isSplit ? 'true' : 'false')
+                .prop('checked', isSplit);
+
+            $groupModal.find('input[name="is_special_detail"]').prop(
+                'checked',
+                $btn.attr('data-is-special-detail') === 'true'
+            );
 
             const panelPaint = $btn.attr('data-panel-paint-option') || 'MAIN_COLOR';
             $groupModal.find('select[name="panel_paint_option"]').val(panelPaint).trigger('change');
@@ -226,13 +242,6 @@ $(document).ready(function () {
                 );
             }
 
-            $groupModal.find('select[name="product_family"]').attr('data-initial-value', $btn.attr('data-product-family'));
-            $groupModal.find('select[name="product_type"]').val($btn.attr('data-product-type')).trigger('change');
-
-            $groupModal.find('select[name="front"]').attr('data-initial-value', $btn.attr('data-front'));
-            $groupModal.find('select[name="basic_color_frames"]').attr('data-initial-value', $btn.attr('data-basic-color-frames'));
-            $groupModal.find('select[name="series"]').val($btn.attr('data-series')).trigger('change');
-
             const structuralSelectors =
                 'select[name="product_type"], select[name="product_family"], select[name="series"], ' +
                 'select[name="front"], select[name="basic_color_frames"], select[name="product"], ' +
@@ -257,6 +266,14 @@ $(document).ready(function () {
                 $groupModal.find('input, select, textarea').prop('disabled', false);
                 $groupModal.find('.alert-grace-period').remove();
             }
+
+            // Запускаем каскад после установки состояния блокировки (isLocked)
+            $groupModal.find('select[name="product_family"]').attr('data-initial-value', $btn.attr('data-product-family'));
+            $groupModal.find('select[name="product_type"]').val($btn.attr('data-product-type')).trigger('change');
+
+            $groupModal.find('select[name="front"]').attr('data-initial-value', $btn.attr('data-front'));
+            $groupModal.find('select[name="basic_color_frames"]').attr('data-initial-value', $btn.attr('data-basic-color-frames'));
+            $groupModal.find('select[name="series"]').val($btn.attr('data-series')).trigger('change');
         } else {
             $label.text('הוספת קבוצת דלתות');
             $submitBtn.text('הוסף קבוצה');
@@ -265,6 +282,7 @@ $(document).ready(function () {
             $form[0].reset();
 
             $groupModal.find('input, select, textarea').prop('disabled', false);
+            $groupModal.find('input[name="is_split_installation"]').removeAttr('data-initial-split').prop('checked', false);
             $groupModal.find('input[name="is_special_detail"]').prop('checked', false);
             $groupModal.find('.alert-grace-period').remove();
             $groupModal.find('select').removeAttr('data-initial-value');
@@ -519,9 +537,14 @@ $(document).ready(function () {
         const $productSelect = $container.find('select[name="product"]');
         const $splitCheckbox = $container.find('input[name="is_split_installation"]');
         const $display = $container.find('.product-info-display');
-        const $submitBtn = $container.closest('form').find('button[type="submit"]');
+        const $form = $container.closest('form');
+        const $visibleSubmitBtns = $form.find('button[type="submit"]:not(.d-none)');
 
         if (!$seriesSelect.length || !$familySelect.length || !$productSelect.length) return;
+
+        const $modalEl = $container.closest('#groupModal');
+        const isEditMode = $modalEl.length > 0 && $modalEl.data('mode') === 'edit';
+        const isLocked = $modalEl.length > 0 && $modalEl.find('input[name="quantity"]').is(':disabled');
 
         const seriesId = $seriesSelect.val();
         const familyId = $familySelect.val();
@@ -536,7 +559,7 @@ $(document).ready(function () {
                     $productSelect.trigger('change.select2');
                 }
             }
-            if ($splitCheckbox.length) {
+            if ($splitCheckbox.length && !isLocked) {
                 $splitCheckbox.prop('disabled', true).prop('checked', false);
             }
             return;
@@ -575,14 +598,23 @@ $(document).ready(function () {
                     }
 
                     if ($splitCheckbox.length) {
-                        const canUseSplit = ['NEW', 'PHASE1_PRODUCTION'].includes(orderStatus);
-                        if (canUseSplit && supportsSplit) {
-                            $splitCheckbox.prop('disabled', false).prop('checked', true);
+                        const canUseSplit = ['NEW', 'PHASE1_PRODUCTION', 'PHASE1_READY'].includes(orderStatus);
+                        const initialSplitAttr = $splitCheckbox.attr('data-initial-split');
+
+                        if (isLocked) {
+                            $splitCheckbox.prop('disabled', true);
+                        } else if (canUseSplit && supportsSplit) {
+                            $splitCheckbox.prop('disabled', false);
+                            if (initialSplitAttr !== undefined) {
+                                $splitCheckbox.prop('checked', initialSplitAttr === 'true');
+                            } else if (!isEditMode) {
+                                $splitCheckbox.prop('checked', true);
+                            }
                         } else {
                             $splitCheckbox.prop('disabled', true).prop('checked', false);
                         }
                     }
-                    $submitBtn.prop('disabled', false);
+                    $visibleSubmitBtns.prop('disabled', false);
                 } else {
                     if ($display.length) {
                         $display.html('<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> מוצר לא נמצא לשילוב זה</span>');
@@ -593,12 +625,14 @@ $(document).ready(function () {
                             $productSelect.trigger('change.select2');
                         }
                     }
-                    $submitBtn.prop('disabled', true);
+                    if (!isLocked) {
+                        $form.find('button[type="submit"]').prop('disabled', true);
+                    }
                 }
             })
             .catch(function (error) {
                 console.error('Error fetching product model:', error);
-                $submitBtn.prop('disabled', false);
+                $visibleSubmitBtns.prop('disabled', false);
             });
     }
 
@@ -766,8 +800,11 @@ $(document).ready(function () {
                 const $tab = $('#custom-' + groupId);
                 let $container = $tab.find('.row-cols-1');
 
-                const manageBtnHtml = canEdit ? (
-                    '<div class="mt-4 text-end">' +
+                const $editBtn = $('.group-card[data-group-id="' + groupId + '"] .btn-edit-group').first();
+                const groupCanEdit = $editBtn.length ? ($editBtn.attr('data-can-edit') !== 'false') : canEdit;
+
+                const manageBtnHtml = groupCanEdit ? (
+                    '<div class="mt-3 text-end">' +
                     '<button class="btn btn-sm btn-outline-primary px-3 open-customizer-btn" data-group-id="' + groupId + '">' +
                     '<i class="bi bi-gear me-1"></i> ניהול קסטומייזרים' +
                     '</button></div>'
@@ -776,7 +813,7 @@ $(document).ready(function () {
                 if (items.length === 0) {
                     $tab.html(
                         '<div class="row row-cols-1 row-cols-md-2 g-3"></div>' +
-                        '<div class="col-12 text-center text-muted py-4 small">' +
+                        '<div class="col-12 text-center text-muted py-3 small">' +
                         '<i class="bi bi-info-circle me-1"></i> לא יושמו קסטומייזרים לקבוצה זו' +
                         '</div>' + manageBtnHtml
                     );
@@ -831,7 +868,7 @@ $(document).ready(function () {
                         '</div></div>';
                 });
                 $container.html(html);
-                $tab.find('.text-center.text-muted.py-4').remove();
+                $tab.find('.text-center.text-muted.py-3, .text-center.text-muted.py-4').remove();
                 if (window['initTooltips']) window['initTooltips']($tab[0]);
             });
     }
@@ -1046,7 +1083,7 @@ $(document).ready(function () {
         });
     });
 
-    let updateParamTimeout;
+    const updateParamTimeouts = {};
     $(document).on('input change', '.cust-param-input', function () {
         const $input = $(this);
         const id = $input.data('id');
@@ -1057,11 +1094,12 @@ $(document).ready(function () {
         }
         const value = $input.val();
         const groupId = $custModal.data('group-id');
+        const timerKey = id + ':' + paramName;
 
-        clearTimeout(updateParamTimeout);
+        clearTimeout(updateParamTimeouts[timerKey]);
         $input.addClass('border-warning');
 
-        updateParamTimeout = setTimeout(function () {
+        updateParamTimeouts[timerKey] = setTimeout(function () {
             const payload = {};
             payload[paramName] = value;
             fetch('/orders/api/group-customizers/' + id + '/', {
@@ -1080,7 +1118,7 @@ $(document).ready(function () {
                     updateMainListCustomizers(groupId);
                 }
             });
-        }, 1000);
+        }, 600);
     });
 
     $(document).on('click', function (e) {
@@ -1142,7 +1180,7 @@ $(document).ready(function () {
         $saveSpecForm.attr('action', '/orders/groups/' + groupId + '/save-specification/');
 
         const modalEl = document.getElementById('saveSpecificationModal');
-        const modal = window.bootstrap ? new window.bootstrap.Modal(modalEl) : null;
+        const modal = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(modalEl) : null;
         if (modal) modal.show();
     });
 
@@ -1165,7 +1203,7 @@ $(document).ready(function () {
                 $btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i>שמור מפרט');
                 if (data['status'] === 'ok') {
                     const modalEl = document.getElementById('saveSpecificationModal');
-                    const modal = window.bootstrap ? (window.bootstrap.Modal.getInstance(modalEl) || new window.bootstrap.Modal(modalEl)) : null;
+                    const modal = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(modalEl) : null;
                     if (modal) modal.hide();
                     showSuccessNotification('המפרט נשמר בהצלחה!');
                 } else {
@@ -1205,7 +1243,10 @@ $(document).ready(function () {
             }
 
             const isSplitBadge = spec['is_split_installation']
-                ? '<span class="badge bg-info-subtle text-info me-2">התקנה מפוצלת</span>'
+                ? '<span class="badge bg-info-subtle text-info me-1">התקנה מפוצלת</span>'
+                : '';
+            const isSpecialBadge = spec['is_special_detail']
+                ? '<span class="badge me-1" style="background-color: rgba(111, 66, 193, 0.12); color: #6f42c1;">פרט מיוחד</span>'
                 : '';
 
             let actionButtons;
@@ -1242,7 +1283,7 @@ $(document).ready(function () {
                 '<div class="col-md-6 col-xl-4 spec-card-item">' +
                 '<div class="card h-100 bg-body-tertiary">' +
                 '<div class="card-header bg-body border-bottom d-flex justify-content-between align-items-center py-2">' +
-                '<div class="text-truncate me-2"><strong class="text-primary fs-6" title="' + spec['name'] + '">' + spec['name'] + '</strong> ' + isSplitBadge + '</div>' +
+                '<div class="text-truncate me-2"><strong class="text-primary fs-6" title="' + spec['name'] + '">' + spec['name'] + '</strong> ' + isSplitBadge + isSpecialBadge + '</div>' +
                 '<button type="button" class="btn btn-outline-danger btn-sm p-1 py-0 btn-delete-spec" data-spec-id="' + spec['id'] + '" title="מחק מפרט זה"><i class="bi bi-trash"></i></button>' +
                 '</div>' +
                 '<div class="card-body py-2">' + descHtml +
@@ -1309,7 +1350,7 @@ $(document).ready(function () {
         loadSpecifications(targetGroupId);
 
         const modalEl = document.getElementById('loadSpecificationModal');
-        const modal = window.bootstrap ? new window.bootstrap.Modal(modalEl) : null;
+        const modal = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(modalEl) : null;
         if (modal) modal.show();
     });
 
@@ -1489,7 +1530,10 @@ $(document).ready(function () {
             window.open(urlObj.toString(), target);
         }
 
-        $('#reportsModal').modal('hide');
+        const reportsModalEl = document.getElementById('reportsModal');
+        if (reportsModalEl && window.bootstrap) {
+            window.bootstrap.Modal.getOrCreateInstance(reportsModalEl).hide();
+        }
     });
 
     // --- Комментарии к отчётам станций (#stationNoteModal поверх #reportsModal) ---
@@ -1557,7 +1601,7 @@ $(document).ready(function () {
                         }
                     }
                     const modalEl = document.getElementById('stationNoteModal');
-                    bootstrap.Modal.getInstance(modalEl).hide();
+                    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
                 } else {
                     window.sbAlert(data.message || 'שגיאה בשמירת ההערה', 'שגיאה', 'danger');
                 }

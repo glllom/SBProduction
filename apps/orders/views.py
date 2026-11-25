@@ -215,6 +215,7 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
         context['product_types'] = ProductType.objects.filter(active=True)
         context['header_form'] = OrderForm(instance=order, user=user)
         context['group_form'] = OrderItemsGroupForm(order=order, user=user)
+        context['can_add_groups'] = (order.status != OrderStatus.CANCELED)
 
         # Annotate edit permission per group
         groups = list(
@@ -262,10 +263,6 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
             order_batches.append(entry)
 
         context['order_batches'] = order_batches
-
-        for g in groups:
-            g.can_edit = g.is_editable_by(user)
-        context['groups'] = groups
 
         context['saved_specifications'] = GroupSpecification.objects.all().select_related(
             'product', 'product__product_family__product_type', 'product__product_family',
@@ -615,7 +612,7 @@ def duplicate_item_measurements(request, pk):
 @require_POST
 def group_duplicate(request, pk):
     group = get_object_or_404(OrderItemsGroup, pk=pk)
-    check_order_editable(group.order, request.user)
+    check_order_editable(group.order, request.user, action='add_group')
 
     new_group = group.duplicate()
     target_url = reverse('order-detail', kwargs={'pk': group.order.pk})
@@ -691,7 +688,7 @@ def apply_group_specification(request, pk, spec_pk):
 @require_POST
 def create_group_from_specification(request, order_pk, spec_pk):
     order = get_object_or_404(Order, pk=order_pk)
-    check_order_editable(order, request.user)
+    check_order_editable(order, request.user, action='add_group')
 
     spec = get_object_or_404(GroupSpecification, pk=spec_pk)
     qty = parse_positive_int(request.POST.get('quantity'))

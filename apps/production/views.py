@@ -1,5 +1,4 @@
 import json
-from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -27,13 +26,15 @@ from apps.orders.models import (
     OrderStatus,
     OrderWarehouseItem,
 )
-from .models import DoorLabel, OrderStationNote, StationProgressSource
-from .services import (
+from apps.production.services import (
     OrderProductionService,
     OrderValidationError,
+    OrderValidationService,
     ProductionDataService,
     TechnicalSpecService,
+    get_qr_base64,
 )
+from .models import DoorLabel, OrderStationNote, StationProgressSource
 from .tracking_services import StationTrackingService
 from .usb_sync import run_usb_sync
 
@@ -78,8 +79,7 @@ def order_transfer_to_production(request, pk):
             valid_groups = order.groups.filter(
                 is_split_installation=True,
                 batch_number__isnull=False,
-            ).exclude(
-                production_state=OrderItemsGroup.ProductionState.CANCELED
+                production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
             )
             requested_batches = list(valid_groups.values_list('batch_number', flat=True).distinct())
 
@@ -215,27 +215,36 @@ def order_transfer_to_production(request, pk):
                 if change_logs:
                     OrderChangeLog.objects.bulk_create(change_logs)
 
-                new_groups = order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW)
-                if new_groups.exists():
+                launch_errors = OrderProductionService.validate_launch_rules(order)
+                if launch_errors:
+                    for err in launch_errors:
+                        messages.error(request, err)
+                    return redirect('order-detail', pk=pk)
+
+                new_groups = list(order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW))
+                if new_groups:
                     released_batch = order.current_batch or 1
-                    new_groups.update(
-                        batch_number=released_batch,
-                        production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
-                        batch_date=date.today(),
-                    )
+                    OrderProductionService._release_groups_to_batch(new_groups, released_batch)
                     order.current_batch = released_batch + 1
                     order.save(update_fields=['current_batch'])
 
+                old_status = order.status
                 order.status = OrderStatus.PHASE2_PRODUCTION
                 order.save(update_fields=['status'])
+                OrderChangeLog.objects.create(
+                    order=order,
+                    user=request.user,
+                    field_name='status',
+                    old_value=old_status,
+                    new_value=order.status,
+                )
 
-                # Перестраиваем снимок спецификации Фазы 2 до инициализации трекинга
                 TechnicalSpecService.get_or_build_spec(
                     order, phase='phase2', force_rebuild=True, user=request.user
                 )
 
-                active_phase2_groups = order.groups.exclude(
-                    production_state=OrderItemsGroup.ProductionState.CANCELED
+                active_phase2_groups = order.groups.filter(
+                    production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION
                 )
                 for group in active_phase2_groups:
                     StationTrackingService.initialize_batch_progress(group)
@@ -316,28 +325,20 @@ def order_transfer_to_production(request, pk):
 
 
 @login_required
+@require_POST
 def group_toggle_state(request, pk, group_id):
-    """Toggles or sets the production state of an OrderItemsGroup."""
+    """Переключает статус группы (пауза, снятие с паузы, отмена, восстановление) с валидацией фаз."""
     order = get_object_or_404(Order, pk=pk)
     group = get_object_or_404(order.groups, pk=group_id)
-    new_state = request.POST.get('state') or request.GET.get('state')
+    new_state = (request.POST.get('state') or '').strip()
 
-    if new_state in [
-        OrderItemsGroup.ProductionState.WAITING,
-        OrderItemsGroup.ProductionState.IN_PRODUCTION,
-        OrderItemsGroup.ProductionState.COMPLETED,
-    ]:
-        old_state = group.production_state
-        group.production_state = new_state
-        group.save(update_fields=['production_state'])
-        messages.success(request, f"סטטוס קבוצה #{group.id} עודכן ל-{group.get_production_state_display()}.")
-        OrderChangeLog.objects.create(
-            order=order,
-            user=request.user,
-            field_name=f"Group #{group.id} production_state",
-            old_value=old_state,
-            new_value=new_state,
-        )
+    try:
+        msg = OrderProductionService.change_group_state(group, new_state, user=request.user)
+        messages.success(request, msg)
+    except (ValueError, OrderValidationError) as e:
+        for err in getattr(e, 'errors', [str(e)]):
+            messages.error(request, err)
+
     return redirect('order-detail', pk=pk)
 
 
@@ -363,6 +364,10 @@ def order_complete_phase1(request, pk):
 
     if order.status != OrderStatus.PHASE1_PRODUCTION:
         messages.error(request, "Order is not in Phase 1 production.")
+        return redirect('order-detail', pk=pk)
+
+    if order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW).exists():
+        messages.error(request, "קיימות קבוצות חדשות שטרם הועברו לייצור — העבר אותן או השהה לפני סיום שלב א'.")
         return redirect('order-detail', pk=pk)
 
     try:
@@ -481,7 +486,7 @@ def order_complete_production(request, pk):
     try:
         OrderProductionService.complete_production(order, user=request.user)
         messages.success(request, "Production successfully completed.")
-    except ValueError as e:
+    except ValueError or OrderValidationError as e:
         messages.error(request, str(e))
     return redirect('order-detail', pk=pk)
 
@@ -557,7 +562,7 @@ def order_dev_force_rebuild_spec(request, pk):
 def split_measurer_report(request, pk):
     """
     Report for the measurer before phase 2, specifically for split installations.
-    Uses Phase 1 specification data across active batches.
+    Uses Phase 1 specification data across active split batches (excluding NEW/WAITING/CANCELED).
     """
     order = get_object_or_404(Order, pk=pk)
 
@@ -571,20 +576,34 @@ def split_measurer_report(request, pk):
     try:
         order_spec, _ = TechnicalSpecService.get_or_build_spec(order, phase='phase1')
 
+        valid_groups = order.groups.filter(
+            is_split_installation=True,
+            batch_number__isnull=False,
+            production_state__in=(
+                OrderItemsGroup.ProductionState.IN_PRODUCTION,
+                OrderItemsGroup.ProductionState.COMPLETED,
+            ),
+        )
+
         if not requested_batches:
-            valid_groups = order.groups.filter(
-                is_split_installation=True,
-                batch_number__isnull=False,
-            ).exclude(
-                production_state=OrderItemsGroup.ProductionState.CANCELED
-            )
             requested_batches = list(valid_groups.values_list('batch_number', flat=True).distinct())
 
         flat_items, batches_label = ProductionDataService.extract_report_items(
             order_spec,
             requested_batches=requested_batches,
         )
-        spec_items = flat_items if flat_items is not None else []
+
+        allowed_item_ids = set(
+            OrderItem.objects.filter(
+                group__in=valid_groups,
+                state=OrderItem.ItemState.ACTIVE,
+            ).values_list('id', flat=True)
+        )
+
+        spec_items = [
+            it for it in (flat_items or [])
+            if (it.get('item_id') if isinstance(it, dict) else getattr(it, 'item_id', None)) in allowed_item_ids
+        ]
     except Exception as e:
         errors = getattr(e, 'errors', [str(e)])
         return render(request, 'production/report_validation_error.html', {
@@ -597,7 +616,7 @@ def split_measurer_report(request, pk):
         'order': order,
         'order_spec': order_spec,
         'spec_items': spec_items,
-        'batches_label': batches_label,
+        'batches_label': batches_label or '',
         'report_label': "דו''ח מדידה לאחר שלב א'",
         'now': timezone.now(),
     })

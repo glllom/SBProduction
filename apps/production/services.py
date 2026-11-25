@@ -235,7 +235,8 @@ class ProductionDataService:
         valid_groups = self.order.groups.filter(
             is_split_installation=True,
             batch_number__isnull=False,
-        ).exclude(production_state=OrderItemsGroup.ProductionState.CANCELED)
+            production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION,
+        )
 
         active_batch_numbers = list(valid_groups.values_list('batch_number', flat=True).distinct())
         if not active_batch_numbers:
@@ -462,12 +463,6 @@ class OrderProductionService:
             shutil.rmtree(order_dir)
 
     @staticmethod
-    def validate_for_production(order, validation_type: Optional[str] = None) -> Tuple[bool, List[str]]:
-        """Проверяет готовность заказа и возвращает кортеж (is_valid, errors)."""
-        res = OrderValidationService.validate_for_production(order, validation_type)
-        return res.is_valid, res.errors
-
-    @staticmethod
     def _release_groups_to_batch(groups: List[OrderItemsGroup], batch_number: int) -> None:
         """Фиксирует номер батча, дату запуска и статус IN_PRODUCTION для списка групп."""
         today = date.today()
@@ -496,10 +491,173 @@ class OrderProductionService:
             new_value=new_status,
         )
 
+    @staticmethod
+    def validate_launch_rules(order) -> List[str]:
+        """Проверяет совместимость NEW-групп (раздельный монтаж vs обычные) с текущим статусом заказа."""
+        if order.status == OrderStatus.CANCELED:
+            return ["לא ניתן להעביר לייצור הזמנה מבוטלת."]
+
+        new_groups = list(order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW))
+
+        if order.status == OrderStatus.PHASE1_READY:
+            if any(g.is_split_installation for g in new_groups):
+                return [
+                    "קיימות קבוצות חדשות עם התקנה מפוצלת. יש להעביר אותן בשלב א' לפני המעבר לשלב ב'."
+                ]
+            return []
+
+        if not new_groups:
+            return ["אין קבוצות חדשות להעברה לייצור."]
+
+        has_new_split = any(g.is_split_installation for g in new_groups)
+        has_new_regular = any(not g.is_split_installation for g in new_groups)
+
+        if order.status == OrderStatus.NEW:
+            if has_new_split and has_new_regular:
+                return [
+                    "לא ניתן להוריד לייצור שלב א' קבוצות עם התקנה מפוצלת וקבוצות רגילות יחד. "
+                    "השהה את הקבוצות הרגילות עד המעבר לשלב ב'."
+                ]
+        elif order.status == OrderStatus.PHASE1_PRODUCTION:
+            if has_new_regular:
+                return [
+                    "בזמן ייצור שלב א' ניתן להוריד לייצור רק קבוצות עם התקנה מפוצלת. "
+                    "השהה או תקן את הקבוצות הרגילות."
+                ]
+        elif order.status in (
+                OrderStatus.IN_PRODUCTION,
+                OrderStatus.PHASE2_PRODUCTION,
+                OrderStatus.COMPLETION_PRODUCTION,
+                OrderStatus.PARTIALLY_READY,
+                OrderStatus.COMPLETED,
+        ):
+            if has_new_split:
+                return [
+                    "לא ניתן להוריד לייצור קבוצות עם התקנה מפוצלת לאחר מעבר לשלב ב' או בייצור רגיל/השלמות."
+                ]
+
+        return []
+
+    @classmethod
+    def validate_for_production(cls, order, validation_type: Optional[str] = None) -> Tuple[bool, List[str]]:
+        """Проверяет правила фаз и готовность данных заказа; возвращает (is_valid, errors)."""
+        launch_errors = cls.validate_launch_rules(order)
+        if launch_errors:
+            return False, launch_errors
+        res = OrderValidationService.validate_for_production(order, validation_type)
+        return res.is_valid, res.errors
+
+    @classmethod
+    @transaction.atomic
+    def change_group_state(cls, group: OrderItemsGroup, new_state: str, user=None) -> str:
+        """
+        Централизованное управление статусом группы:
+          - NEW -> WAITING (ручная пауза) / COMPLETED -> WAITING (разморозка для доделок)
+          - WAITING -> NEW (снятие с паузы, с валидацией фазы и откатом PHASE1_READY -> PHASE1_PRODUCTION)
+          - CANCELED -> NEW (восстановление группы и её OrderItem)
+          - * -> CANCELED (отмена группы и её активных OrderItem)
+        """
+        order = group.order
+        old_state = group.production_state
+        allowed_states = {
+            OrderItemsGroup.ProductionState.NEW,
+            OrderItemsGroup.ProductionState.WAITING,
+            OrderItemsGroup.ProductionState.CANCELED,
+        }
+
+        if new_state not in allowed_states:
+            raise OrderValidationError(f"סטטוס יעד לא חוקי: {new_state}")
+        if order.status == OrderStatus.CANCELED:
+            raise OrderValidationError("לא ניתן לשנות סטטוס קבוצה בהזמנה מבוטלת.")
+        if old_state == new_state:
+            return f"סטטוס קבוצה #{group.id} כבר {group.get_production_state_display()}."
+
+        rolled_back_phase1 = False
+        update_fields = ['production_state']
+
+        if new_state == OrderItemsGroup.ProductionState.WAITING:
+            if old_state not in (
+                    OrderItemsGroup.ProductionState.NEW,
+                    OrderItemsGroup.ProductionState.COMPLETED,
+            ):
+                raise OrderValidationError("ניתן להשהות רק קבוצה חדשה או להפשיר קבוצה שהושלמה.")
+            if old_state == OrderItemsGroup.ProductionState.COMPLETED:
+                group.batch_number = None
+                group.batch_date = None
+                update_fields.extend(['batch_number', 'batch_date'])
+
+        elif new_state == OrderItemsGroup.ProductionState.NEW:
+            if old_state not in (
+                    OrderItemsGroup.ProductionState.WAITING,
+                    OrderItemsGroup.ProductionState.CANCELED,
+            ):
+                raise OrderValidationError("ניתן להחזיר לפעילות רק קבוצה מושהית או מבוטלת.")
+
+            if order.status == OrderStatus.PHASE1_PRODUCTION and not group.is_split_installation:
+                raise OrderValidationError(
+                    "לא ניתן להחזיר לפעילות קבוצה ללא התקנה מפוצלת בזמן שההזמנה בייצור שלב א'."
+                )
+            if order.status in (
+                    OrderStatus.IN_PRODUCTION,
+                    OrderStatus.PHASE2_PRODUCTION,
+                    OrderStatus.COMPLETION_PRODUCTION,
+                    OrderStatus.PARTIALLY_READY,
+                    OrderStatus.COMPLETED,
+            ) and group.is_split_installation:
+                raise OrderValidationError(
+                    "לא ניתן להחזיר לפעילות קבוצה עם התקנה מפוצלת לאחר מעבר לשלב ב' או בייצור רגיל/השלמות."
+                )
+
+            if group.batch_number is not None or group.batch_date is not None:
+                group.batch_number = None
+                group.batch_date = None
+                update_fields.extend(['batch_number', 'batch_date'])
+
+            if old_state == OrderItemsGroup.ProductionState.CANCELED:
+                group.items.filter(state=OrderItem.ItemState.CANCELED).update(
+                    state=OrderItem.ItemState.ACTIVE
+                )
+
+            # Сценарий 2: откат PHASE1_READY -> PHASE1_PRODUCTION (логируем с реальным пользователем)
+            if order.status == OrderStatus.PHASE1_READY and group.is_split_installation:
+                order.status = OrderStatus.PHASE1_PRODUCTION
+                order.save(update_fields=['status'])
+                OrderChangeLog.objects.create(
+                    order=order,
+                    user=user,
+                    field_name='status',
+                    old_value=OrderStatus.PHASE1_READY,
+                    new_value=OrderStatus.PHASE1_PRODUCTION,
+                )
+                rolled_back_phase1 = True
+
+        elif new_state == OrderItemsGroup.ProductionState.CANCELED:
+            if order.status == OrderStatus.COMPLETED:
+                raise OrderValidationError("לא ניתן לבטל קבוצה בהזמנה שכבר הושלמה.")
+            group.items.filter(state=OrderItem.ItemState.ACTIVE).update(
+                state=OrderItem.ItemState.CANCELED
+            )
+
+        group.production_state = new_state
+        group.save(update_fields=update_fields)
+
+        OrderChangeLog.objects.create(
+            order=order,
+            user=user,
+            field_name=f"Group #{group.id} production_state",
+            old_value=old_state,
+            new_value=new_state,
+        )
+
+        msg = f"סטטוס קבוצה #{group.id} עודכן ל-{group.get_production_state_display()}."
+        if rolled_back_phase1:
+            msg += " סטטוס ההזמנה הוחזר ל'ייצור שלב א' להורדת האצווה החדשה."
+        return msg
+
     @classmethod
     @transaction.atomic
     def start_production(cls, order, user=None) -> None:
-        """Переводит заказ или новые группы в производство с фиксацией батча и снимка."""
+        """Переводит заказ или новые NEW-группы в производство (WAITING-группы игнорируются)."""
         is_valid, errors = cls.validate_for_production(order)
         if not is_valid:
             raise OrderValidationError("Data validation error", errors=errors)
@@ -508,67 +666,83 @@ class OrderProductionService:
             order.production_start_date = timezone.localdate()
 
         released_batch = order.current_batch or 1
+        old_status = order.status
 
-        # Сценарий A: Запуск Фазы 2 (полотна после замеров Фазы 1)
+        # Сценарий A: Переход PHASE1_READY -> PHASE2_PRODUCTION (вызов напрямую через сервис)
         if order.status == OrderStatus.PHASE1_READY:
-            phase2_groups = list(
-                order.groups.filter(
-                    production_state__in=[
-                        OrderItemsGroup.ProductionState.WAITING,
-                        OrderItemsGroup.ProductionState.NEW,
-                    ]
-                )
-            )
-            if not phase2_groups:
-                raise OrderValidationError("Нет групп в ожидании (WAITING) для запуска второй фазы.")
+            new_groups = list(order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW))
+            if new_groups:
+                cls._release_groups_to_batch(new_groups, released_batch)
+                order.current_batch = released_batch + 1
 
-            cls._release_groups_to_batch(phase2_groups, released_batch)
             order.status = OrderStatus.PHASE2_PRODUCTION
-            order.current_batch = released_batch + 1
             order.save(update_fields=['status', 'current_batch', 'production_start_date'])
 
-            TechnicalSpecService.get_or_build_spec(
-                order, phase='phase2', batch_number=released_batch, force_rebuild=True, user=user
+            OrderChangeLog.objects.create(
+                order=order,
+                user=user,
+                field_name='status',
+                old_value=old_status,
+                new_value=order.status,
             )
-            for group in phase2_groups:
+            TechnicalSpecService.get_or_build_spec(
+                order, phase='phase2', force_rebuild=True, user=user
+            )
+            for group in order.groups.filter(production_state=OrderItemsGroup.ProductionState.IN_PRODUCTION):
                 StationTrackingService.initialize_batch_progress(group)
             return
 
-        # Сценарий B: Первичный запуск (полный комплект или Фаза 1 при раздельном монтаже)
-        new_groups_qs = order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW)
-        if not new_groups_qs.exists():
-            raise OrderValidationError("Нет новых групп для запуска в производство.")
+        # Сценарий B: Первичный запуск или дозапуск нового батча из NEW-групп
+        groups_to_launch = list(order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW))
+        if not groups_to_launch:
+            raise OrderValidationError("אין קבוצות חדשות להעברה לייצור.")
 
-        if getattr(order, 'has_split_installation', False):
-            new_groups_qs.filter(is_split_installation=False).update(
-                production_state=OrderItemsGroup.ProductionState.WAITING
-            )
-            groups_to_launch = list(new_groups_qs.filter(is_split_installation=True))
-            if not groups_to_launch:
-                raise OrderValidationError("Нет подходящих групп с раздельным монтажом для запуска первой фазы.")
-            order.status = OrderStatus.PHASE1_PRODUCTION
+        is_split_launch = groups_to_launch[0].is_split_installation
+
+        if order.status == OrderStatus.NEW:
+            target_status = OrderStatus.PHASE1_PRODUCTION if is_split_launch else OrderStatus.IN_PRODUCTION
+            phase = 'phase1' if is_split_launch else 'phase2'
+        elif order.status == OrderStatus.PHASE1_PRODUCTION:
+            target_status = OrderStatus.PHASE1_PRODUCTION
+            phase = 'phase1'
+        elif order.status in (OrderStatus.COMPLETED, OrderStatus.PARTIALLY_READY):
+            target_status = OrderStatus.COMPLETION_PRODUCTION
+            phase = 'phase2'
         else:
-            groups_to_launch = list(new_groups_qs)
-            order.status = OrderStatus.IN_PRODUCTION
+            target_status = order.status
+            phase = 'phase2'
 
         cls._release_groups_to_batch(groups_to_launch, released_batch)
+        order.status = target_status
         order.current_batch = released_batch + 1
         order.save(update_fields=['status', 'current_batch', 'production_start_date'])
 
-        phase = 'phase1' if order.status == OrderStatus.PHASE1_PRODUCTION else 'phase2'
+        if target_status != old_status:
+            OrderChangeLog.objects.create(
+                order=order,
+                user=user,
+                field_name='status',
+                old_value=old_status,
+                new_value=target_status,
+            )
+
         TechnicalSpecService.get_or_build_spec(
             order, phase=phase, batch_number=released_batch, force_rebuild=True, user=user
         )
 
-        if order.status == OrderStatus.IN_PRODUCTION:
+        if phase == 'phase2':
             for group in groups_to_launch:
                 StationTrackingService.initialize_batch_progress(group)
 
     @classmethod
     def complete_phase1(cls, order, user=None):
-        """Завершает Фазу 1 и переводит заказ в статус ожидания замеров (PHASE1_READY)."""
+        """Завершает Фазу 1 и переводит заказ в PHASE1_READY (группы остаются IN_PRODUCTION)."""
         if order.status != OrderStatus.PHASE1_PRODUCTION:
             raise ValueError("Phase A completion is only possible for orders in 'Phase A Production' status")
+        if order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW).exists():
+            raise OrderValidationError(
+                "קיימות קבוצות חדשות שטרם הועברו לייצור — העבר אותן לאצווה או השהה לפני סיום שלב א'."
+            )
 
         with transaction.atomic():
             cls._transition_order_status(order, OrderStatus.PHASE1_READY, user=user)
@@ -576,15 +750,20 @@ class OrderProductionService:
 
     @classmethod
     def complete_production(cls, order, user=None):
-        """Завершает производство заказа и переводит активные группы в COMPLETED."""
+        """Завершает производство заказа и переводит активные IN_PRODUCTION-группы в COMPLETED."""
         if order.status not in (
                 OrderStatus.IN_PRODUCTION,
                 OrderStatus.PHASE2_PRODUCTION,
                 OrderStatus.COMPLETION_PRODUCTION,
+                OrderStatus.PARTIALLY_READY,
         ):
             raise ValueError(
                 "Production completion is only possible for orders in 'In Production', "
-                "'Phase B Production' or 'Completion Production' status"
+                "'Phase B Production', 'Completion Production' or 'Partially Ready' status"
+            )
+        if order.groups.filter(production_state=OrderItemsGroup.ProductionState.NEW).exists():
+            raise OrderValidationError(
+                "קיימות קבוצות חדשות שטרם הועברו לייצור — העבר אותן או השהה לפני סיום הייצור."
             )
 
         with transaction.atomic():
