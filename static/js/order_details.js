@@ -209,10 +209,6 @@ $(document).ready(function () {
                 .attr('data-initial-split', isSplit ? 'true' : 'false')
                 .prop('checked', isSplit);
 
-            $groupModal.find('input[name="is_special_detail"]').prop(
-                'checked',
-                $btn.attr('data-is-special-detail') === 'true'
-            );
 
             const panelPaint = $btn.attr('data-panel-paint-option') || 'MAIN_COLOR';
             $groupModal.find('select[name="panel_paint_option"]').val(panelPaint).trigger('change');
@@ -283,7 +279,6 @@ $(document).ready(function () {
 
             $groupModal.find('input, select, textarea').prop('disabled', false);
             $groupModal.find('input[name="is_split_installation"]').removeAttr('data-initial-split').prop('checked', false);
-            $groupModal.find('input[name="is_special_detail"]').prop('checked', false);
             $groupModal.find('.alert-grace-period').remove();
             $groupModal.find('select').removeAttr('data-initial-value');
             $groupModal.find('.product-info-display').html('<small class="text-secondary">בחר סדרה ומשפחה לחיפוש מוצר...</small>');
@@ -987,12 +982,57 @@ $(document).ready(function () {
         }
 
         $custModal.data('group-id', groupId);
+        const $specialSwitch = $('#custModalSpecialDetailSwitch');
+        if ($specialSwitch.length) {
+            const isSpecial = $groupCard.attr('data-is-special-detail') === 'true';
+            const groupCanEdit = $groupCard.attr('data-can-edit') !== 'false';
+            $specialSwitch.prop('checked', isSpecial).prop('disabled', !groupCanEdit);
+        }
         loadGroupCustomizers(groupId);
 
         const modalInst = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance($custModal[0]) : null;
         if (modalInst) modalInst.show();
     }
 
+    $(document).on('change', '#custModalSpecialDetailSwitch', function () {
+        const $switch = $(this);
+        const groupId = $custModal.data('group-id');
+        if (!groupId) return;
+
+        const newVal = $switch.is(':checked');
+        $switch.prop('disabled', true);
+
+        fetch('/orders/groups/' + groupId + '/toggle-special-detail/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({is_special_detail: newVal})
+        })
+            .then(function (r) {
+                return r.json().then(function (data) {
+                    return {ok: r.ok, data: data};
+                });
+            })
+            .then(function (res) {
+                $switch.prop('disabled', false);
+                if (res.ok && res.data.status === 'ok') {
+                    const savedVal = Boolean(res.data.is_special_detail);
+                    const $groupCard = $('.group-card[data-group-id="' + groupId + '"]');
+                    $groupCard.attr('data-is-special-detail', savedVal ? 'true' : 'false');
+                    $groupCard.find('.js-special-detail-badge').toggleClass('d-none', !savedVal);
+                } else {
+                    $switch.prop('checked', !newVal);
+                    window.sbAlert(res.data.message || 'שגיאה בעדכון פרט מיוחד', 'שגיאה', 'danger');
+                }
+            })
+            .catch(function () {
+                $switch.prop('disabled', false).prop('checked', !newVal);
+                window.sbAlert('שגיאת תקשורת עם השרת', 'שגיאת תקשורת', 'danger');
+            });
+    });
     let searchTimeout;
     $custSearch.on('input', function () {
         clearTimeout(searchTimeout);
@@ -1014,6 +1054,7 @@ $(document).ready(function () {
 
             fetch(url)
                 .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
                 })
                 .then(function (data) {
@@ -1033,6 +1074,12 @@ $(document).ready(function () {
                     }
                     $custResults.html(html).removeClass('d-none');
                     if (window['initTooltips']) window['initTooltips']($custResults[0]);
+                })
+                .catch(function (err) {
+                    console.error('Error searching customizers:', err);
+                    $custResults
+                        .html('<div class="list-group-item text-danger">שגיאה בחיפוש קסטומייזרים</div>')
+                        .removeClass('d-none');
                 });
         }, 300);
     });
@@ -1051,13 +1098,24 @@ $(document).ready(function () {
             body: JSON.stringify({group: groupId, customizer: custId})
         })
             .then(function (r) {
-                return r.json();
+                return r.json().then(function (data) {
+                    return {ok: r.ok, data: data};
+                });
             })
-            .then(function () {
+            .then(function (res) {
+                if (!res.ok) {
+                    const msg = res.data.detail || Object.values(res.data).flat().join(', ') || 'שגיאה בהוספת קסטומייזר';
+                    window.sbAlert(msg, 'שגיאה', 'danger');
+                    return;
+                }
                 $custSearch.val('');
                 $custResults.addClass('d-none');
                 loadGroupCustomizers(groupId);
                 updateMainListCustomizers(groupId);
+            })
+            .catch(function (err) {
+                console.error('Error adding customizer:', err);
+                window.sbAlert('שגיאת תקשורת עם השרת', 'שגיאת תקשורת', 'danger');
             });
     });
 

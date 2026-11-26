@@ -60,7 +60,7 @@ class CustomizerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customizer
         fields = [
-            'id', 'code', 'name', 'description', 'tag', 'hardware', 'is_required',
+            'id', 'code', 'name', 'description', 'tag', 'hardware', 'plugin_code',
             'par1_label', 'par1_required', 'par1_value', 'par1_hint',
             'par2_label', 'par2_required', 'par2_value', 'par2_hint',
             'par3_label', 'par3_required', 'par3_value', 'par3_hint',

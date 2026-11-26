@@ -43,6 +43,7 @@
                             <a href="
 
 
+
 									{% url 'production:order-tracking-list' %}{% if query %}?q={{ query|urlencode }}{% endif %}"
                                class="sb-filter-pill {% if not only_anomalies %}active{% endif %}">
                                 כל ההזמנות בייצור
@@ -87,7 +88,7 @@
                                     {% endfor %}
                                 </td>
                                 <td>
-                                    <div class="d-flex align-items-center gap-2">
+                                    <div class="d-flex align-items-center gap-2" dir="ltr">
                                         <div class="progress flex-grow-1"
                                              style="height: 7px;
                                                     background-color: var(--sb-surface-muted)">

@@ -6,7 +6,9 @@
          data-product-id="{{ group.product.id }}"
          data-family-id="{{ group.product.product_family.id }}"
          data-type-id="{{ group.product.product_family.product_type.id }}"
-         data-group-details="{{ group.product.product_family.name }} / {{ group.series.name }}">
+         data-group-details="{{ group.product.product_family.name }} / {{ group.series.name }}"
+         data-is-special-detail="{{ group.is_special_detail|yesno:'true,false' }}"
+         data-can-edit="{{ group.can_edit|yesno:'true,false' }}">
         <!-- Единая шапка группы: диапазон дверей, модель и статус справа; меню и сворачивание слева -->
         <div class="card-header bg-body border-0 py-2 px-3 d-flex justify-content-between align-items-center gap-2">
             <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1 cursor-pointer sb-group-header-toggle rounded-2 px-1"
@@ -29,15 +31,13 @@
                 {% if group.is_split_installation %}
                     <span class="sb-badge-soft sb-info">התקנה מפוצלת (שלב א)</span>
                 {% endif %}
-                {% if group.is_special_detail %}
-                    <span class="sb-badge-soft"
-                          style="background-color: rgba(111, 66, 193, 0.12);
-                                 color: #6f42c1"
-                          data-bs-toggle="tooltip"
-                          title="פרט מיוחד — מדבקה 2 תופנה לפרויקט ידני ב-Accord">
-                        <i class="bi bi-wrench-adjustable me-1"></i>פרט מיוחד
-                    </span>
-                {% endif %}
+                <span class="sb-badge-soft js-special-detail-badge {% if not group.is_special_detail %}d-none{% endif %}"
+                      style="background-color: rgba(111, 66, 193, 0.12);
+                             color: #6f42c1"
+                      data-bs-toggle="tooltip"
+                      title="פרט מיוחד — מדבקה 2 תופנה לפרויקט ידני ב-Accord">
+                    <i class="bi bi-wrench-adjustable me-1"></i>פרט מיוחד
+                </span>
                 {% if group.production_state == 'WAITING' %}
                     <span class="sb-badge-soft sb-warning">
                         <i class="bi bi-hourglass-split me-1"></i>ממתין
@@ -190,6 +190,7 @@
                                         data-product-name="{{ group.product.name }}"
                                         data-product-code="{{ group.product.code }}"
                                         data-product-family="{{ group.product.product_family_id }}"
+                                        data-is-special-detail="{{ group.is_special_detail|yesno:'true,false' }}"
                                         data-product-type="{{ group.product.product_family.product_type_id }}"
                                         data-series="{{ group.series_id|default:'' }}"
                                         data-front="{{ group.front_id|default:'' }}"
@@ -444,6 +445,7 @@
                                     data-product-name="{{ group.product.name }}"
                                     data-product-code="{{ group.product.code }}"
                                     data-is-split="{{ group.is_split_installation|yesno:'true,false' }}"
+                                    data-is-special-detail="{{ group.is_special_detail|yesno:'true,false' }}"
                                     data-comments="{{ group.comments|default:'' }}"
                                     title="ניהול והגדרות צביעה ופרטי קבוצה">
                                 <i class="bi bi-gear me-1"></i> ניהול צביעה

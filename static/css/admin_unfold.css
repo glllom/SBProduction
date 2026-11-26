@@ -399,3 +399,10 @@ html:not(.dark) table thead th a:hover {
 html:not(.dark) #result_list tbody tr:hover td {
     background-color: var(--sb-row-hover, color-mix(in srgb, #157485 6%, #ffffff)) !important;
 }
+
+/* Зеркальное отражение стрелок в filter_horizontal (FilteredSelectMultiple) для RTL */
+html[dir="rtl"] .selector-chooser .selector-add,
+html[dir="rtl"] .selector-chooser .selector-remove {
+    display: inline-flex;
+    transform: scaleX(-1);
+}

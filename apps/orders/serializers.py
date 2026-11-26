@@ -141,7 +141,7 @@ class GroupSpecificationSerializer(serializers.ModelSerializer):
             'panel_paint_option', 'panel_paint_option_display', 'is_door_inside_different_color', 'color_panel_outside',
             'color_panel_inside',
             'frame_paint_option', 'frame_paint_option_display', 'color_frames',
-            'is_split_installation', 'quantity', 'comments',
+            'is_split_installation', 'is_special_detail', 'quantity', 'comments',
             'created_at', 'created_at_formatted', 'created_by', 'created_by_name',
             'customizers',
         ]

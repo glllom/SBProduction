@@ -71,6 +71,7 @@ class DoorLabel(models.Model):
 
     order_number = models.CharField('מספר הזמנה', max_length=64, db_index=True)
     client_name = models.CharField('שם לקוח', max_length=255, blank=True, default='')
+    completion_date = models.DateField(null=True, blank=True, verbose_name='תאריך סיום הזמנה')
     item_mark = models.CharField('סימון פריט', max_length=32)
     total_items = models.PositiveIntegerField('סך הפריטים', default=1)
     leaf_role = models.PositiveSmallIntegerField('סוג כנף', choices=LeafRole.choices, default=LeafRole.SINGLE,
@@ -79,11 +80,12 @@ class DoorLabel(models.Model):
     print_count = models.PositiveIntegerField('מספר הדפסות', default=0)
     last_printed_at = models.DateTimeField('הודפס לאחרונה', null=True, blank=True)
 
+    product_family_name = models.CharField(max_length=128, blank=True, default='', verbose_name='קוד משפחת מוצרים')
+
     width = models.FloatField('רוחב', null=True, blank=True)
+    width_bottom = models.FloatField(null=True, blank=True, verbose_name='רוחב תחתון')
     height = models.FloatField('גובה', null=True, blank=True)
-    thickness = models.FloatField('עובי', null=True, blank=True)
     direction = models.CharField('כיוון', max_length=32, blank=True, default='')
-    opening = models.CharField('פתיחה', max_length=32, blank=True, default='')
     edge_type = models.CharField('סוג קנט', max_length=64, blank=True, default='')
     is_paint = models.BooleanField('צביעה', default=False)
 
@@ -96,7 +98,6 @@ class DoorLabel(models.Model):
     hinge_4 = models.FloatField('ציר 4', null=True, blank=True)
     hinge_5 = models.FloatField('ציר 5', null=True, blank=True)
     addons_summary = models.TextField('סיכום תוספות', blank=True, default='')
-    icon_filename = models.CharField('שם קובץ אייקון', max_length=128, blank=True, default='')
     comment = models.TextField('הערה', blank=True, default='')
 
     target_machine = models.CharField('מכונת CNC משויכת', max_length=32, choices=TargetMachine.choices,
@@ -104,23 +105,9 @@ class DoorLabel(models.Model):
     qr_payload = models.TextField('מטען QR', blank=True, default='')
     created_at = models.DateTimeField('זמן יצירה', auto_now_add=True)
 
-    cnc_program = models.CharField(max_length=100, blank=True, default="", verbose_name="תוכנית עיבוד היקפי (CNC)")
-    edge_shape = models.BooleanField(default=False, verbose_name="צורת קנט (edge_shape)")
-    lock_program = models.CharField(max_length=100, blank=True, default="", verbose_name="תוכנית מנעול (CNC)")
-    hinge_program = models.CharField(max_length=100, blank=True, default="", verbose_name="תוכנית צירים (CNC)")
-    front_program = models.CharField(max_length=100, blank=True, default="", verbose_name="תוכנית חריטה/חזית (CNC)")
-    customizer_programs = models.TextField(blank=True, default="", verbose_name="תוכניות קסטומייזרים")
-
-    cmz_prg_1 = models.CharField(max_length=100, blank=True, default="")
-    cmz_prg_2 = models.CharField(max_length=100, blank=True, default="")
-    cmz_prg_3 = models.CharField(max_length=100, blank=True, default="")
-    cmz_prg_4 = models.CharField(max_length=100, blank=True, default="")
-    cmz_prg_5 = models.CharField(max_length=100, blank=True, default="")
-    cmz_prg_6 = models.CharField(max_length=100, blank=True, default="")
-    cmz_prg_7 = models.CharField(max_length=100, blank=True, default="")
-    cmz_prg_8 = models.CharField(max_length=100, blank=True, default="")
-    cmz_prg_9 = models.CharField(max_length=100, blank=True, default="")
-    cmz_prg_10 = models.CharField(max_length=100, blank=True, default="")
+    product_family_code = models.CharField(max_length=128, blank=True, default='', verbose_name='משפחת מוצרים')
+    front_program_code = models.CharField(max_length=100, blank=True, default="",
+                                          verbose_name="תוכנית חריטה/חזית (CNC)")
 
     class Meta:
         verbose_name = 'תווית דלת'

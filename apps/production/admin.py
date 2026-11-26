@@ -83,7 +83,7 @@ class DoorLabelAdmin(ModelAdmin):
                 ('lock_name', 'lock_height', 'lock_program'),
                 ('hinge_name', 'hinge_program'),
                 ('hinge_1', 'hinge_2', 'hinge_3', 'hinge_4', 'hinge_5'),
-                ('icon_filename', 'front_program'),
+                ('icon_filename', 'front_program_code'),
                 'addons_summary',
                 'comment',
             )

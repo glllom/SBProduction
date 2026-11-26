@@ -624,6 +624,42 @@ def group_duplicate(request, pk):
     })
 
 
+@login_required
+@require_POST
+def group_toggle_special_detail(request, pk):
+    group = get_object_or_404(OrderItemsGroup.objects.select_related('order'), pk=pk)
+
+    if not group.is_editable_by(request.user):
+        return JsonResponse({'status': 'error', 'message': 'קבוצה זו נעולה לעריכה.'}, status=403)
+
+    if request.content_type and 'application/json' in request.content_type:
+        try:
+            data = json.loads(request.body)
+            new_val = bool(data.get('is_special_detail'))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JsonResponse({'status': 'error', 'message': 'בקשה לא תקינה'}, status=400)
+    else:
+        new_val = request.POST.get('is_special_detail') in ['true', '1', 'on']
+
+    if group.is_special_detail != new_val:
+        old_val = group.is_special_detail
+        group.is_special_detail = new_val
+        group.save(update_fields=['is_special_detail'])
+
+        OrderChangeLog.objects.create(
+            order=group.order,
+            user=request.user,
+            field_name=f"group_{group.id}_is_special_detail",
+            old_value=str(old_val),
+            new_value=str(new_val),
+        )
+
+    return JsonResponse({
+        'status': 'ok',
+        'is_special_detail': group.is_special_detail,
+    })
+
+
 # ==========================================
 # Specifications Management
 # ==========================================
