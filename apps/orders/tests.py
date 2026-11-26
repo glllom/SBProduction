@@ -284,19 +284,27 @@ class GroupDuplicationAndSpecificationTests(TestCase):
         self.assertEqual(item['customizers'][0]['customizer_name'], 'מנעול מגנטי')
 
     def test_permissions_in_production(self):
-        """Test non-admin cannot duplicate or modify groups when order is IN_PRODUCTION."""
+        """Test regular user can duplicate groups in IN_PRODUCTION (add-on order), but not in CANCELED."""
         self.order.status = OrderStatus.IN_PRODUCTION
         self.order.save()
 
-        # Non-admin duplicate attempt -> 403
         url = reverse('group-duplicate', kwargs={'pk': self.group.pk})
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 403)
 
-        # Admin duplicate attempt -> success
-        self.client.login(username='adminuser', password='password123')
+        # Менеджер может дублировать группу в IN_PRODUCTION как дозаказ -> 200
         response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok')
+
+        # В отменённом заказе дублирование запрещено -> 403
+        self.order.status = OrderStatus.CANCELED
+        self.order.save()
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
+
+        # Даже админу нельзя дублировать в CANCELED -> 403
+        self.client.login(username='adminuser', password='password123')
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
 
 
 class OrderStatusManagementTests(TestCase):
@@ -385,9 +393,18 @@ class RequiredCustomizersOrderTests(TestCase):
             product_type=self.pt, code='PF1', name='Family 1', has_door=True, has_frame=True
         )
         self.series = Series.objects.create(code='SR1', name='Series 1')
+        self.parent_series = Series.objects.create(code='SR_PARENT', name='Parent Series')
         self.front = Front.objects.create(series=self.series, code='FR1', name='Front 1')
+
+        self.parent_product = ProductModel.objects.create(
+            product_family=self.pf, series=self.parent_series, code='PR_PARENT', name='Parent Product'
+        )
         self.product = ProductModel.objects.create(
-            product_family=self.pf, series=self.series, code='PR1', name='Product 1'
+            product_family=self.pf,
+            series=self.series,
+            code='PR1',
+            name='Product 1',
+            parent_model=self.parent_product,
         )
 
         self.order = Order.objects.create(
@@ -399,59 +416,52 @@ class RequiredCustomizersOrderTests(TestCase):
         )
 
     def test_product_get_required_customizers_sources(self):
-        """Test ProductModel.get_required_customizers combines direct M2M, BOM M2M, and is_required=True."""
-        from apps.engineering.models import BOM
-
+        """Test ProductModel.get_required_customizers combines direct M2M and parent_model M2M (active only)."""
         # 1. Direct product required customizer
         c1 = Customizer.objects.create(code='CUST1', name='Cust 1', tag='tag1')
         self.product.required_customizers.add(c1)
 
-        # 2. BOM required customizer
+        # 2. Inherited from parent_model
         c2 = Customizer.objects.create(code='CUST2', name='Cust 2', tag='tag2')
-        bom = BOM.objects.create(product=self.product)
-        bom.required_customizers.add(c2)
+        self.parent_product.required_customizers.add(c2)
 
-        # 3. Customizer with is_required=True scoped to product family
-        c3 = Customizer.objects.create(code='CUST3', name='Cust 3', tag='tag3', is_required=True)
-        c3.product_families.add(self.pf)
+        # 3. Inactive required customizer (should be excluded)
+        c3 = Customizer.objects.create(code='CUST3', name='Cust 3', tag='tag3', active=False)
+        self.product.required_customizers.add(c3)
 
-        # 4. Customizer with is_required=True global (no families, types, models)
-        c4 = Customizer.objects.create(code='CUST4', name='Cust 4', tag='tag4', is_required=True)
+        # 4. Non-required customizer scoped to family (should not be returned)
+        c4 = Customizer.objects.create(code='CUST4', name='Cust 4', tag='tag4')
+        c4.product_families.add(self.pf)
 
-        # 5. Non-required customizer (should not be returned)
-        c5 = Customizer.objects.create(code='CUST5', name='Cust 5', tag='tag5', is_required=False)
-        c5.product_families.add(self.pf)
-
-        req_custs = list(self.product.get_required_customizers())
-        req_ids = {c.id for c in req_custs}
+        req_ids = set(self.product.get_required_customizers().values_list('id', flat=True))
 
         self.assertIn(c1.id, req_ids)
         self.assertIn(c2.id, req_ids)
-        self.assertIn(c3.id, req_ids)
-        self.assertIn(c4.id, req_ids)
-        self.assertNotIn(c5.id, req_ids)
+        self.assertNotIn(c3.id, req_ids)
+        self.assertNotIn(c4.id, req_ids)
 
-    def test_group_creation_auto_populates_required_customizers_with_empty_required_params(self):
+    def test_group_creation_auto_populates_required_customizers_with_defaults(self):
         """
         When a group is created, required customizers are automatically added to group.customizers.
-        Required parameters (parX_required=True) are set to empty ('').
-        Non-required parameters retain default values.
+        Catalog default values (parX_value) are populated even for required parameters;
+        required parameters without a catalog default remain empty ('').
         """
         cust_glass = Customizer.objects.create(
             code='GLASS_TYPE',
             name='סוג זכוכית',
             tag='glass',
-            is_required=True,
             par1_label='סוג זכוכית',
             par1_required=True,
-            par1_value='שקופה',  # Default in catalog, but since it's required it should become '' on auto-population
-            par2_label='הערות',
-            par2_required=False,
-            par2_value='סטנדרט'
+            par1_value='שקופה',
+            par2_label='עובי זכוכית',
+            par2_required=True,
+            par2_value='',
+            par3_label='הערות',
+            par3_required=False,
+            par3_value='סטנדרט'
         )
-        cust_glass.product_models.add(self.product)
+        self.product.required_customizers.add(cust_glass)
 
-        # Create group
         group = OrderItemsGroup.objects.create(
             order=self.order,
             product=self.product,
@@ -462,19 +472,22 @@ class RequiredCustomizersOrderTests(TestCase):
 
         group_custs = group.customizers.all()
         self.assertEqual(group_custs.count(), 1)
+
         gc = group_custs.first()
         self.assertEqual(gc.customizer, cust_glass)
-        # Required parameter must be empty
-        self.assertEqual(gc.par1, '')
-        # Non-required parameter takes default value
-        self.assertEqual(gc.par2, 'סטנדרט')
+        # Обязательный параметр с дефолтом в каталоге -> подставляется дефолт
+        self.assertEqual(gc.par1, 'שקופה')
+        # Обязательный параметр без дефолта -> остаётся пустым
+        self.assertEqual(gc.par2, '')
+        # Необязательный параметр с дефолтом -> подставляется дефолт
+        self.assertEqual(gc.par3, 'סטנדרט')
 
     def test_group_duplicate_preserves_customizers(self):
         """Duplicating a group preserves filled customizer parameters without duplicate entries."""
         cust = Customizer.objects.create(
             code='REQ_CUST',
             name='קסטומייזר חובה',
-            is_required=True,
+            tag='req',
             par1_label='פרמטר 1',
             par1_required=True,
             par1_value='Default'
@@ -489,12 +502,10 @@ class RequiredCustomizersOrderTests(TestCase):
             quantity=1
         )
 
-        # Manager fills in the required parameter
         gc = group.customizers.get(customizer=cust)
         gc.par1 = 'Filled Value by Manager'
         gc.save()
 
-        # Duplicate the group
         dup_group = group.duplicate()
         self.assertEqual(dup_group.customizers.count(), 1)
         dup_gc = dup_group.customizers.first()
@@ -502,17 +513,20 @@ class RequiredCustomizersOrderTests(TestCase):
         self.assertEqual(dup_gc.par1, 'Filled Value by Manager')
 
     def test_customizer_serializer_fields(self):
-        """Serializer outputs is_required and parameter required flags."""
+        """Serializer outputs customizer_is_required and parameter required flags."""
         from apps.orders.serializers import OrderItemsGroupCustomizerSerializer
+
         cust = Customizer.objects.create(
             code='SERIAL_CUST',
             name='בדיקת סריאליזציה',
-            is_required=True,
+            tag='serial',
             par1_label='P1',
             par1_required=True,
             par2_label='P2',
             par2_required=False
         )
+        self.product.required_customizers.add(cust)
+
         group = OrderItemsGroup.objects.create(
             order=self.order,
             product=self.product,
@@ -524,3 +538,35 @@ class RequiredCustomizersOrderTests(TestCase):
         self.assertTrue(data['customizer_is_required'])
         self.assertTrue(data['par1_required'])
         self.assertFalse(data['par2_required'])
+
+    def test_toggle_special_detail_endpoint(self):
+        """AJAX endpoint toggles is_special_detail and logs changes in OrderChangeLog."""
+        import json
+        from apps.orders.models import OrderChangeLog
+
+        group = OrderItemsGroup.objects.create(
+            order=self.order,
+            product=self.product,
+            series=self.series,
+            front=self.front,
+            quantity=1
+        )
+        url = reverse('group-toggle-special-detail', kwargs={'pk': group.pk})
+
+        response = self.client.post(
+            url,
+            data=json.dumps({'is_special_detail': True}),
+            content_type='application/json',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['is_special_detail'])
+
+        group.refresh_from_db()
+        self.assertTrue(group.is_special_detail)
+        self.assertTrue(OrderChangeLog.objects.filter(
+            order=self.order,
+            field_name=f"group_{group.id}_is_special_detail",
+            old_value='False',
+            new_value='True'
+        ).exists())

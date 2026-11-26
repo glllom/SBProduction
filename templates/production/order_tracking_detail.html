@@ -13,7 +13,10 @@
                     <i class="bi bi-diagram-3"></i>
                 </div>
                 <div>
-                    <h4 class="sb-page-title mb-0">הזמנה {{ order.order_number }} — {{ order.customer|default:"ללא לקוח" }}</h4>
+                    <h4 class="sb-page-title mb-0">
+                        הזמנה {{ order.order_number }}
+                        — {{ order.customer|default:"ללא לקוח" }}
+                    </h4>
                     <div class="sb-page-subtitle">
                         סטטוס: <strong>{{ order.get_status_display }}</strong>
                         · התקדמות כוללת: <strong>{{ done_order_steps }}/{{ total_order_steps }}</strong> שלבים
@@ -75,7 +78,9 @@
                             {% endfor %}
                         </div>
                     </div>
-                    <div class="d-flex align-items-center gap-2" style="min-width: 220px;">
+                    <div class="d-flex align-items-center gap-2"
+                         style="min-width: 220px"
+                         dir="ltr">
                         <div class="progress flex-grow-1"
                              style="height: 8px;
                                     background-color: var(--sb-surface-muted)">
@@ -163,7 +168,10 @@
                                         <span class="fw-bold">{{ row.station.name }}</span>
                                     </div>
                                     {% if row.is_bypassed %}
-                                        <div class="small mt-1" style="color: var(--sb-warning-text);">דלתות שדולגו: #{{ row.bypassed_marks|join:", #" }}</div>
+                                        <div class="small mt-1" style="color: var(--sb-warning-text);">
+                                            דלתות שדולגו:
+                                            #{{ row.bypassed_marks|join:", #" }}
+                                        </div>
                                     {% endif %}
                                 </td>
                                 <td>

@@ -154,6 +154,25 @@
                             </div>
                         </div>
                         <!-- Row 5: התקנה מפוצלת והערות -->
+                        <!-- Row 5: התקנה מפוצלת, פרט מיוחד והערות -->
+                        <div class="col-md-6">
+                            <div class="d-flex flex-column gap-2 pt-1">
+                                <div class="form-check form-switch">
+                                    {{ group_form.is_split_installation }}
+                                    <label class="form-check-label fw-semibold"
+                                           for="{{ group_form.is_split_installation.id_for_label }}"
+                                           data-bs-toggle="tooltip"
+                                           title="{{ group_form.is_split_installation.help_text|default:'התקנת משקוף עיוור בשלב א' }}">
+                                        התקנה מפוצלת
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold"
+                                   for="{{ group_form.comments.id_for_label }}">הערות לקבוצה</label>
+                            {{ group_form.comments }}
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">

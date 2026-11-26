@@ -142,3 +142,7 @@
 .group-card .table > tbody > tr:last-child > td {
     border-bottom: 0;
 }
+
+.progress {
+    flex-direction: row-reverse;
+}

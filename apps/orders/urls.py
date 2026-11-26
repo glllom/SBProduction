@@ -30,6 +30,8 @@ urlpatterns = [
          name='group-create-from-specification'),
     path('specifications/<int:pk>/delete/', views.delete_group_specification, name='specification-delete'),
     path('groups/<int:pk>/cancel/', views.order_group_cancel, name='order-group-cancel'),
+    path('groups/<int:pk>/toggle-special-detail/', views.group_toggle_special_detail,
+         name='group-toggle-special-detail'),
 
     # Order Items
     path('items/<int:pk>/edit/', views.OrderItemUpdateView.as_view(), name='order-item-edit'),
@@ -37,7 +39,5 @@ urlpatterns = [
     path('items/<int:pk>/duplicate-measurements/', views.duplicate_item_measurements,
          name='order-item-duplicate-measurements'),
     path('items/<int:pk>/cancel/', views.order_item_cancel, name='order-item-cancel'),
-
-
 
 ]

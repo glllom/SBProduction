@@ -122,6 +122,7 @@ class BaseStationReport:
         )
         base_context: Dict[str, Any] = {
             'order': ctx.order,
+            'has_special_detail': self._has_special_detail(ctx),
             'order_spec': ctx.order_spec,
             'spec_json': spec_json,
             'station': ctx.station,
@@ -133,6 +134,7 @@ class BaseStationReport:
             'order_qr': ctx.order_qr,
             'barcode_text': ctx.barcode_text,
             'now': timezone.now(),
+
         }
         base_context.update(self.get_extra_context(ctx))
         return base_context
@@ -141,6 +143,7 @@ class BaseStationReport:
         """Собирает словарь секции для сводного документа Master Print."""
         extra = self.get_extra_context(ctx)
         section: Dict[str, Any] = {
+            'has_special_detail': self._has_special_detail(ctx),
             'station': ctx.station,
             'station_code': ctx.station.code if ctx.station else ctx.station_code,
             'station_comment': ctx.station_comment,
@@ -161,6 +164,40 @@ class BaseStationReport:
         }
         section.update(extra)
         return section
+
+    def _has_special_detail(self, ctx: ReportContext) -> bool:
+        """Возвращает True, если среди позиций этого отчёта есть группа с флагом פרט מיוחד."""
+        from apps.orders.models import OrderItemsGroup
+
+        if ctx.station_items:
+            active_ids = {
+                getattr(it, 'item_id', None) if hasattr(it, 'item_id') else it.get('item_id')
+                for it in ctx.station_items
+            }
+            group_ids = {
+                it.group_id for it in ctx.filtered_db_items
+                if it.id in active_ids and getattr(it, 'group_id', None)
+            }
+            if not group_ids:
+                return False
+            return OrderItemsGroup.objects.filter(id__in=group_ids, is_special_detail=True).exists()
+
+        if ctx.filtered_db_items:
+            group_ids = {it.group_id for it in ctx.filtered_db_items if getattr(it, 'group_id', None)}
+            qs = OrderItemsGroup.objects.filter(id__in=group_ids, is_special_detail=True)
+        elif not self.requires_spec and ctx.order:
+            qs = ctx.order.groups.filter(is_special_detail=True).exclude(
+                production_state=OrderItemsGroup.ProductionState.CANCELED
+            )
+        else:
+            return False
+
+        if ctx.requested_batches:
+            batch_nums = [int(b) for b in ctx.requested_batches if str(b).isdigit()]
+            if batch_nums:
+                qs = qs.filter(batch_number__in=batch_nums)
+
+        return qs.exists()
 
 
 class ReportRegistry:

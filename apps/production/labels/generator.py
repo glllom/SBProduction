@@ -12,7 +12,7 @@
     2. Использует исключительно предзагруженный OrderReferenceCache (0 запросов к БД
        при построении черновиков; запись в БД — 1 транзакция bulk_update / bulk_create).
     3. Единственное место в проекте, где сантиметры переводятся в миллиметры (см * 10 -> мм)
-       для QR-кодов Essepigi / Accord и поля DoorLabel.thickness.
+       для QR-кодов Essepigi / Accord.
     4. Правило פרט מיוחד (is_special_detail): целевая машина ACCORD_CUSTOM выставляется
        в calculators/routing.py ТОЛЬКО для наклейки 2 (FINISHING), а генератор формирует
        для неё путь проекта C:\\Ww8\\PROJECTS\\{order_num}\\d{mark}.pgmx.
@@ -28,10 +28,10 @@ from django.db import transaction
 from apps.catalog.models import Hardware, MachiningFeature
 from apps.engineering.models import HardwareMacroFile, PerimeterRoutingFile
 from apps.orders.models import Order, OrderItemsGroup
+from apps.production.cnc import MachineContext, MachineRegistry
 from apps.production.engine.cache import OrderReferenceCache
 from apps.production.engine.calculators.base import ItemRuntimeState
 from apps.production.models import DoorLabel
-from apps.production.cnc import MachineContext, MachineRegistry
 
 # Теги материалов в SpecBOMItem, которые нужно игнорировать при сборе MachiningFeature фурнитуры
 _MATERIAL_BOM_TAGS = frozenset({
@@ -42,16 +42,14 @@ _MATERIAL_BOM_TAGS = frozenset({
 
 # Список полей DoorLabel, обновляемых при пересчёте (счётчики print_count и last_printed_at сохраняются!)
 _LABEL_UPDATE_FIELDS = [
-    'order_number', 'client_name', 'item_mark', 'total_items',
-    'width', 'height', 'thickness', 'direction', 'opening',
-    'edge_type', 'is_paint', 'cnc_program', 'edge_shape',
-    'lock_name', 'lock_height', 'lock_program',
-    'hinge_name', 'hinge_program',
-    'hinge_1', 'hinge_2', 'hinge_3', 'hinge_4', 'hinge_5',
-    'front_program', 'customizer_programs',
-    'cmz_prg_1', 'cmz_prg_2', 'cmz_prg_3', 'cmz_prg_4', 'cmz_prg_5',
-    'cmz_prg_6', 'cmz_prg_7', 'cmz_prg_8', 'cmz_prg_9', 'cmz_prg_10',
-    'icon_filename', 'addons_summary', 'comment', 'target_machine', 'qr_payload',
+    'order_number', 'client_name', 'completion_date',
+    'item_mark', 'total_items',
+    'product_family_name', 'product_family_code',
+    'width', 'width_bottom', 'height', 'direction', 'edge_type', 'is_paint',
+    'lock_name', 'lock_height',
+    'hinge_name', 'hinge_1', 'hinge_2', 'hinge_3', 'hinge_4', 'hinge_5',
+    'addons_summary', 'comment',
+    'target_machine', 'qr_payload', 'front_program_code',
 ]
 
 
@@ -173,21 +171,13 @@ class DoorLabelGenerator:
         if spec.is_hidden_wood_edge:
             label_types.insert(0, DoorLabel.LabelType.PRE_ROUGHING)
 
-        # 2. Геометрия полотен (в см для полей BarTender; толщина полотна в мм для совместимости с шаблоном)
+        # 2. Геометрия полотен (напрямую из spec, без вычислений)
         panels = spec.panel_dimensions or []
-        active_w = panels[0].get('width') if len(panels) > 0 else spec.width
-        passive_w = panels[1].get('width') if len(panels) > 1 else None
-        leaf_h = panels[0].get('height') if len(panels) > 0 else spec.height
-        leaf_thickness_mm = (
-            round(spec.leaf_thickness * 10.0, 1)
-            if 0 < spec.leaf_thickness < 15
-            else float(spec.leaf_thickness or 40.0)
-        )
         is_paint = bool(
             group and group.panel_paint_option != OrderItemsGroup.PaintOption.NO_PAINT
         )
 
-        # 3. Макросы замка и петель с учётом MachiningFeature
+        # 3. Валидация макросов и подписи замка/петель с учётом MachiningFeature
         hinge_id = state.hinge_hardware_id
         if not hinge_id:
             hinge_bi = next((bi for bi in spec.bom_items if str(bi.tag or '').lower() == 'hinge'), None)
@@ -213,30 +203,33 @@ class DoorLabelGenerator:
             if err_msg:
                 state.add_error(err_msg)
 
-        lock_program = lock_macro.file_name.strip() if (lock_macro and lock_macro.file_name) else ""
-        hinge_program = hinge_macro.file_name.strip() if (hinge_macro and hinge_macro.file_name) else ""
         lock_label = cls._format_hardware_label(spec.lock_name, lock_macro)
         hinge_label = cls._format_hardware_label(spec.hinge_name, hinge_macro)
 
-        # 4. Макросы фасада (гравировка) и кастомизаторов (до 10 файлов)
-        front_program = cache.front_engravings.get(front.id, "") if front else ""
-        cmz_macros = cls._resolve_customizer_macros(state, cache)
-        padded_cmz = (cmz_macros + [''] * 10)[:10]
-
-        # 5. Текстовая сводка доп. кастомизаторов и высоты петель
+        # 4. Макрос фасада, текстовая сводка кастомизаторов и высоты петель
+        front_program_code = cache.front_engravings.get(front.id, "") if front else ""
         addons_summary = cls._build_addons_summary(spec)
         padded_hinges = (list(spec.hinge_heights or []) + [None] * 5)[:5]
         engraving_data = spec.engraving_data or {}
         cnc_targets = spec.cnc_targets or {}
+
         mark_str = str(item.mark or item.id)
         client_name = order.customer or ''
         comment = spec.comment or item.comment or ''
         direction = spec.direction or (item.get_direction_display() if item.direction else '') or ''
-        opening = spec.opening or (item.get_opening_display() if item.opening else '') or ''
+        family_name = (getattr(door_family, 'name', '') or '')[:128]
+        family_code = (getattr(door_family, 'code', '') or '')[:128]
 
         drafts: List[Dict[str, Any]] = []
         for role in roles:
-            leaf_w = passive_w if (role == DoorLabel.LeafRole.PASSIVE and passive_w is not None) else active_w
+            panel = (
+                panels[1]
+                if (role == DoorLabel.LeafRole.PASSIVE and len(panels) > 1)
+                else (panels[0] if panels else {})
+            )
+            leaf_w = panel.get('width', spec.width)
+            leaf_w_bottom = panel.get('width_bottom')
+            leaf_h = panel.get('height', spec.height)
 
             for l_type in label_types:
                 cnc_program, edge_shape = cls._resolve_perimeter_routing(
@@ -248,7 +241,7 @@ class DoorLabelGenerator:
                 target_machine = (
                         cnc_targets.get(int(l_type))
                         or cnc_targets.get(str(int(l_type)))
-                        or DoorLabel.TargetMachine.ESSEPIGI
+                        or DoorLabel.TargetMachine.ACCORD_STD
                 )
 
                 draft: Dict[str, Any] = {
@@ -256,44 +249,30 @@ class DoorLabelGenerator:
                     'order_item_id': item.id,
                     'order_number': order.order_number,
                     'client_name': client_name,
+                    'completion_date': order.completion_date,
                     'item_mark': mark_str,
                     'leaf_role': role,
                     'label_type': l_type,
-                    'width': float(leaf_w) if leaf_w is not None else None,
-                    'height': float(leaf_h) if leaf_h is not None else None,
-                    'thickness': leaf_thickness_mm,
+                    'product_family_name': family_name,
+                    'product_family_code': family_code,
+                    'width': leaf_w,
+                    'width_bottom': leaf_w_bottom,
+                    'height': leaf_h,
                     'direction': direction,
-                    'opening': opening,
                     'edge_type': spec.wood_edge_type or '',
                     'is_paint': is_paint,
-                    'cnc_program': cnc_program,
-                    'edge_shape': edge_shape,
                     'lock_name': lock_label,
                     'lock_height': spec.lock_height,
-                    'lock_program': lock_program,
                     'hinge_name': hinge_label,
-                    'hinge_program': hinge_program,
                     'hinge_1': padded_hinges[0],
                     'hinge_2': padded_hinges[1],
                     'hinge_3': padded_hinges[2],
                     'hinge_4': padded_hinges[3],
                     'hinge_5': padded_hinges[4],
-                    'front_program': front_program,
-                    'customizer_programs': ";".join(cmz_macros),
-                    'cmz_prg_1': padded_cmz[0],
-                    'cmz_prg_2': padded_cmz[1],
-                    'cmz_prg_3': padded_cmz[2],
-                    'cmz_prg_4': padded_cmz[3],
-                    'cmz_prg_5': padded_cmz[4],
-                    'cmz_prg_6': padded_cmz[5],
-                    'cmz_prg_7': padded_cmz[6],
-                    'cmz_prg_8': padded_cmz[7],
-                    'cmz_prg_9': padded_cmz[8],
-                    'cmz_prg_10': padded_cmz[9],
-                    'icon_filename': engraving_data.get('icon_filename', ''),
                     'addons_summary': addons_summary,
                     'comment': comment,
                     'target_machine': target_machine,
+                    'front_program_code': front_program_code,
                 }
                 draft['qr_payload'] = cls._build_qr_payload(
                     machine=target_machine,
@@ -301,6 +280,8 @@ class DoorLabelGenerator:
                     draft=draft,
                     spec=spec,
                     engraving_data=engraving_data,
+                    cnc_program=cnc_program,
+                    edge_shape=edge_shape,
                 )
                 drafts.append(draft)
 
@@ -357,9 +338,17 @@ class DoorLabelGenerator:
             draft: Dict[str, Any],
             spec,
             engraving_data: Dict[str, Any],
+            cnc_program: str = '',
+            edge_shape: bool = False,
     ) -> str:
         """Делегирует сборку QR-строки зарегистрированному драйверу станка ЧПУ."""
         driver = MachineRegistry.get(machine)
+        raw_thickness = float(spec.leaf_thickness or 0)
+        thickness_mm = (
+            cls._cm_to_mm(raw_thickness)
+            if 0 < raw_thickness < 15
+            else (raw_thickness or 40.0)
+        )
         ctx = MachineContext(
             order_number=str(draft.get('order_number') or ''),
             item_mark=str(draft.get('item_mark') or '1'),
@@ -367,10 +356,10 @@ class DoorLabelGenerator:
             leaf_role=int(draft.get('leaf_role', DoorLabel.LeafRole.SINGLE)),
             width_mm=cls._cm_to_mm(float(draft.get('width') or spec.width or 0)),
             height_mm=cls._cm_to_mm(float(draft.get('height') or spec.height or 0)),
-            thickness_mm=float(draft.get('thickness') or 40.0),
+            thickness_mm=thickness_mm,
             edge_type=str(draft.get('edge_type') or spec.wood_edge_type or 'STANDARD'),
-            edge_shape=bool(draft.get('edge_shape', False)),
-            cnc_program=str(draft.get('cnc_program') or ''),
+            edge_shape=edge_shape,
+            cnc_program=cnc_program,
             lock_height=spec.lock_height,
             hinge_heights=list(spec.hinge_heights or []),
             engraving_data=engraving_data or {},
@@ -472,23 +461,6 @@ class DoorLabelGenerator:
             text = f"{base_name} — {feat_name}" if base_name else feat_name
             return text[:128]
         return (base_name or '')[:128]
-
-    @staticmethod
-    def _resolve_customizer_macros(state: ItemRuntimeState, cache: OrderReferenceCache) -> List[str]:
-        """Возвращает до 10 уникальных ЧПУ-макросов кастомизаторов в порядке их следования."""
-        result: List[str] = []
-        seen_ids = set()
-        for gc in state.customizers:
-            cid = gc.customizer_id
-            if not cid or cid in seen_ids:
-                continue
-            seen_ids.add(cid)
-            fname = cache.customizer_macros.get(cid)
-            if fname:
-                result.append(fname)
-                if len(result) >= 10:
-                    break
-        return result
 
     @staticmethod
     def _build_addons_summary(spec) -> str:
